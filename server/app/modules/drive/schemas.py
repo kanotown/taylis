@@ -62,6 +62,19 @@ class DriveFileOut(BaseModel):
     preview: AttachmentPreviewOut | None
 
 
+class DrivePostOut(BaseModel):
+    """CF1 (docs/CHANNEL_FILES.md §11.1): a message that has a version of this file as its
+    attachment (「投稿」 in the details: who posted it where; 「メッセージを表示」)."""
+
+    message_id: UUID
+    channel_id: UUID
+    # The thread's parent when the message is a reply.
+    parent_id: UUID | None
+    sender_id: UUID
+    version_number: int
+    posted_at: datetime
+
+
 class DriveItemOut(BaseModel):
     id: UUID
     location_id: UUID
@@ -83,6 +96,15 @@ class DriveItemOut(BaseModel):
     # Set for an item in the trash (with the one who put it there).
     trashed_at: datetime | None = None
     trashed_by: UUID | None = None
+    # CF1 (docs/CHANNEL_FILES.md §3.3): 'channel_posts' for 「投稿のファイル」 (clients name it in
+    # their language and offer no rename, move or trash: 409 drive_folder_system), else null.
+    system_role: Literal["channel_posts"] | None = None
+    # CF1: a version of this file is attached to a message that is not deleted (the list's small
+    # speech-bubble mark).
+    posted: bool = False
+    # CF1: those messages that the caller can read, newest first, at most 5. Only in
+    # GET /drive/items/{id} (null in lists, search hits and other answers).
+    posts: list[DrivePostOut] | None = None
 
 
 class DriveCrumb(BaseModel):
@@ -132,6 +154,50 @@ class DriveMoveIn(BaseModel):
     item_ids: list[UUID] = Field(min_length=1, max_length=MAX_BATCH)
     target_folder_id: UUID
     on_conflict: Literal["fail", "rename"] = "fail"
+
+
+class DriveImpactIn(BaseModel):
+    """CF1 (docs/CHANNEL_FILES.md §6.4, §11.1): what moving these items into `target_folder_id`
+    (or, without one, putting them in the trash) would do to the messages their posted files are
+    attached to."""
+
+    item_ids: list[UUID] = Field(min_length=1, max_length=MAX_BATCH)
+    target_folder_id: UUID | None = None
+
+
+class DriveImpactChannelOut(BaseModel):
+    channel_id: UUID
+    # Messages of this channel whose attached file would change (be moved out of the channel's
+    # drive, come back to it, or go to the trash).
+    messages: int
+    # Members of the channel (who can sign in; bots aside) who see at least one of those files in
+    # its message now and would not afterwards, and how many of them are guests.
+    unreadable_after: int
+    unreadable_guests: int
+
+
+class DriveImpactOut(BaseModel):
+    # Every message concerned (also in channels the caller cannot read, which are not listed).
+    posted_messages: int
+    channels: list[DriveImpactChannelOut]
+
+
+class DriveMessageFileOut(BaseModel):
+    """CF1 (docs/CHANNEL_FILES.md §7.3): what deleting the message would do to one of its posted
+    files. `trash`: drive_files=auto (and trash) puts it in the drive's trash (30 days); else it
+    stays in the drive, because it is in the trash already or in another location (`in_trash`,
+    `moved`), the caller did not post it and is no moderator (`not_permitted`), or it changed
+    since it was posted (`changed`: a newer version, or another message shows it)."""
+
+    attachment_id: UUID
+    item_id: UUID
+    state: Literal["available", "moved", "trashed"]
+    trash: bool
+    reason: Literal["in_trash", "moved", "not_permitted", "changed"] | None
+
+
+class DriveMessageFilesOut(BaseModel):
+    files: list[DriveMessageFileOut]
 
 
 class DriveTrashIn(BaseModel):
@@ -370,6 +436,10 @@ class DriveLocationUsageOut(DriveUsageParts):
     # The quota that applies: its own, else DRIVE_USER_DEFAULT_QUOTA_BYTES for a My Drive.
     effective_quota_bytes: int | None
     updated_at: datetime
+    # CF1 (docs/CHANNEL_FILES.md §8): of used_bytes, the files posted in the channel (version 1
+    # of an item filed from a message, posted_bytes ≤ used_bytes). Posting is never refused for
+    # the quota, so used_bytes may pass quota_bytes.
+    posted_bytes: int = 0
 
 
 class DrivePersonUsageOut(BaseModel):

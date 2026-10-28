@@ -2435,6 +2435,11 @@
             "title": "Calls Enabled",
             "type": "boolean"
           },
+          "channel_files_to_drive": {
+            "default": true,
+            "title": "Channel Files To Drive",
+            "type": "boolean"
+          },
           "default_channel_ids": {
             "default": [],
             "items": {
@@ -3730,6 +3735,64 @@
         "title": "AnalyticsOverviewOut",
         "type": "object"
       },
+      "AttachmentDriveOut": {
+        "description": "CF1 (docs/CHANNEL_FILES.md §11.1): a file posted in a channel is also version\n`version_number` of the item `item_id` in the channel's drive. The message keeps showing this\nversion (a newer one in the drive does not change it). `state`, the same for every viewer:\n'available' (in the channel's drive), 'moved' (in another location: only who can read it\nthere can open it; GET /drive/items/{item_id} tells), 'trashed' (「削除されたファイル」, it\ncan be restored from the drive's trash), 'deleted' (purged: a tombstone, item_id and the\nversion are null and the bytes are gone).",
+        "properties": {
+          "item_id": {
+            "anyOf": [
+              {
+                "format": "uuid",
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Item Id"
+          },
+          "state": {
+            "enum": [
+              "available",
+              "moved",
+              "trashed",
+              "deleted"
+            ],
+            "title": "State",
+            "type": "string"
+          },
+          "version_id": {
+            "anyOf": [
+              {
+                "format": "uuid",
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Version Id"
+          },
+          "version_number": {
+            "anyOf": [
+              {
+                "type": "integer"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Version Number"
+          }
+        },
+        "required": [
+          "item_id",
+          "version_id",
+          "version_number",
+          "state"
+        ],
+        "title": "AttachmentDriveOut",
+        "type": "object"
+      },
       "AttachmentOut": {
         "properties": {
           "content_type": {
@@ -3740,6 +3803,16 @@
             "format": "date-time",
             "title": "Created At",
             "type": "string"
+          },
+          "drive": {
+            "anyOf": [
+              {
+                "$ref": "#/components/schemas/AttachmentDriveOut"
+              },
+              {
+                "type": "null"
+              }
+            ]
           },
           "duration_ms": {
             "anyOf": [
@@ -5441,6 +5514,7 @@
             "$ref": "#/components/schemas/WorkspaceSettingsOut",
             "default": {
               "calls_enabled": false,
+              "channel_files_to_drive": true,
               "in_app_calls": {
                 "enabled": false,
                 "screen_share": false,
@@ -7312,6 +7386,28 @@
             ],
             "title": "Dm User Ids"
           },
+          "files_to_drive": {
+            "anyOf": [
+              {
+                "type": "boolean"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Files To Drive"
+          },
+          "files_to_drive_effective": {
+            "anyOf": [
+              {
+                "type": "boolean"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Files To Drive Effective"
+          },
           "id": {
             "format": "uuid",
             "title": "Id",
@@ -7560,6 +7656,17 @@
       },
       "ChannelUpdate": {
         "properties": {
+          "files_to_drive": {
+            "anyOf": [
+              {
+                "type": "boolean"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Files To Drive"
+          },
           "name": {
             "anyOf": [
               {
@@ -9223,6 +9330,88 @@
         "title": "DriveFolderCreate",
         "type": "object"
       },
+      "DriveImpactChannelOut": {
+        "properties": {
+          "channel_id": {
+            "format": "uuid",
+            "title": "Channel Id",
+            "type": "string"
+          },
+          "messages": {
+            "title": "Messages",
+            "type": "integer"
+          },
+          "unreadable_after": {
+            "title": "Unreadable After",
+            "type": "integer"
+          },
+          "unreadable_guests": {
+            "title": "Unreadable Guests",
+            "type": "integer"
+          }
+        },
+        "required": [
+          "channel_id",
+          "messages",
+          "unreadable_after",
+          "unreadable_guests"
+        ],
+        "title": "DriveImpactChannelOut",
+        "type": "object"
+      },
+      "DriveImpactIn": {
+        "description": "CF1 (docs/CHANNEL_FILES.md §6.4, §11.1): what moving these items into `target_folder_id`\n(or, without one, putting them in the trash) would do to the messages their posted files are\nattached to.",
+        "properties": {
+          "item_ids": {
+            "items": {
+              "format": "uuid",
+              "type": "string"
+            },
+            "maxItems": 500,
+            "minItems": 1,
+            "title": "Item Ids",
+            "type": "array"
+          },
+          "target_folder_id": {
+            "anyOf": [
+              {
+                "format": "uuid",
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Target Folder Id"
+          }
+        },
+        "required": [
+          "item_ids"
+        ],
+        "title": "DriveImpactIn",
+        "type": "object"
+      },
+      "DriveImpactOut": {
+        "properties": {
+          "channels": {
+            "items": {
+              "$ref": "#/components/schemas/DriveImpactChannelOut"
+            },
+            "title": "Channels",
+            "type": "array"
+          },
+          "posted_messages": {
+            "title": "Posted Messages",
+            "type": "integer"
+          }
+        },
+        "required": [
+          "posted_messages",
+          "channels"
+        ],
+        "title": "DriveImpactOut",
+        "type": "object"
+      },
       "DriveItemDetailOut": {
         "properties": {
           "item": {
@@ -9369,6 +9558,25 @@
             ],
             "title": "Parent Id"
           },
+          "posted": {
+            "default": false,
+            "title": "Posted",
+            "type": "boolean"
+          },
+          "posts": {
+            "anyOf": [
+              {
+                "items": {
+                  "$ref": "#/components/schemas/DrivePostOut"
+                },
+                "type": "array"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Posts"
+          },
           "size_bytes": {
             "anyOf": [
               {
@@ -9379,6 +9587,18 @@
               }
             ],
             "title": "Size Bytes"
+          },
+          "system_role": {
+            "anyOf": [
+              {
+                "const": "channel_posts",
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "System Role"
           },
           "trashed_at": {
             "anyOf": [
@@ -9758,6 +9978,11 @@
             "title": "Old Versions Bytes",
             "type": "integer"
           },
+          "posted_bytes": {
+            "default": 0,
+            "title": "Posted Bytes",
+            "type": "integer"
+          },
           "quota_bytes": {
             "anyOf": [
               {
@@ -9812,6 +10037,76 @@
           "updated_at"
         ],
         "title": "DriveLocationUsageOut",
+        "type": "object"
+      },
+      "DriveMessageFileOut": {
+        "description": "CF1 (docs/CHANNEL_FILES.md §7.3): what deleting the message would do to one of its posted\nfiles. `trash`: drive_files=auto (and trash) puts it in the drive's trash (30 days); else it\nstays in the drive, because it is in the trash already or in another location (`in_trash`,\n`moved`), the caller did not post it and is no moderator (`not_permitted`), or it changed\nsince it was posted (`changed`: a newer version, or another message shows it).",
+        "properties": {
+          "attachment_id": {
+            "format": "uuid",
+            "title": "Attachment Id",
+            "type": "string"
+          },
+          "item_id": {
+            "format": "uuid",
+            "title": "Item Id",
+            "type": "string"
+          },
+          "reason": {
+            "anyOf": [
+              {
+                "enum": [
+                  "in_trash",
+                  "moved",
+                  "not_permitted",
+                  "changed"
+                ],
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Reason"
+          },
+          "state": {
+            "enum": [
+              "available",
+              "moved",
+              "trashed"
+            ],
+            "title": "State",
+            "type": "string"
+          },
+          "trash": {
+            "title": "Trash",
+            "type": "boolean"
+          }
+        },
+        "required": [
+          "attachment_id",
+          "item_id",
+          "state",
+          "trash",
+          "reason"
+        ],
+        "title": "DriveMessageFileOut",
+        "type": "object"
+      },
+      "DriveMessageFilesOut": {
+        "properties": {
+          "files": {
+            "items": {
+              "$ref": "#/components/schemas/DriveMessageFileOut"
+            },
+            "title": "Files",
+            "type": "array"
+          }
+        },
+        "required": [
+          "files"
+        ],
+        "title": "DriveMessageFilesOut",
         "type": "object"
       },
       "DriveMoveIn": {
@@ -9870,6 +10165,57 @@
           "versions"
         ],
         "title": "DrivePersonUsageOut",
+        "type": "object"
+      },
+      "DrivePostOut": {
+        "description": "CF1 (docs/CHANNEL_FILES.md §11.1): a message that has a version of this file as its\nattachment (「投稿」 in the details: who posted it where; 「メッセージを表示」).",
+        "properties": {
+          "channel_id": {
+            "format": "uuid",
+            "title": "Channel Id",
+            "type": "string"
+          },
+          "message_id": {
+            "format": "uuid",
+            "title": "Message Id",
+            "type": "string"
+          },
+          "parent_id": {
+            "anyOf": [
+              {
+                "format": "uuid",
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Parent Id"
+          },
+          "posted_at": {
+            "format": "date-time",
+            "title": "Posted At",
+            "type": "string"
+          },
+          "sender_id": {
+            "format": "uuid",
+            "title": "Sender Id",
+            "type": "string"
+          },
+          "version_number": {
+            "title": "Version Number",
+            "type": "integer"
+          }
+        },
+        "required": [
+          "message_id",
+          "channel_id",
+          "parent_id",
+          "sender_id",
+          "version_number",
+          "posted_at"
+        ],
+        "title": "DrivePostOut",
         "type": "object"
       },
       "DrivePreviewOut": {
@@ -12024,7 +12370,7 @@
         "type": "object"
       },
       "FileItem": {
-        "description": "One row of the files list (M11i): the attachment and where it was posted.",
+        "description": "One row of the files list (M11i): the attachment and where it was posted. CF1: a posted\nfile that is in the channel's drive has `attachment.drive` (「ドライブで表示」); one moved\nelsewhere, in the trash or purged is not listed.",
         "properties": {
           "attached_at": {
             "format": "date-time",
@@ -26204,6 +26550,11 @@
             "title": "Calls Enabled",
             "type": "boolean"
           },
+          "channel_files_to_drive": {
+            "default": true,
+            "title": "Channel Files To Drive",
+            "type": "boolean"
+          },
           "icon_version": {
             "anyOf": [
               {
@@ -26252,6 +26603,17 @@
         "additionalProperties": false,
         "description": "PATCH /admin/workspace-settings: only the fields sent change.",
         "properties": {
+          "channel_files_to_drive": {
+            "anyOf": [
+              {
+                "type": "boolean"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Channel Files To Drive"
+          },
           "default_channel_ids": {
             "anyOf": [
               {
@@ -36641,6 +37003,53 @@
         ]
       }
     },
+    "/api/v1/drive/items/impact": {
+      "post": {
+        "description": "CF1 (docs/CHANNEL_FILES.md §6.4): before a move into `target_folder_id` (or, without one,\na trash), what it would do to the messages showing posted files among the items (and what is\nunder them): per channel I can read, the messages concerned and how many members (guests\namong them) would no longer see a file in its message. Nothing is changed. 404 for an item\n(or a target) I cannot read.",
+        "operationId": "item_impact_api_v1_drive_items_impact_post",
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/DriveImpactIn"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/DriveImpactOut"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "security": [
+          {
+            "HTTPBearer": []
+          }
+        ],
+        "summary": "Item Impact",
+        "tags": [
+          "drive"
+        ]
+      }
+    },
     "/api/v1/drive/items/move": {
       "post": {
         "operationId": "move_items_api_v1_drive_items_move_post",
@@ -41221,6 +41630,23 @@
               "title": "Message Id",
               "type": "string"
             }
+          },
+          {
+            "description": "CF1 (docs/CHANNEL_FILES.md §7.3): what becomes of the message's files in the channel's drive. auto (and trash, the same rule): the ones the caller posted (any, for a moderator) that did not change since go to the drive's trash, the others stay; keep: all stay. GET /messages/{id}/drive-files tells which beforehand.",
+            "in": "query",
+            "name": "drive_files",
+            "required": false,
+            "schema": {
+              "default": "auto",
+              "description": "CF1 (docs/CHANNEL_FILES.md §7.3): what becomes of the message's files in the channel's drive. auto (and trash, the same rule): the ones the caller posted (any, for a moderator) that did not change since go to the drive's trash, the others stay; keep: all stay. GET /messages/{id}/drive-files tells which beforehand.",
+              "enum": [
+                "auto",
+                "keep",
+                "trash"
+              ],
+              "title": "Drive Files",
+              "type": "string"
+            }
           }
         ],
         "responses": {
@@ -41704,6 +42130,55 @@
           }
         ],
         "summary": "Message Context",
+        "tags": [
+          "messages"
+        ]
+      }
+    },
+    "/api/v1/messages/{message_id}/drive-files": {
+      "get": {
+        "description": "CF1 (docs/CHANNEL_FILES.md §7.3): for the delete's confirmation 「ドライブの n 件のファイルも\nゴミ箱に移す」: per file posted with the message (and still in a drive), whether\ndrive_files=auto would put it in the trash, and why not. Empty for a message whose files are\nnot in a drive.",
+        "operationId": "message_drive_files_api_v1_messages__message_id__drive_files_get",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "message_id",
+            "required": true,
+            "schema": {
+              "format": "uuid",
+              "title": "Message Id",
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/DriveMessageFilesOut"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "security": [
+          {
+            "HTTPBearer": []
+          }
+        ],
+        "summary": "Message Drive Files",
         "tags": [
           "messages"
         ]
@@ -43935,6 +44410,23 @@
               "description": "Also the text inside the files (PDF, Office, plain text), with a snippet",
               "title": "Content",
               "type": "boolean"
+            }
+          },
+          {
+            "description": "CF1: posts = only the files posted in a channel (filed from a message), uploads = everything else",
+            "in": "query",
+            "name": "origin",
+            "required": false,
+            "schema": {
+              "default": "all",
+              "description": "CF1: posts = only the files posted in a channel (filed from a message), uploads = everything else",
+              "enum": [
+                "all",
+                "uploads",
+                "posts"
+              ],
+              "title": "Origin",
+              "type": "string"
             }
           }
         ],

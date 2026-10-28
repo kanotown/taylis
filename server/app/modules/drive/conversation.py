@@ -118,7 +118,11 @@ async def save_attachment(
         if exc.status == 403:
             raise _attachment_not_found() from None
         raise
-    if source.status != "attached" or source.drive_item_id is not None:
+    # A drive version is copied with POST /drive/items/copy; CF1: a posted file is a message's
+    # attachment too, and an older client's 「ドライブに保存」 copies it (§11.2).
+    if source.status != "attached" or (
+        source.drive_item_id is not None and source.drive_state is None
+    ):
         raise _attachment_not_found()
     folder, rights = await service.readable_item(db, actor, data.folder_id)
     rights.require_write()

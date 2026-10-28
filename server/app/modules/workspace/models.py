@@ -75,6 +75,11 @@ class WorkspaceSettings(Base):
     drive_link_password_required: Mapped[bool] = mapped_column(
         Boolean, default=False, server_default=text("false")
     )
+    # CF1 (docs/CHANNEL_FILES.md §9): files posted in public and private channels go into the
+    # channel's drive (a channel's own channels.files_to_drive overrides it).
+    channel_files_to_drive: Mapped[bool] = mapped_column(
+        Boolean, default=True, server_default=text("true")
+    )
     updated_at: Mapped[datetime] = mapped_column(
         DateTime(timezone=True), default=utcnow, server_default=func.now()
     )

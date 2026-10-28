@@ -29,7 +29,7 @@ from app.modules.attachments.schemas import preview_out, to_attachment_out
 from app.modules.audit import service as audit
 from app.modules.channels import service as channels
 from app.modules.drive import access as acl
-from app.modules.drive import events, names, shares
+from app.modules.drive import events, names, posted, shares
 from app.modules.drive import repository as repo
 from app.modules.drive.access import Access, item_not_found
 from app.modules.drive.models import (
@@ -242,6 +242,7 @@ async def items_out(db: AsyncSession, rows: list[DriveItem]) -> list[DriveItemOu
     )
     counts = await repo.version_counts(db, [r.id for r in rows if r.kind == "file"])
     links = await shares.link_counts(db, [r.id for r in rows])
+    in_posts = await posted.posted_items(db, [r.id for r in rows if r.kind == "file"])
     out: list[DriveItemOut] = []
     for row in rows:
         file: DriveFileOut | None = None
@@ -278,6 +279,8 @@ async def items_out(db: AsyncSession, rows: list[DriveItem]) -> list[DriveItemOu
                 link_count=links.get(row.id, 0),
                 trashed_at=row.trashed_at,
                 trashed_by=row.trashed_by,
+                system_role=row.system_role,  # type: ignore[arg-type]
+                posted=row.id in in_posts,
             )
         )
     return out
@@ -306,8 +309,12 @@ async def get_item(db: AsyncSession, actor: User, item_id: uuid.UUID) -> DriveIt
     """An item and its path (an item in the trash too, for the trash view)."""
     item, rights = await readable_item(db, actor, item_id, trashed_ok=True)
     chain = await repo.ancestor_ids(db, item.id)
+    shown = await item_out(db, item)
+    if item.kind == "file":
+        # CF1 (docs/CHANNEL_FILES.md §12.2): the messages that show it (those I can read).
+        shown.posts = await posted.posts_of(db, actor, item.id)
     return DriveItemDetailOut(
-        item=await item_out(db, item),
+        item=shown,
         path=await crumbs(db, chain[:-1], rights.location),
         location_kind=rights.location.kind,  # type: ignore[arg-type]
     )
@@ -658,6 +665,8 @@ async def rename(db: AsyncSession, actor: User, item_id: uuid.UUID, raw: str) ->
     rights.require_write()
     if item.parent_id is None:
         raise root_immutable()
+    if item.system_role is not None:
+        raise posted.folder_system()
     name = names.normalize(raw)
     locked = await repo.lock_items(db, [item.parent_id, item.id])
     item = locked[item.id]
@@ -675,10 +684,13 @@ async def rename(db: AsyncSession, actor: User, item_id: uuid.UUID, raw: str) ->
     item.change_seq = await events.next_seq(db)
     if item.current_version_id is not None:
         # The preview PDF's file name follows the item's (attachments' Content-Disposition).
+        # CF1 (docs/CHANNEL_FILES.md §4.3): not a posted file's: its message keeps the name it
+        # was posted under (no event would tell the devices; a later name must not leak there).
         version = await db.get(DriveFileVersion, item.current_version_id)
         if version is not None:
             for attachment in await attachments.get_many(db, [version.attachment_id]):
-                attachment.filename = name
+                if attachment.message_id is None:
+                    attachment.filename = name
     await events.emit_changed(db, item.location_id, [item.parent_id])
     await db.commit()
     return await item_out(db, item)
@@ -761,11 +773,12 @@ async def move(
     target_depth = len(target_chain) - 1
     results: list[DriveItemResult] = []
     changed: dict[uuid.UUID, set[uuid.UUID]] = {}
+    across: list[uuid.UUID] = []
     for item_id in wanted:
         item = locked.get(item_id)
         try:
             async with db.begin_nested():
-                await _move_one(
+                across += await _move_one(
                     db,
                     actor,
                     settings,
@@ -779,6 +792,9 @@ async def move(
             results.append(DriveItemResult(id=item_id, ok=True))
         except AppError as exc:
             results.append(DriveItemResult(id=item_id, ok=False, error=_error_code(exc)))
+    # CF1 (docs/CHANNEL_FILES.md §6.4): posted files that left their channel's drive (or came
+    # back to it) change in their messages.
+    await posted.restate_in_tx(db, across)
     for location_id, folders in changed.items():
         await events.emit_changed(db, location_id, folders)
     await db.commit()
@@ -795,7 +811,8 @@ async def _move_one(
     target_depth: int,
     on_conflict: str,
     changed: dict[uuid.UUID, set[uuid.UUID]],
-) -> None:
+) -> list[uuid.UUID]:
+    """Returns the ids that changed location (the subtree, when it moved across)."""
     if item is None or item.trashed_at is not None:
         raise item_not_found()
     source = await repo.location(db, item.location_id)
@@ -804,10 +821,12 @@ async def _move_one(
     (await acl.access(db, actor, source)).require_write()
     if item.parent_id is None:
         raise root_immutable()
+    if item.system_role is not None:
+        raise posted.folder_system()
     if item.id in target_chain:
         raise conflict("drive_cycle", "A folder cannot go inside itself")
     if item.parent_id == target.id:
-        return
+        return []
     tree = await repo.subtree(db, item.id)
     height = max(steps for _, steps in tree)
     if target_depth + 1 + height > names.MAX_DEPTH:
@@ -820,9 +839,11 @@ async def _move_one(
             raise name_taken(existing)
         name = await free_name(db, target.id, item.name, is_file=item.kind == "file")
     old_parent = item.parent_id
+    across: list[uuid.UUID] = []
     if item.location_id != target.location_id:
+        across = [i for i, _ in tree]
         await move_across_in_tx(
-            db, settings, [i for i, _ in tree], item.location_id, target.location_id, check=True
+            db, settings, across, item.location_id, target.location_id, check=True
         )
     item.parent_id = target.id
     if name != item.name:
@@ -833,6 +854,7 @@ async def _move_one(
     await db.flush()
     changed.setdefault(source.id, set()).add(old_parent)
     changed.setdefault(target.location_id, set()).add(target.id)
+    return across
 
 
 async def move_across_in_tx(
@@ -871,6 +893,59 @@ async def move_across_in_tx(
     await db.flush()
 
 
+async def _trash_group_in_tx(
+    db: AsyncSession, item: DriveItem, actor_id: uuid.UUID, now: datetime
+) -> list[uuid.UUID]:
+    """The item and what is under it outside the trash, as one group (its root the item);
+    returns the subtree's ids."""
+    ids = [i for i, _ in await repo.subtree(db, item.id)]
+    await db.execute(
+        update(DriveItem)
+        .where(DriveItem.id.in_(ids), DriveItem.trashed_at.is_(None))
+        .values(
+            trashed_at=now,
+            trashed_by=actor_id,
+            trash_root_id=item.id,
+            change_seq=text("nextval('drive_change_seq')"),
+        )
+        .execution_options(synchronize_session=False)
+    )
+    await db.execute(
+        update(DriveItem)
+        .where(DriveItem.id == item.id)
+        .values(trash_parent_id=item.parent_id)
+        .execution_options(synchronize_session=False)
+    )
+    return ids
+
+
+async def _audit_posted_trash(
+    db: AsyncSession,
+    actor_id: uuid.UUID,
+    groups: dict[uuid.UUID, tuple[DriveItem, set[uuid.UUID]]],
+    hidden: list[tuple[uuid.UUID, uuid.UUID]],
+) -> None:
+    """CF1 (docs/CHANNEL_FILES.md §6.5, §14): a trash that hides posted files from their
+    messages is audited (drive.trash, via drive), one record per group."""
+    for root_id, (root, ids) in groups.items():
+        messages = {m for item_id, m in hidden if item_id in ids}
+        if not messages:
+            continue
+        await audit.record_in_tx(
+            db,
+            actor_id=actor_id,
+            action="drive.trash",
+            target_type="drive_item",
+            target_id=root_id,
+            details={
+                "via": "drive",
+                "location_id": str(root.location_id),
+                "name": root.name,
+                "messages": len(messages),
+            },
+        )
+
+
 async def trash(db: AsyncSession, actor: User, item_ids: list[uuid.UUID]) -> DriveResultsOut:
     """Each item and everything under it that is not in the trash yet: one group, its root the
     item (§10.1). In 研究室ドライブ anyone may trash anyone's file (restorable for 30 days)."""
@@ -880,6 +955,7 @@ async def trash(db: AsyncSession, actor: User, item_ids: list[uuid.UUID]) -> Dri
     locked = await repo.lock_items(db, [*parents, *found.keys()])
     results: list[DriveItemResult] = []
     changed: dict[uuid.UUID, set[uuid.UUID]] = {}
+    groups: dict[uuid.UUID, tuple[DriveItem, set[uuid.UUID]]] = {}
     now = utcnow()
     for item_id in wanted:
         item = locked.get(item_id)
@@ -896,32 +972,72 @@ async def trash(db: AsyncSession, actor: User, item_ids: list[uuid.UUID]) -> Dri
                     raise item_not_found()
                 if item.parent_id is None:
                     raise root_immutable()
-                ids = [i for i, _ in await repo.subtree(db, item.id)]
-                await db.execute(
-                    update(DriveItem)
-                    .where(DriveItem.id.in_(ids), DriveItem.trashed_at.is_(None))
-                    .values(
-                        trashed_at=now,
-                        trashed_by=actor.id,
-                        trash_root_id=item.id,
-                        change_seq=text("nextval('drive_change_seq')"),
-                    )
-                    .execution_options(synchronize_session=False)
-                )
-                await db.execute(
-                    update(DriveItem)
-                    .where(DriveItem.id == item.id)
-                    .values(trash_parent_id=item.parent_id)
-                    .execution_options(synchronize_session=False)
-                )
+                if item.system_role is not None:
+                    raise posted.folder_system()
+                ids = await _trash_group_in_tx(db, item, actor.id, now)
+                groups[item.id] = (item, set(ids))
                 changed.setdefault(item.location_id, set()).add(item.parent_id)
             results.append(DriveItemResult(id=item_id, ok=True))
         except AppError as exc:
             results.append(DriveItemResult(id=item_id, ok=False, error=_error_code(exc)))
+    # CF1 (docs/CHANNEL_FILES.md §6.5): their messages show 「削除されたファイル」.
+    hidden = await posted.restate_in_tx(db, [i for _, ids in groups.values() for i in ids])
+    await _audit_posted_trash(db, actor.id, groups, hidden)
     for location_id, folders in changed.items():
         await events.emit_changed(db, location_id, folders)
     await db.commit()
     return DriveResultsOut(results=results)
+
+
+async def trash_posted_in_tx(
+    db: AsyncSession,
+    actor_id: uuid.UUID,
+    item_ids: list[uuid.UUID],
+    *,
+    message_id: uuid.UUID,
+) -> list[uuid.UUID]:
+    """CF1 (docs/CHANNEL_FILES.md §7.3): the files of a message being deleted that its rule puts
+    in the trash (the caller decided which; no drive permission is checked: whoever may delete
+    the message takes back what was posted with it). The folders are locked first, before the
+    message's channel; the message's own rows are left to the delete. Audited as drive.trash
+    (via message_delete). Returns the items trashed (one in the trash already or gone is
+    skipped)."""
+    wanted = list(dict.fromkeys(item_ids))
+    if not wanted:
+        return []
+    found = await repo.items(db, wanted)
+    parents = {row.parent_id for row in found.values() if row.parent_id is not None}
+    locked = await repo.lock_items(db, [*parents, *found.keys()])
+    now = utcnow()
+    done: list[uuid.UUID] = []
+    changed: dict[uuid.UUID, set[uuid.UUID]] = {}
+    for item_id in wanted:
+        item = locked.get(item_id)
+        if item is None or item.trashed_at is not None or item.parent_id is None:
+            continue
+        if item.kind != "file":
+            continue
+        await _trash_group_in_tx(db, item, actor_id, now)
+        changed.setdefault(item.location_id, set()).add(item.parent_id)
+        done.append(item.id)
+        await audit.record_in_tx(
+            db,
+            actor_id=actor_id,
+            action="drive.trash",
+            target_type="drive_item",
+            target_id=item.id,
+            details={
+                "via": "message_delete",
+                "message_id": str(message_id),
+                "location_id": str(item.location_id),
+                "name": item.name,
+            },
+        )
+    await db.flush()
+    await posted.restate_in_tx(db, done, skip_message_id=message_id)
+    for location_id, folders in changed.items():
+        await events.emit_changed(db, location_id, folders)
+    return done
 
 
 def not_trash_root() -> AppError:
@@ -977,6 +1093,9 @@ async def restore(
     item.updated_at = utcnow()
     item.change_seq = await events.next_seq(db)
     await db.flush()
+    group = list(
+        (await db.execute(select(DriveItem.id).where(DriveItem.trash_root_id == item.id))).scalars()
+    )
     await db.execute(
         update(DriveItem)
         .where(DriveItem.trash_root_id == item.id)
@@ -988,6 +1107,8 @@ async def restore(
         )
         .execution_options(synchronize_session=False)
     )
+    # CF1 (docs/CHANNEL_FILES.md §6.5): posted files come back in their messages.
+    await posted.restate_in_tx(db, [item.id, *group])
     await events.emit_changed(db, item.location_id, [target.id])
     await db.commit()
     return await item_out(db, item)
@@ -1052,13 +1173,16 @@ async def purge_in_tx(
     ids = [i for i, _ in await repo.subtree(db, root.id)]
     versions = await repo.versions_of(db, ids)
     size = sum(v.size_bytes for v in versions)
+    # The location before the channels and the attachments (CF1: a send's order, posted.py).
+    location = await lock_location(db, root.location_id)
+    # CF1 (docs/CHANNEL_FILES.md §7.5): posted files stay in their messages as tombstones.
+    tombstoned = await posted.purge_posted_in_tx(db, [v.attachment_id for v in versions])
     await attachments.mark_ids_deleted_in_tx(db, [v.attachment_id for v in versions])
     # One statement: the rows' references to each other (parent, trash group) are checked at its
     # end, the versions go by CASCADE (the current-version key is deferred).
     await db.execute(
         delete(DriveItem).where(DriveItem.id.in_(ids)).execution_options(synchronize_session=False)
     )
-    location = await lock_location(db, root.location_id)
     location.used_bytes -= size
     location.item_count -= len(ids)
     location.updated_at = utcnow()
@@ -1074,6 +1198,7 @@ async def purge_in_tx(
             "name": root.name,
             "items": len(ids),
             "bytes": size,
+            **({"posted_messages": len(set(tombstoned))} if tombstoned else {}),
         },
     )
     await db.flush()
@@ -1084,6 +1209,9 @@ async def purge_in_tx(
             isinstance(row, DriveFileVersion) and row.item_id in gone
         ):
             db.expunge(row)
+        elif isinstance(row, Attachment) and row.drive_item_id in gone:
+            row.drive_item_id = None  # ON DELETE SET NULL did the same in the database
+    await posted.announce(db, tombstoned)
     return len(ids), size
 
 

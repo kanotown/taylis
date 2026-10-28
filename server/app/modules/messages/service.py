@@ -22,6 +22,8 @@ from app.modules.calls.models import Call
 from app.modules.channels import repository as channel_repo
 from app.modules.channels import service as channels
 from app.modules.channels.schemas import LastMessageOut
+from app.modules.drive import channel_files
+from app.modules.drive.schemas import DriveMessageFilesOut
 from app.modules.groups import service as groups
 from app.modules.messages import repository as repo
 from app.modules.messages.events import (
@@ -181,6 +183,10 @@ async def create_message(
         mentioned, mention_all = extract_mentions(data.body)
         mentioned = await _with_group_members(db, actor.id, data.body, mentioned)
     keyword_hits = await _keyword_hits(db, channel_id, actor.id, data.body, mentioned)
+    # CF1 (docs/CHANNEL_FILES.md §6.1): the channel's drive is locked before the channel's seq
+    # (the drive's order: folders, location, then channel and attachments); None when the files
+    # stay plain attachments (a DM, the switch off, no files, or the drive could not be prepared).
+    filing = await channel_files.prepare_in_tx(db, channel, data.attachment_ids)
     try:
         async with db.begin_nested():
             seq = await repo.allocate_seq(db, channel_id)
@@ -213,7 +219,14 @@ async def create_message(
             bound = await attachments.bind_in_tx(
                 db, actor.id, channel_id, message.id, data.attachment_ids
             )
-            attachments_out = [to_attachment_out(a) for a in bound]
+            # Each file becomes version 1 of an item in 「投稿のファイル > <month>」 (same row; on
+            # any failure in there they stay plain attachments, the send goes on).
+            filed = (
+                await channel_files.file_in_tx(db, filing, actor, bound)
+                if filing is not None
+                else {}
+            )
+            attachments_out = [to_attachment_out(a, filed.get(a.id)) for a in bound]
             parent_thread = None
             if parent is not None:
                 # The reply consumes the seq; the parent's counters move to it (DATA_MODEL.md).
@@ -583,14 +596,24 @@ async def edit_message(
     return out
 
 
-async def delete_message(db: AsyncSession, actor: User, message_id: uuid.UUID) -> MessageOut:
-    """Tombstone (author or admin): the body is cleared, the row stays for delta sync."""
+async def delete_message(
+    db: AsyncSession,
+    actor: User,
+    message_id: uuid.UUID,
+    drive_files: channel_files.DriveFilesMode = "auto",
+) -> MessageOut:
+    """Tombstone (author or admin): the body is cleared, the row stays for delta sync.
+
+    CF1 (docs/CHANNEL_FILES.md §7.3): its posted files stay in the channel's drive, except those
+    `drive_files` (auto, trash: the same rule; keep: none) puts in the drive's trash, which is
+    done first (the drive's folders before the channel)."""
     message = await _require_live_message(db, actor, message_id)
     if message.sender_id != actor.id and not has_capability(actor, "channels.moderate"):
         raise forbidden("not_message_owner", "Only the author or an admin can delete a message")
     # M88: the actor of a join line too.
     if message.type != "user" and not has_capability(actor, "channels.moderate"):
         raise forbidden("not_message_owner", "Only an admin can delete a system message")
+    await channel_files.on_message_delete_in_tx(db, actor, message, drive_files)
     seq = await repo.allocate_seq(db, message.channel_id, touch_last_message=False)
     message.deleted_at = utcnow()
     message.body = ""
@@ -630,6 +653,15 @@ async def delete_message(db: AsyncSession, actor: User, message_id: uuid.UUID) -
         await _collection_reply_changed_in_tx(db, parent, message.sender_id, message.id)
     await db.commit()
     return out
+
+
+async def message_drive_files(
+    db: AsyncSession, actor: User, message_id: uuid.UUID
+) -> DriveMessageFilesOut:
+    """CF1 (docs/CHANNEL_FILES.md §7.3): for the delete's confirmation, what drive_files=auto
+    would do to each posted file (members of the channel only, like the delete)."""
+    message = await get_message(db, actor, message_id)
+    return await channel_files.message_files(db, actor, message)
 
 
 async def list_mentions(

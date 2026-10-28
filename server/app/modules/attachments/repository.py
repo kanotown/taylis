@@ -1,7 +1,7 @@
 import uuid
 from datetime import datetime
 
-from sqlalchemy import and_, func, or_, select
+from sqlalchemy import and_, func, or_, select, text
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.modules.attachments.models import Attachment
@@ -25,19 +25,47 @@ async def get_many(
 
 
 async def for_messages(db: AsyncSession, message_ids: list[uuid.UUID]) -> list[Attachment]:
+    """The messages' attachments; CF1: a posted file purged from the drive too (its tombstone,
+    drive_state 'deleted', status deleted or purged), shown as 「削除されたファイル」."""
     if not message_ids:
         return []
     stmt = (
         select(Attachment)
-        .where(Attachment.message_id.in_(message_ids), Attachment.status == "attached")
-        .order_by(Attachment.created_at.asc())
+        .where(
+            Attachment.message_id.in_(message_ids),
+            or_(Attachment.status == "attached", Attachment.drive_state == "deleted"),
+        )
+        .order_by(Attachment.created_at.asc(), Attachment.id.asc())
     )
     return list((await db.execute(stmt)).scalars().all())
 
 
-async def for_message(db: AsyncSession, message_id: uuid.UUID) -> list[Attachment]:
+async def for_message(
+    db: AsyncSession, message_id: uuid.UUID, *, for_update: bool = False
+) -> list[Attachment]:
     stmt = select(Attachment).where(Attachment.message_id == message_id)
+    if for_update:
+        stmt = (
+            stmt.order_by(Attachment.id).with_for_update().execution_options(populate_existing=True)
+        )
     return list((await db.execute(stmt)).scalars().all())
+
+
+# CF1: the drive version each posted file is (plain SQL: attachments does not import the drive).
+_DRIVE_VERSIONS = text(
+    "SELECT attachment_id, id, number FROM drive_file_versions "
+    "WHERE attachment_id = ANY(CAST(:ids AS uuid[]))"
+)
+
+
+async def drive_versions(
+    db: AsyncSession, attachment_ids: list[uuid.UUID]
+) -> dict[uuid.UUID, tuple[uuid.UUID, int]]:
+    """{attachment id: (version id, version number)} of the rows that are drive versions."""
+    if not attachment_ids:
+        return {}
+    rows = await db.execute(_DRIVE_VERSIONS, {"ids": [str(i) for i in attachment_ids]})
+    return {row[0]: (row[1], int(row[2])) for row in rows.all()}
 
 
 async def for_canvases(db: AsyncSession, canvas_ids: list[uuid.UUID]) -> list[Attachment]:
@@ -88,14 +116,23 @@ async def expired_pending(db: AsyncSession, before: datetime, limit: int) -> lis
     return list((await db.execute(stmt)).scalars().all())
 
 
-async def deleted(db: AsyncSession, limit: int) -> list[Attachment]:
+async def deleted(db: AsyncSession, limit: int) -> list[tuple[Attachment, bool]]:
+    """Rows to purge, each with whether it stays as a tombstone (CF1, docs/CHANNEL_FILES.md
+    §7.5: a posted file purged from the drive while its message is alive)."""
     stmt = (
-        select(Attachment)
+        select(Attachment, Message.deleted_at)
+        .outerjoin(Message, Message.id == Attachment.message_id)
         .where(Attachment.status == "deleted")
         .order_by(Attachment.deleted_at.asc())
         .limit(limit)
     )
-    return list((await db.execute(stmt)).scalars().all())
+    return [
+        (
+            row[0],
+            row[0].drive_state == "deleted" and row[0].message_id is not None and row[1] is None,
+        )
+        for row in (await db.execute(stmt)).all()
+    ]
 
 
 async def list_attached(
@@ -123,7 +160,13 @@ async def list_attached(
                 ChannelMember.user_id == user_id,
             ),
         )
-        .where(Attachment.status == "attached", Attachment.deleted_at.is_(None))
+        .where(
+            Attachment.status == "attached",
+            Attachment.deleted_at.is_(None),
+            # CF1 (docs/CHANNEL_FILES.md §2): a posted file moved to another location or in the
+            # trash is not the channel's any more.
+            or_(Attachment.drive_state.is_(None), Attachment.drive_state == "available"),
+        )
         .order_by(Attachment.attached_at.desc(), Attachment.id.asc())
         .limit(limit)
     )
@@ -144,5 +187,6 @@ async def list_attached(
 
 
 async def all_live(db: AsyncSession) -> list[Attachment]:
-    stmt = select(Attachment).where(Attachment.status != "deleted")
+    """Rows whose bytes should be in the store (not deleted, not a CF1 tombstone)."""
+    stmt = select(Attachment).where(Attachment.status.not_in(("deleted", "purged")))
     return list((await db.execute(stmt)).scalars().all())

@@ -30,9 +30,10 @@ export type HistoryOut = components["schemas"]["HistoryOut"];
 export type DeltaOut = components["schemas"]["DeltaOut"];
 /**
  * The calls fields; a server before M117 sends none of them, one before M130 no `in_app_calls` (calls off). M117's
- * `calls_enabled` / `meeting_base_url` are always false / null since M130 (docs/CALLS.md §11).
+ * `calls_enabled` / `meeting_base_url` are always false / null since M130 (docs/CALLS.md §11). CF1's
+ * `channel_files_to_drive` (docs/CHANNEL_FILES.md §9) is missing from a server before CF1 too.
  */
-type CallSettingsFields = "calls_enabled" | "meeting_base_url" | "in_app_calls";
+type CallSettingsFields = "calls_enabled" | "meeting_base_url" | "in_app_calls" | "channel_files_to_drive";
 type ServerWorkspaceSettings = components["schemas"]["WorkspaceSettingsOut"];
 type ServerAdminWorkspaceSettings = components["schemas"]["AdminWorkspaceSettingsOut"];
 /** M88 (docs/MEMBERSHIP.md §3): the workspace switches every client follows; the admin form adds who changed them. */

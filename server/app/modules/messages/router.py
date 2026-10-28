@@ -1,4 +1,5 @@
 from datetime import datetime
+from typing import Literal
 from uuid import UUID
 
 from fastapi import APIRouter, Path, Query, Request, Response
@@ -6,6 +7,7 @@ from fastapi import APIRouter, Path, Query, Request, Response
 from app.core.db import Db
 from app.core.errors import rate_limited
 from app.modules.auth.deps import CurrentUser
+from app.modules.drive.schemas import DriveMessageFilesOut
 from app.modules.messages import service
 from app.modules.messages.schemas import (
     EMOJI_MAX_LENGTH,
@@ -104,9 +106,29 @@ async def edit_message(
 
 
 @router.delete("/messages/{message_id}", response_model=MessageOut)
-async def delete_message(message_id: UUID, user: CurrentUser, db: Db) -> MessageOut:
+async def delete_message(
+    message_id: UUID,
+    user: CurrentUser,
+    db: Db,
+    drive_files: Literal["auto", "keep", "trash"] = Query(
+        default="auto",
+        description="CF1 (docs/CHANNEL_FILES.md §7.3): what becomes of the message's files in "
+        "the channel's drive. auto (and trash, the same rule): the ones the caller posted (any, "
+        "for a moderator) that did not change since go to the drive's trash, the others stay; "
+        "keep: all stay. GET /messages/{id}/drive-files tells which beforehand.",
+    ),
+) -> MessageOut:
     """Returns the tombstone so the caller can apply it locally."""
-    return await service.delete_message(db, user, message_id)
+    return await service.delete_message(db, user, message_id, drive_files)
+
+
+@router.get("/messages/{message_id}/drive-files", response_model=DriveMessageFilesOut)
+async def message_drive_files(message_id: UUID, user: CurrentUser, db: Db) -> DriveMessageFilesOut:
+    """CF1 (docs/CHANNEL_FILES.md §7.3): for the delete's confirmation 「ドライブの n 件のファイルも
+    ゴミ箱に移す」: per file posted with the message (and still in a drive), whether
+    drive_files=auto would put it in the trash, and why not. Empty for a message whose files are
+    not in a drive."""
+    return await service.message_drive_files(db, user, message_id)
 
 
 @router.get("/mentions", response_model=MentionListOut)

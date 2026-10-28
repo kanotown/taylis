@@ -46,6 +46,10 @@ class WorkspaceSettingsOut(BaseModel):
     # the released M117 clients hide their 📞. New clients do not read them.
     calls_enabled: bool = False
     meeting_base_url: str | None = None
+    # CF1 (docs/CHANNEL_FILES.md §9): files posted in public and private channels go into the
+    # channel's drive (「投稿のファイル」), unless the channel's owner chose otherwise
+    # (ChannelOut.files_to_drive).
+    channel_files_to_drive: bool = True
 
 
 # M90: at most this many default channels (a long list would bury a newcomer's sidebar).
@@ -89,6 +93,9 @@ class WorkspaceSettingsUpdate(BaseModel):
     # M130 (docs/CALLS.md §5.1): 「アプリ内通話」. Turning it off ends no call in progress; it
     # only stops new ones.
     in_app_calls_enabled: bool | None = None
+    # CF1 (docs/CHANNEL_FILES.md §9): 「チャンネルに投稿したファイルをチャンネルのドライブに
+    # 保存する」; later posts only.
+    channel_files_to_drive: bool | None = None
     # M117's meeting service, retired (docs/CALLS.md §11): sending it at all (an M117 desktop's
     # admin screen) is refused with 409 meeting_links_retired rather than silently dropped.
     meeting_base_url: str | None = None

@@ -33,6 +33,10 @@ class ChannelUpdate(BaseModel):
     type: Literal["public", "private"] | None = None
     # M24: administrators mark a channel as someone's times, or null to unmark it.
     times_owner_id: UUID | None = None
+    # CF1 (docs/CHANNEL_FILES.md §9): whether files posted here go into the channel's drive:
+    # true / false, or null to follow the workspace (sent explicitly). Owners and those who
+    # manage the channel; it applies to later posts only.
+    files_to_drive: bool | None = None
 
 
 class MembershipOut(BaseModel):
@@ -81,6 +85,12 @@ class ChannelOut(BaseModel):
     # M41: the conversation's canvas tab (CANVAS.md §4.3). Filled by bootstrap only (null
     # elsewhere); afterwards the canvas.* events carry is_channel_tab.
     canvas_tab_id: UUID | None = None
+    # CF1 (docs/CHANNEL_FILES.md §9): the owner's choice whether posted files go into the
+    # channel's drive (null: the workspace's channel_files_to_drive decides; always null for a
+    # DM). files_to_drive_effective is what applies now; filled in GET /channels/{id} and the
+    # answer of PATCH /channels/{id} (null elsewhere: files_to_drive ?? the workspace setting).
+    files_to_drive: bool | None = None
+    files_to_drive_effective: bool | None = None
     # M49: only in answers to a member (bootstrap, GET /channels, GET /channels/{id}, POST /dms);
     # null there = no message yet. Always null elsewhere (other responses, channel.* events,
     # non-members): clients keep the one they hold (SYNC_PROTOCOL.md §7.8).

@@ -20,6 +20,24 @@ class AttachmentPreviewOut(BaseModel):
     height: int | None
 
 
+DriveState = Literal["available", "moved", "trashed", "deleted"]
+
+
+class AttachmentDriveOut(BaseModel):
+    """CF1 (docs/CHANNEL_FILES.md §11.1): a file posted in a channel is also version
+    `version_number` of the item `item_id` in the channel's drive. The message keeps showing this
+    version (a newer one in the drive does not change it). `state`, the same for every viewer:
+    'available' (in the channel's drive), 'moved' (in another location: only who can read it
+    there can open it; GET /drive/items/{item_id} tells), 'trashed' (「削除されたファイル」, it
+    can be restored from the drive's trash), 'deleted' (purged: a tombstone, item_id and the
+    version are null and the bytes are gone)."""
+
+    item_id: UUID | None
+    version_id: UUID | None
+    version_number: int | None
+    state: DriveState
+
+
 class AttachmentOut(BaseModel):
     id: UUID
     filename: str
@@ -41,10 +59,16 @@ class AttachmentOut(BaseModel):
     # M108: null for a file without a preview (not a document, or stored before previews and not
     # generated yet).
     preview: AttachmentPreviewOut | None = None
+    # CF1: the drive item this posted file is a version of; null for every other attachment (a
+    # DM's, a canvas's, a channel's whose files stay out of the drive). Older clients ignore it
+    # and show the attachment as before.
+    drive: AttachmentDriveOut | None = None
 
 
 class FileItem(BaseModel):
-    """One row of the files list (M11i): the attachment and where it was posted."""
+    """One row of the files list (M11i): the attachment and where it was posted. CF1: a posted
+    file that is in the channel's drive has `attachment.drive` (「ドライブで表示」); one moved
+    elsewhere, in the trash or purged is not listed."""
 
     attachment: AttachmentOut
     message_id: UUID
@@ -59,8 +83,39 @@ class FileListOut(BaseModel):
     next_cursor: str | None
 
 
-def to_attachment_out(attachment: Attachment) -> AttachmentOut:
+def to_attachment_out(
+    attachment: Attachment, drive: AttachmentDriveOut | None = None
+) -> AttachmentOut:
+    """`drive`: the posted file's place in the drive (repository.drive_versions); a row with a
+    drive_state but none given gets the state alone."""
     video = is_video(attachment.content_type)
+    if drive is None and attachment.drive_state is not None:
+        drive = AttachmentDriveOut(
+            item_id=attachment.drive_item_id,
+            version_id=None,
+            version_number=None,
+            state=attachment.drive_state,  # type: ignore[arg-type]
+        )
+    if drive is not None and drive.state == "deleted":
+        # A tombstone: its thumbnail, poster and preview are gone (or about to be); an older
+        # client shows the plain file row, which answers 404 when opened (§11.2).
+        return AttachmentOut(
+            id=attachment.id,
+            filename=attachment.filename,
+            content_type=attachment.content_type,
+            size_bytes=attachment.size_bytes,
+            width=None,
+            height=None,
+            has_thumbnail=False,
+            has_poster=False,
+            duration_ms=None,
+            status="attached",
+            created_at=attachment.created_at,
+            preview=None,
+            drive=AttachmentDriveOut(
+                item_id=None, version_id=None, version_number=None, state="deleted"
+            ),
+        )
     return AttachmentOut(
         id=attachment.id,
         filename=attachment.filename,
@@ -74,6 +129,7 @@ def to_attachment_out(attachment: Attachment) -> AttachmentOut:
         status=attachment.status,
         created_at=attachment.created_at,
         preview=_preview_out(attachment),
+        drive=drive,
     )
 
 

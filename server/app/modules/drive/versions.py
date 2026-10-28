@@ -31,8 +31,9 @@ from app.modules.attachments.blobstore import BlobStore
 from app.modules.attachments.models import Attachment
 from app.modules.attachments.preview_kinds import pdf_key, queue_on_upload, thumb_key
 from app.modules.audit import service as audit
+from app.modules.channels import service as channels
 from app.modules.drive import access as acl
-from app.modules.drive import events, service, texts
+from app.modules.drive import events, posted, service, texts
 from app.modules.drive import repository as repo
 from app.modules.drive.access import item_not_found
 from app.modules.drive.models import DriveFileVersion, DriveItem, DriveLocation
@@ -328,6 +329,16 @@ async def delete_version(
         raise item_not_found()
     if version.id == item.current_version_id:
         raise version_current()
+    shown = (await posted.posted_versions(db, [version.id])).get(version.id)
+    if shown is not None:
+        # CF1 (docs/CHANNEL_FILES.md §7.4): a message shows it; delete the message first. Its
+        # channel is named only to someone who can read it.
+        message_id, channel_id = shown
+        try:
+            await channels.require_readable(db, actor, channel_id)
+        except AppError:
+            raise posted.version_posted(message_id, None) from None
+        raise posted.version_posted(message_id, channel_id)
     location = await service.lock_location(db, item.location_id)
     await _remove_in_tx(db, [version], {location.id: location})
     await audit.record_in_tx(
@@ -367,14 +378,23 @@ async def _remove_in_tx(
 
 # --- retention (the housekeeping) ---------------------------------------------------------------
 
+# CF1 (docs/CHANNEL_FILES.md §4.2): a version a message shows (its attachment has a live
+# drive_state) is never due and does not count among the newest :keep.
 _DUE = text(
     """
     SELECT id FROM (
-        SELECT v.id, i.current_version_id,
-               row_number() OVER (PARTITION BY v.item_id ORDER BY v.number DESC) AS rank,
-               lead(v.created_at) OVER (PARTITION BY v.item_id ORDER BY v.number) AS replaced_at
-        FROM drive_file_versions v JOIN drive_items i ON i.id = v.item_id
-        WHERE i.kind = 'file'
+        SELECT id, current_version_id, replaced_at,
+               row_number() OVER (PARTITION BY item_id ORDER BY number DESC) AS rank
+        FROM (
+            SELECT v.id, v.item_id, v.number, i.current_version_id, a.drive_state,
+                   lead(v.created_at) OVER (PARTITION BY v.item_id ORDER BY v.number)
+                       AS replaced_at
+            FROM drive_file_versions v
+            JOIN drive_items i ON i.id = v.item_id
+            JOIN attachments a ON a.id = v.attachment_id
+            WHERE i.kind = 'file'
+        ) every_version
+        WHERE drive_state IS NULL OR drive_state NOT IN ('available', 'moved', 'trashed')
     ) ranked
     WHERE id <> current_version_id AND (rank > :keep OR replaced_at < :cutoff)
     ORDER BY id
@@ -407,8 +427,13 @@ async def prune(db: AsyncSession, settings: Settings, *, now: datetime) -> int:
         # Again under the items' locks: still there and still not the current one (a newer
         # version only makes the older ones more due).
         found = await repo.versions_by_id(db, ids)
+        shown = await posted.posted_versions(db, [v.id for v in found])
         versions = [
-            v for v in found if v.item_id in items and items[v.item_id].current_version_id != v.id
+            v
+            for v in found
+            if v.item_id in items
+            and items[v.item_id].current_version_id != v.id
+            and v.id not in shown
         ]
         locations: dict[uuid.UUID, DriveLocation] = {}
         for location_id in sorted({items[v.item_id].location_id for v in versions}):

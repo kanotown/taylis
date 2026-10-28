@@ -3134,6 +3134,30 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/api/v1/drive/items/impact": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /**
+         * Item Impact
+         * @description CF1 (docs/CHANNEL_FILES.md §6.4): before a move into `target_folder_id` (or, without one,
+         *     a trash), what it would do to the messages showing posted files among the items (and what is
+         *     under them): per channel I can read, the messages concerned and how many members (guests
+         *     among them) would no longer see a file in its message. Nothing is changed. 404 for an item
+         *     (or a target) I cannot read.
+         */
+        post: operations["item_impact_api_v1_drive_items_impact_post"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/api/v1/drive/items/move": {
         parameters: {
             query?: never;
@@ -4713,6 +4737,29 @@ export interface paths {
         };
         /** Message Context */
         get: operations["message_context_api_v1_messages__message_id__context_get"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/messages/{message_id}/drive-files": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * Message Drive Files
+         * @description CF1 (docs/CHANNEL_FILES.md §7.3): for the delete's confirmation 「ドライブの n 件のファイルも
+         *     ゴミ箱に移す」: per file posted with the message (and still in a drive), whether
+         *     drive_files=auto would put it in the trash, and why not. Empty for a message whose files are
+         *     not in a drive.
+         */
+        get: operations["message_drive_files_api_v1_messages__message_id__drive_files_get"];
         put?: never;
         post?: never;
         delete?: never;
@@ -8034,6 +8081,11 @@ export interface components {
              */
             calls_enabled: boolean;
             /**
+             * Channel Files To Drive
+             * @default true
+             */
+            channel_files_to_drive: boolean;
+            /**
              * Default Channel Ids
              * @default []
              */
@@ -8528,6 +8580,29 @@ export interface components {
             /** Tz */
             tz: string;
         };
+        /**
+         * AttachmentDriveOut
+         * @description CF1 (docs/CHANNEL_FILES.md §11.1): a file posted in a channel is also version
+         *     `version_number` of the item `item_id` in the channel's drive. The message keeps showing this
+         *     version (a newer one in the drive does not change it). `state`, the same for every viewer:
+         *     'available' (in the channel's drive), 'moved' (in another location: only who can read it
+         *     there can open it; GET /drive/items/{item_id} tells), 'trashed' (「削除されたファイル」, it
+         *     can be restored from the drive's trash), 'deleted' (purged: a tombstone, item_id and the
+         *     version are null and the bytes are gone).
+         */
+        AttachmentDriveOut: {
+            /** Item Id */
+            item_id: string | null;
+            /**
+             * State
+             * @enum {string}
+             */
+            state: "available" | "moved" | "trashed" | "deleted";
+            /** Version Id */
+            version_id: string | null;
+            /** Version Number */
+            version_number: number | null;
+        };
         /** AttachmentOut */
         AttachmentOut: {
             /** Content Type */
@@ -8537,6 +8612,7 @@ export interface components {
              * Format: date-time
              */
             created_at: string;
+            drive?: components["schemas"]["AttachmentDriveOut"] | null;
             /** Duration Ms */
             duration_ms: number | null;
             /** Filename */
@@ -9146,6 +9222,7 @@ export interface components {
             /**
              * @default {
              *       "calls_enabled": false,
+             *       "channel_files_to_drive": true,
              *       "in_app_calls": {
              *         "enabled": false,
              *         "screen_share": false,
@@ -9820,6 +9897,10 @@ export interface components {
             created_by: string | null;
             /** Dm User Ids */
             dm_user_ids: string[] | null;
+            /** Files To Drive */
+            files_to_drive?: boolean | null;
+            /** Files To Drive Effective */
+            files_to_drive_effective?: boolean | null;
             /**
              * Id
              * Format: uuid
@@ -9905,6 +9986,8 @@ export interface components {
         };
         /** ChannelUpdate */
         ChannelUpdate: {
+            /** Files To Drive */
+            files_to_drive?: boolean | null;
             /** Name */
             name?: string | null;
             /** Posting Policy */
@@ -10521,6 +10604,39 @@ export interface components {
             /** Path */
             path?: string | null;
         };
+        /** DriveImpactChannelOut */
+        DriveImpactChannelOut: {
+            /**
+             * Channel Id
+             * Format: uuid
+             */
+            channel_id: string;
+            /** Messages */
+            messages: number;
+            /** Unreadable After */
+            unreadable_after: number;
+            /** Unreadable Guests */
+            unreadable_guests: number;
+        };
+        /**
+         * DriveImpactIn
+         * @description CF1 (docs/CHANNEL_FILES.md §6.4, §11.1): what moving these items into `target_folder_id`
+         *     (or, without one, putting them in the trash) would do to the messages their posted files are
+         *     attached to.
+         */
+        DriveImpactIn: {
+            /** Item Ids */
+            item_ids: string[];
+            /** Target Folder Id */
+            target_folder_id?: string | null;
+        };
+        /** DriveImpactOut */
+        DriveImpactOut: {
+            /** Channels */
+            channels: components["schemas"]["DriveImpactChannelOut"][];
+            /** Posted Messages */
+            posted_messages: number;
+        };
         /** DriveItemDetailOut */
         DriveItemDetailOut: {
             item: components["schemas"]["DriveItemOut"];
@@ -10570,8 +10686,17 @@ export interface components {
             name: string;
             /** Parent Id */
             parent_id: string | null;
+            /**
+             * Posted
+             * @default false
+             */
+            posted: boolean;
+            /** Posts */
+            posts?: components["schemas"]["DrivePostOut"][] | null;
             /** Size Bytes */
             size_bytes: number | null;
+            /** System Role */
+            system_role?: "channel_posts" | null;
             /** Trashed At */
             trashed_at?: string | null;
             /** Trashed By */
@@ -10711,6 +10836,11 @@ export interface components {
             name: string;
             /** Old Versions Bytes */
             old_versions_bytes: number;
+            /**
+             * Posted Bytes
+             * @default 0
+             */
+            posted_bytes: number;
             /** Quota Bytes */
             quota_bytes: number | null;
             /** Trash Bytes */
@@ -10724,6 +10854,40 @@ export interface components {
             used_bytes: number;
             /** User Id */
             user_id: string | null;
+        };
+        /**
+         * DriveMessageFileOut
+         * @description CF1 (docs/CHANNEL_FILES.md §7.3): what deleting the message would do to one of its posted
+         *     files. `trash`: drive_files=auto (and trash) puts it in the drive's trash (30 days); else it
+         *     stays in the drive, because it is in the trash already or in another location (`in_trash`,
+         *     `moved`), the caller did not post it and is no moderator (`not_permitted`), or it changed
+         *     since it was posted (`changed`: a newer version, or another message shows it).
+         */
+        DriveMessageFileOut: {
+            /**
+             * Attachment Id
+             * Format: uuid
+             */
+            attachment_id: string;
+            /**
+             * Item Id
+             * Format: uuid
+             */
+            item_id: string;
+            /** Reason */
+            reason: ("in_trash" | "moved" | "not_permitted" | "changed") | null;
+            /**
+             * State
+             * @enum {string}
+             */
+            state: "available" | "moved" | "trashed";
+            /** Trash */
+            trash: boolean;
+        };
+        /** DriveMessageFilesOut */
+        DriveMessageFilesOut: {
+            /** Files */
+            files: components["schemas"]["DriveMessageFileOut"][];
         };
         /** DriveMoveIn */
         DriveMoveIn: {
@@ -10752,6 +10916,37 @@ export interface components {
             user_id: string;
             /** Versions */
             versions: number;
+        };
+        /**
+         * DrivePostOut
+         * @description CF1 (docs/CHANNEL_FILES.md §11.1): a message that has a version of this file as its
+         *     attachment (「投稿」 in the details: who posted it where; 「メッセージを表示」).
+         */
+        DrivePostOut: {
+            /**
+             * Channel Id
+             * Format: uuid
+             */
+            channel_id: string;
+            /**
+             * Message Id
+             * Format: uuid
+             */
+            message_id: string;
+            /** Parent Id */
+            parent_id: string | null;
+            /**
+             * Posted At
+             * Format: date-time
+             */
+            posted_at: string;
+            /**
+             * Sender Id
+             * Format: uuid
+             */
+            sender_id: string;
+            /** Version Number */
+            version_number: number;
         };
         /**
          * DrivePreviewOut
@@ -11562,7 +11757,9 @@ export interface components {
         };
         /**
          * FileItem
-         * @description One row of the files list (M11i): the attachment and where it was posted.
+         * @description One row of the files list (M11i): the attachment and where it was posted. CF1: a posted
+         *     file that is in the channel's drive has `attachment.drive` (「ドライブで表示」); one moved
+         *     elsewhere, in the trash or purged is not listed.
          */
         FileItem: {
             /**
@@ -17035,6 +17232,11 @@ export interface components {
              * @default false
              */
             calls_enabled: boolean;
+            /**
+             * Channel Files To Drive
+             * @default true
+             */
+            channel_files_to_drive: boolean;
             /** Icon Version */
             icon_version?: string | null;
             /**
@@ -17063,6 +17265,8 @@ export interface components {
          * @description PATCH /admin/workspace-settings: only the fields sent change.
          */
         WorkspaceSettingsUpdate: {
+            /** Channel Files To Drive */
+            channel_files_to_drive?: boolean | null;
             /** Default Channel Ids */
             default_channel_ids?: string[] | null;
             /** In App Calls Enabled */
@@ -23349,6 +23553,39 @@ export interface operations {
             };
         };
     };
+    item_impact_api_v1_drive_items_impact_post: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["DriveImpactIn"];
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["DriveImpactOut"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
     move_items_api_v1_drive_items_move_post: {
         parameters: {
             query?: never;
@@ -26191,7 +26428,10 @@ export interface operations {
     };
     delete_message_api_v1_messages__message_id__delete: {
         parameters: {
-            query?: never;
+            query?: {
+                /** @description CF1 (docs/CHANNEL_FILES.md §7.3): what becomes of the message's files in the channel's drive. auto (and trash, the same rule): the ones the caller posted (any, for a moderator) that did not change since go to the drive's trash, the others stay; keep: all stay. GET /messages/{id}/drive-files tells which beforehand. */
+                drive_files?: "auto" | "keep" | "trash";
+            };
             header?: never;
             path: {
                 message_id: string;
@@ -26461,6 +26701,37 @@ export interface operations {
                 };
                 content: {
                     "application/json": components["schemas"]["MessageOut"][];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    message_drive_files_api_v1_messages__message_id__drive_files_get: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                message_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["DriveMessageFilesOut"];
                 };
             };
             /** @description Validation Error */
@@ -27746,6 +28017,8 @@ export interface operations {
                 limit?: number;
                 /** @description Also the text inside the files (PDF, Office, plain text), with a snippet */
                 content?: boolean;
+                /** @description CF1: posts = only the files posted in a channel (filed from a message), uploads = everything else */
+                origin?: "all" | "uploads" | "posts";
             };
             header?: never;
             path?: never;

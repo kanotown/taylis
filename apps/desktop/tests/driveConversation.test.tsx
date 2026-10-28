@@ -35,7 +35,7 @@ function item(overrides: Partial<DriveItemOut> = {}): DriveItemOut {
   return {
     id: ITEM_ID, location_id: "ws", parent_id: "folder-1", kind: "file", name: "修論_最終.zip", size_bytes: 4_823_112, content_type: "application/zip",
     content_modified_at: null, created_by: "u1", created_at: "2026-10-01T00:00:00Z", updated_by: "u1", updated_at: "2026-10-01T00:00:00Z",
-    version_count: 1, file: null, link_count: 0, ...overrides,
+    version_count: 1, file: null, link_count: 0, posted: false, ...overrides,
   };
 }
 

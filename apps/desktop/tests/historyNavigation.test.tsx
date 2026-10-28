@@ -425,7 +425,7 @@ it("back / forward go between the drive's folders and locations, and out of the 
   });
   const folder = (id: string, parent: string, name: string) => ({
     id, location_id: "lab", parent_id: parent, kind: "folder", name, size_bytes: null, content_type: null, content_modified_at: null,
-    created_by: null, created_at: "2026-10-01T00:00:00Z", updated_by: null, updated_at: "2026-10-01T00:00:00Z", version_count: 0, file: null, link_count: 0,
+    created_by: null, created_at: "2026-10-01T00:00:00Z", updated_by: null, updated_at: "2026-10-01T00:00:00Z", version_count: 0, file: null, link_count: 0, posted: false,
   });
   const lab = location("lab", "workspace", "研究室ドライブ");
   const mine = location("mine", "user", "マイドライブ");

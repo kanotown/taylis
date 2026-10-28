@@ -28,7 +28,7 @@ from sqlalchemy.orm import aliased
 from app.core.doctext import blocks as doc_blocks
 from app.modules.attachments.models import Attachment
 from app.modules.canvases.models import Canvas
-from app.modules.drive.models import DriveItem, DriveText
+from app.modules.drive.models import DriveFileVersion, DriveItem, DriveText
 from app.modules.messages.models import Message, Reaction
 from app.modules.users.models import User
 from app.modules.wiki.access import readable_ids
@@ -168,6 +168,7 @@ def _hits(query: str, scope: Scope, escaped: bool, *, sort: Sort | None, take: i
         select(
             Attachment.message_id.label("message_id"),
             Attachment.status.label("status"),
+            Attachment.drive_state.label("drive_state"),
             func.pgroonga_score(
                 literal_column("attachments.tableoid"), literal_column("attachments.ctid")
             ).label("score"),
@@ -181,7 +182,12 @@ def _hits(query: str, scope: Scope, escaped: bool, *, sort: Sort | None, take: i
         select(Message.id.label("id"))
         .select_from(named)
         .join(Message, Message.id == named.c.message_id)
-        .where(named.c.status == "attached")
+        .where(
+            named.c.status == "attached",
+            # CF1 (docs/CHANNEL_FILES.md §12.6): a posted file moved out of the channel's drive,
+            # in the trash or purged is no longer found by its name here.
+            or_(named.c.drive_state.is_(None), named.c.drive_state == "available"),
+        )
         .group_by(Message.id, Message.created_at),
         Message,
     )
@@ -516,6 +522,24 @@ async def count_pages(
 # --- drive file names (phase D2, docs/DRIVE.md §12): read-only access to drive_items ------------
 
 
+DriveOrigin = Literal["all", "uploads", "posts"]
+
+
+def _origin(stmt: Select[Any], origin: DriveOrigin) -> Select[Any]:
+    """CF1 (docs/CHANNEL_FILES.md §12.6): `posts`: the files posted in a channel (filed from a
+    message: a version with source 'message'); `uploads`: everything else."""
+    if origin == "all":
+        return stmt
+    from_message = exists(
+        select(DriveFileVersion.id).where(
+            DriveFileVersion.item_id == DriveItem.id, DriveFileVersion.source == "message"
+        )
+    )
+    if origin == "posts":
+        return stmt.where(DriveItem.kind == "file", from_message)
+    return stmt.where(~from_message)
+
+
 def drive_search_statement(
     query: str,
     location_ids: Sequence[uuid.UUID],
@@ -524,6 +548,7 @@ def drive_search_statement(
     limit: int,
     offset: int,
     content: bool = False,
+    origin: DriveOrigin = "all",
 ) -> Select[Any]:
     """Live items (not a location's root, not in the trash) of these locations whose name matches
     (PGroonga, drive_items_name_pgroonga_idx; the words are escaped: a file name is not a query),
@@ -557,6 +582,7 @@ def drive_search_statement(
         )
         if kind is not None:
             stmt = stmt.where(DriveItem.kind == kind)
+        stmt = _origin(stmt, origin)
         return (
             stmt.order_by(matched.c.score.desc(), DriveItem.updated_at.desc(), DriveItem.id)
             .limit(limit)
@@ -615,6 +641,7 @@ def drive_search_statement(
     )
     if kind is not None:
         stmt = stmt.where(DriveItem.kind == kind)
+    stmt = _origin(stmt, origin)
     return (
         stmt.order_by(
             grouped.c.by_name.desc(),
@@ -643,11 +670,12 @@ async def search_drive(
     limit: int,
     offset: int,
     content: bool = False,
+    origin: DriveOrigin = "all",
 ) -> list[DriveHit]:
     if not location_ids:
         return []
     stmt = drive_search_statement(
-        query, location_ids, kind=kind, limit=limit, offset=offset, content=content
+        query, location_ids, kind=kind, limit=limit, offset=offset, content=content, origin=origin
     )
     rows = (await db.execute(stmt)).all()
     if not content:

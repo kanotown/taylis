@@ -44,7 +44,7 @@ from pathlib import Path
 from typing import Protocol
 
 import httpx
-from sqlalchemy import or_, select, text
+from sqlalchemy import and_, or_, select, text
 from sqlalchemy.ext.asyncio import AsyncSession
 
 import app as app_package
@@ -318,6 +318,9 @@ async def _finish(
             await db.flush()
             if changed:
                 await messages.announce_change_by_id_in_tx(db, message_id, "attachments")
+                if row.drive_item_id is not None and _drive_changed is not None:
+                    # CF1: a posted file is a drive file too (its folder is re-read).
+                    await _drive_changed(db, row.drive_item_id)
             status = row.preview_status
             await db.commit()
             return status
@@ -537,7 +540,8 @@ _CURRENT_DRIVE_VERSION = text(
 # The chat's previews waiting for the loop (not those it is working on: they are leased).
 _CHAT_WAITING = text(
     "SELECT count(*) FROM attachments WHERE preview_status = 'pending' "
-    "AND drive_item_id IS NULL AND (preview_next_at IS NULL OR preview_next_at <= now())"
+    "AND (drive_item_id IS NULL OR message_id IS NOT NULL) "
+    "AND (preview_next_at IS NULL OR preview_next_at <= now())"
 )
 CHAT_POLL_SECONDS = 2.0
 
@@ -566,7 +570,11 @@ async def _candidates(
             Attachment.status != "deleted",
             # M160 (docs/DRIVE.md §8): drive files get theirs from the loop when uploaded; the
             # imported ones from `generate-previews --drive` (M164), current versions only.
-            Attachment.drive_item_id.is_not(None) if drive else Attachment.drive_item_id.is_(None),
+            # CF1 (docs/CHANNEL_FILES.md §2): a posted file (message_id and drive_item_id) is
+            # the chat's.
+            and_(Attachment.drive_item_id.is_not(None), Attachment.message_id.is_(None))
+            if drive
+            else or_(Attachment.drive_item_id.is_(None), Attachment.message_id.is_not(None)),
             Attachment.size_bytes <= settings.preview_max_input_bytes,
             or_(
                 Attachment.content_type.in_(PREVIEW_TYPES),

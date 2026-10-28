@@ -223,6 +223,7 @@ CREATE TABLE channels (
   archived_at      timestamptz,
   posting_policy   varchar(16) NOT NULL DEFAULT 'everyone', -- M15a: 'everyone' | 'owners' (アナウンス)
   times_owner_id   uuid REFERENCES users(id),  -- M24: この人の times (1 人 1 つ、DM には付けない)
+  files_to_drive   boolean,                    -- CF1 (0126): 投稿したファイルをチャンネルのドライブに入れるか。NULL = workspace_settings.channel_files_to_drive に従う
   CHECK ((type IN ('public', 'private')) = (name IS NOT NULL)),
   CHECK ((type IN ('dm', 'group_dm')) = (dm_key IS NOT NULL)),
   CHECK (posting_policy IN ('everyone', 'owners'))
@@ -2089,7 +2090,8 @@ CREATE TABLE attachments (
   channel_id     uuid REFERENCES channels(id),      -- bind 時に設定。アクセス制御はこの列で判定
   page_id        uuid REFERENCES wiki_pages(id) ON DELETE SET NULL,  -- M120: ページの画像・ファイル (message_id・channel_id・canvas_id は NULL。ページの view で読む)
   lending_item_id uuid REFERENCES lending_items(id) ON DELETE SET NULL,  -- M167: 備品の写真 (ほかの参照は NULL。機能が有効な間、人なら読める。docs/LENDING.md §4.3)
-  status         text NOT NULL DEFAULT 'pending',   -- 'pending' | 'attached' | 'deleted'
+  status         text NOT NULL DEFAULT 'pending',   -- 'pending' | 'scheduled' | 'attached' | 'deleted' | 'purged' (CF1: 投稿のファイルの墓石)
+  drive_state    varchar(12),                       -- CF1 (0126): 投稿のファイルのチャンネルから見た状態 'available' | 'moved' | 'trashed' | 'deleted'。ほかの行は NULL (下の「投稿のファイル」)
   filename       text NOT NULL,                     -- 元のファイル名 (表示用。パス区切りは除去)
   content_type   text NOT NULL,                     -- サーバ側で sniff した値
   size_bytes     bigint NOT NULL,
@@ -2195,6 +2197,8 @@ PREVIEWS.md §3)。
   （フォルダの完全削除でセッションも消え、S3 側は孤児の掃除が拾う）。終わったセッションは 7 日で消す。
 - `attachments.drive_item_id`（`ON DELETE SET NULL`、部分索引）：ドライブの版の行は `status = 'attached'`、`message_id`・`channel_id`・
   `canvas_id`・`page_id` は NULL。版を消すときは `deleted` にしてから項目の行を消す（今の GC がバイト列・サムネイル・プレビューを消す）。
+  CF1：**チャンネルに投稿したファイル**は `message_id`・`channel_id` と `drive_item_id` を両方持つ（1 行が添付と版 1 を兼ねる。
+  下の「投稿のファイル」）。
 - 順序：`drive_change_seq`（項目のメタデータの変更ごと、`drive.changed` の `seq`）。
 
 ### drive_texts（ドライブのファイルの中身、2026-10-24、docs/DRIVE.md §29、移行 0121）
@@ -2246,6 +2250,29 @@ CREATE INDEX drive_texts_body_pgroonga_idx ON drive_texts USING pgroonga (body);
   200 文字）。リンクと一緒に消え（CASCADE）、drive の周期ジョブが 180 日（`DRIVE_SHARE_EVENTS_DAYS`）で消す。
 - `workspace_settings`：`drive_external_links_enabled`（既定 true、切ると既存のリンクもすべて止まる）、`drive_link_max_days`（既定 90、
   NULL = 期限なしを許す）、`drive_link_password_required`（既定 false）。
+
+### 投稿のファイル（CF1、M174、docs/CHANNEL_FILES.md §3、移行 0126）
+
+公開・非公開チャンネルのメッセージに付けたファイルは、送った時にそのチャンネルのドライブの「投稿のファイル › 2026-10」に入る。
+**行は 1 つ**：`attachments` の行がそのまま新しい項目のバージョン 1（`drive_file_versions.attachment_id` = 添付の id、`source = 'message'`、
+`uploaded_by` = 送った人）。バイト列も容量（場所の `used_bytes`）も 1 回分。
+
+- `attachments.drive_state`（CHECK：NULL か、4 つの値で `message_id` があるとき。部分索引 `attachments_drive_state_idx ON (drive_item_id)
+  WHERE drive_state IS NOT NULL`）：**表示のための値**（見る人によらない）。権限は毎回項目の場所・ゴミ箱・メッセージから求める
+  （`attachments.get_for_access` と `drive/posted.py`）。`available`（そのチャンネルのドライブにありゴミ箱に無い）・`moved`（別の場所）・
+  `trashed`（項目か上のフォルダがゴミ箱）・`deleted`（完全に消えた。墓石）。変わるのは送る・場所をまたぐ移動・ゴミ箱・戻す・完全削除で、
+  どれも同じトランザクションでメッセージの `updated_seq` を進めて `message.updated`（`change = "attachments"`）を書く。
+- メッセージの削除：行はメッセージから外れる（`message_id`・`channel_id`・`drive_state` を NULL、`status` は `attached` のまま = ふつうの
+  ドライブのバージョン）。`drive_files` の決まりで項目をゴミ箱に入れることがある（CHANNEL_FILES.md §7.3）。墓石は `deleted` に戻り GC が消す。
+- 完全削除：`status = 'deleted'`・`drive_state = 'deleted'`。GC はバイト列と派生物を消して行を `status = 'purged'` で残す（メッセージが
+  生きている間。`verify-attachments`・`GET /files`・検索・使用量は `purged` を見ない）。項目の行が消えるので `drive_item_id` は NULL。
+- 投稿が指すバージョンは整理（DRIVE.md §10.2）で消さず「新しい 10 版」にも数えない。手での削除は 409 `drive_version_posted`。
+- `drive_items.system_role varchar(16)`（CHECK：NULL か、フォルダの `'channel_posts'`。部分一意索引 `drive_items_system_role_uniq ON
+  (location_id, system_role) WHERE system_role IS NOT NULL AND trashed_at IS NULL`）：「投稿のファイル」。名前の変更・移動・ゴミ箱は 409
+  `drive_folder_system`。年月のフォルダ（`CHANNEL_FILES_TZ` のゾーン）はふつうのフォルダ。
+- `drive_file_versions.source` に `'message'`（CHECK は無い）。
+- 切り替え：`workspace_settings.channel_files_to_drive boolean NOT NULL DEFAULT true` と `channels.files_to_drive boolean`（NULL = 従う）。
+  変えて効くのはそれからの投稿だけ。前の添付は `app.cli channel-files-backfill`（写さずに行を足す、`message.updated` は出さない）。
 
 ### outbox_events
 

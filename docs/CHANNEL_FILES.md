@@ -1,7 +1,9 @@
 # CHANNEL_FILES（チャンネルに投稿したファイルをチャンネルのドライブに置く）
 
-2026-10-28 の設計（**未実装**）。マイルストーンは CF1〜CF6（§15。M 番号は仮に M174〜M179、移行は 0126 から。並行する作業と
-重なれば振り直す）。
+2026-10-28 の設計。**CF1（M174、サーバ）は実装済み（2026-10-28、移行 0126）**：§19 に作ったものと本書と違うところ。
+CF2〜CF4（端末）・CF5（大きなファイル）はまだ。CF6 のうち CLI（`channel-files-backfill`）は CF1 で作った（本番で流すのと
+infra/README.md の手順が残り）。マイルストーンは CF1〜CF6（§15。M 番号は仮に M174〜M179）。§18 の質問はすべて推めの答えで決まった
+（利用者、2026-10-28）。
 
 利用者（研究室の教員）の要望（2026-10-28）：チャンネルに投稿したファイルが、そのチャンネルのドライブにも入っているようにしたい。
 Microsoft Teams でチャンネルのファイルが SharePoint のフォルダにあるのと同じように、会話で渡したファイルを後からドライブで
@@ -43,7 +45,7 @@ ALBUMS.md（写真のアルバム。§13 でつながる）。
 - **切り替え**：ワークスペースの設定（admin、既定オン）と、チャンネルごとの上書き（オーナー、既定は「ワークスペースに従う」）。
   変えて効くのはそれからの投稿だけ（§9）。
 - **今までの添付は自動では移さない。** チャンネルを選んで流す CLI（`app.cli channel-files-backfill`、写さずに行を足すだけ）を
-  用意し、流すかは admin が決める（§10）。
+  用意し、流すかは admin が決める（§10。CLI は CF1 で作った）。
 
 ## 1. 目標と非目標
 
@@ -144,7 +146,8 @@ ALTER TABLE channels ADD COLUMN files_to_drive boolean;        -- NULL = ワー�
   保存する名前は「投稿のファイル」、端末は `system_role` を見て自分の言語の名前（Posted files / 帖子中的文件）とアイコンで出す
   （場所の名前と同じ扱い、DRIVE.md §20.1）。**名前の変更・移動・ゴミ箱は断る**（409 `drive_folder_system`）。中のものは自由に
   動かせる。
-- **年月のフォルダ**「2026-10」：送った時刻をワークスペースのタイムゾーンで（`workspace_settings` のゾーン、LENDING.md と同じ）。
+- **年月のフォルダ**「2026-10」：送った時刻をワークスペースのタイムゾーンで（CF1：`workspace_settings` にゾーンの列は無かったので、
+  サーバの設定 `CHANNEL_FILES_TZ`（既定 `Asia/Tokyo`）。§19.2）。
   ふつうのフォルダで、名前の変更・移動・ゴミ箱もできる。次に入れる時に同じ名前の生きたフォルダが無ければ作り直す。
   - 年月にした理由：平らにすると活発なチャンネルで 1 フォルダの子の上限 10,000（DRIVE.md §4.3）に届き、一覧も重い。年だけでも
     数千件になる。「2026-10」は名前順がそのまま時刻順で、パンくずも短い。年の下に月（2 段）は 10 年で 120 フォルダの量なら要らない。
@@ -222,27 +225,34 @@ if attachment.drive_state is not None:
 
 - `_posted_readable`：メッセージの行（`deleted_at IS NULL`）→ `channels.require_readable`、項目の `location_id` がそのチャンネルの場所、
   項目の `trashed_at IS NULL`（ゴミ箱は部分木のすべてに入るので項目だけ見れば足りる、DRIVE.md §10.1）。`drive_state` は見ない。
-- 読めないときはどの経路でも 404 `attachment_not_found`（存在を明かさない。今と同じ）。
+- 読めないときは 404 `attachment_not_found`（存在を明かさない）。ただし項目がまだそのチャンネルのドライブにあってメッセージが
+  生きているときは、チャンネルの断り（403 `not_a_member`・`preview_disabled`）を今の添付と同じに返す（CF1、§19.2：古い端末の
+  見え方を変えない）。移した・ゴミ箱・墓石は 404。
 - ドライブの経路（`/drive/items/{id}`・一覧・`/content`・ZIP・外部リンク）は今までどおり 1 だけ（2 ではドライブを開けない）。
 
 ## 6. 流れ
 
 ### 6.1 送る（bind の時に入れる）
 
-`messages.service.create` の中、`attachments.bind_in_tx` の直後（同じトランザクション）：
+`messages.service.create_message` の中（同じトランザクション）。CF1 では**ドライブのロックをチャンネルの seq より先に**取る
+（§13・§19.2。ドライブの操作は「フォルダ → 場所 → チャンネル → 添付の行」の順なので、送信も同じ順にする）：
 
 ```
-bind_in_tx（自分の pending の添付を FOR UPDATE、message_id・channel_id・attached を入れる）
-  ↓ チャンネルが public / private で、切り替え（§9）がオンなら
-channel_files.file_in_tx(message, attachments)          -- SAVEPOINT の中
+channel_files.prepare_in_tx(channel, attachment_ids)     -- SAVEPOINT。チャンネルが public / private で切り替え（§9）がオンなら
   1. 場所を resolve（無ければ作る。DRIVE.md §5.1 と同じ関数）
-  2. 根を FOR UPDATE → 「投稿のファイル」を探す / 作る
-  3. 「投稿のファイル」を FOR UPDATE → 「2026-10」を探す / 作る
-  4. 「2026-10」を FOR UPDATE → 添付ごとに：名前を決め（衝突は (1)）、drive_items と drive_file_versions（source='message'、
-     sha256 は添付から、processed_at = now()）を INSERT、attachment.drive_item_id・drive_state='available'
-  5. 場所の行を FOR UPDATE → used_bytes・item_count を加える（上限は見ない、§8）
-  6. outbox：drive.changed {location_id, folder_ids: [2026-10（と作ったフォルダの親）], seq}
-  （失敗したら SAVEPOINT に戻し、ふつうの添付として送る。ログに warning と件数のメトリクス）
+  2. 「投稿のファイル」が無ければ根を FOR UPDATE（作るのは 5 で）
+  3. 「投稿のファイル」を FOR UPDATE → 「2026-10」を探し、あれば FOR UPDATE
+  4. 場所の行を FOR UPDATE
+  （失敗したら SAVEPOINT に戻し、ふつうの添付として送る）
+allocate_seq（チャンネルの行）→ messages の INSERT
+bind_in_tx（自分の pending の添付を FOR UPDATE、message_id・channel_id・attached を入れる）
+channel_files.file_in_tx(plan, sender, attachments)      -- SAVEPOINT の中
+  5. 無ければ「投稿のファイル」（system_role）と「2026-10」を作る。添付ごとに：名前を決め（衝突は (1)）、drive_items と
+     drive_file_versions（source='message'、sha256 は添付から、processed_at = 送った時刻）を INSERT、
+     attachment.drive_item_id・drive_state='available'
+  6. 場所の used_bytes・item_count を加える（上限は見ない、§8）
+  7. outbox：drive.changed {location_id, folder_ids: [2026-10（と作ったフォルダの親）], seq}
+  （失敗したら SAVEPOINT に戻し、ふつうの添付として送る。ログに warning。メトリクスの仕組みは無いのでログだけ）
 message.created（attachments に drive が入った形）
 ```
 
@@ -291,7 +301,7 @@ message.created（attachments に drive が入った形）
 | --- | --- | --- | --- |
 | メッセージを消す（既定 `auto`） | 送った本人かモデレーターが消し、ファイルが投稿の後に変わっていなければゴミ箱へ。ほかは残す | トゥームストーン（今まで） | ゴミ箱なら 30 日後に減る。残せば数えたまま |
 | メッセージを消す（`keep`） | 残す（ふつうのドライブのファイルになる） | 同上 | 数えたまま |
-| メッセージを消す（`trash`） | ゴミ箱へ（送った本人かモデレーターで、変わっていないものだけ。ほかは keep） | 同上 | 30 日後に減る |
+| メッセージを消す（`trash`） | ゴミ箱へ（送った本人かモデレーターで、変わっていないものだけ。ほかは keep。**CF1 では `auto` と同じ決まり**。端末の印が「入れる」を選んだことを送る値として残す） | 同上 | 30 日後に減る |
 | ドライブでゴミ箱へ | ゴミ箱（30 日） | 「削除されたファイル」 | 30 日後に減る |
 | ドライブで完全削除・30 日の完全削除 | 消える | 「削除されたファイル」のまま（墓石） | 減る |
 | 古いバージョンの削除 | 投稿が指すものは 409 | — | — |
@@ -304,7 +314,9 @@ message.created（attachments に drive が入った形）
 
 ### 7.3 メッセージの削除
 
-- `DELETE /messages/{id}?drive_files=auto|keep|trash`（既定 `auto`。古い端末は送らないので `auto`）。
+- `DELETE /messages/{id}?drive_files=auto|keep|trash`（既定 `auto`。古い端末は送らないので `auto`）。応答は今のまま 200 と墓石の
+  `MessageOut`（本書の前の版の「204」は誤り）。確認の画面のために `GET /messages/{id}/drive-files`（CF1 で足した）がファイルごとに
+  `auto` で入れるか（`trash`）と、入れない理由（`in_trash`・`moved`・`not_permitted`・`changed`）を返す。
 - サーバ：投稿のファイルの行を引き（ロックしない）、ゴミ箱に入れる項目があれば DRIVE.md のゴミ箱の手順（フォルダ → 場所のロック）を先に行い、
   その後で行を `FOR UPDATE` で取り、`message_id`・`channel_id`・`drive_state` を NULL にする（ふつうのドライブのバージョンになる。
   ドライブの詳細の「投稿」からも消える）。ゴミ箱に入れたものは監査 `drive.trash`（`via: "message_delete"`）。
@@ -369,12 +381,14 @@ message.created（attachments に drive が入った形）
 | 対象 | 変更 |
 | --- | --- |
 | `AttachmentOut` | 任意の欄 `drive: {item_id, version_id, version_number, state} \| null`。`state` は `available` / `moved` / `trashed` / `deleted`。投稿のファイルにだけ入る（ふつうの添付・DM は null）。`item_id` は墓石では null |
-| `DELETE /messages/{id}` | クエリ `drive_files=auto\|keep\|trash`（既定 auto）。応答は今のまま（204）。ゴミ箱に入れた項目は `drive.changed` で分かる |
-| `DriveItemOut` | `system_role`（null か `channel_posts`）、`posts: [{message_id, channel_id, parent_id, version_number, posted_at}]`（その項目のバージョンを添付に持つメッセージのうち、見る人が読めるもの。5 件まで）。フォルダの子の一覧では `posts` は省く（詳細だけ） |
-| `POST /drive/items/impact`（新） | `{item_ids, target_folder_id?}` → `{posted_messages, channels: [{channel_id, messages, unreadable_after}]}`。移動・ゴミ箱の前の確かめ（§6.4）。`target_folder_id` が無ければゴミ箱。読める項目だけを数える（読めなければ 404） |
-| `ChannelOut` / `PATCH /channels/{id}` | `files_to_drive`・`files_to_drive_effective`（§9） |
-| `GET/PATCH /admin/workspace-settings` | `channel_files_to_drive` |
-| `GET /search/drive` | `origin=all\|uploads\|posts`（既定 all。§12.6） |
+| `DELETE /messages/{id}` | クエリ `drive_files=auto\|keep\|trash`（既定 auto）。応答は今のまま（200 と墓石の `MessageOut`）。ゴミ箱に入れた項目は `drive.changed` で分かる |
+| `GET /messages/{id}/drive-files`（CF1 で足した） | `{files: [{attachment_id, item_id, state, trash, reason}]}`：削除の確認の印のため（§7.3） |
+| `DriveItemOut` | `system_role`（null か `channel_posts`）、`posted`（CF1 で足した：一覧の吹き出しの印）、`posts: [{message_id, channel_id, parent_id, sender_id, version_number, posted_at}]`（その項目のバージョンを添付に持つメッセージのうち、見る人が読めるもの。5 件まで。`sender_id` は CF1 で足した）。`posts` は `GET /drive/items/{id}` だけ（ほかは null） |
+| `POST /drive/items/impact`（新） | `{item_ids, target_folder_id?}` → `{posted_messages, channels: [{channel_id, messages, unreadable_after, unreadable_guests}]}`。移動・ゴミ箱の前の確かめ（§6.4）。`target_folder_id` が無ければゴミ箱。読める項目だけ（読めなければ 404）。`channels` は見る人が読めるチャンネルだけ（`posted_messages` はすべて） |
+| `DriveLocationUsageOut`（CF1 で足した） | `posted_bytes`（§8 の「うち投稿のファイル」） |
+| `ChannelOut` / `PATCH /channels/{id}` | `files_to_drive`・`files_to_drive_effective`（§9。`effective` は `GET /channels/{id}` と PATCH の応答だけ。ほかは null で、端末は `files_to_drive ?? WorkspaceSettingsOut.channel_files_to_drive`） |
+| `GET/PATCH /admin/workspace-settings` | `channel_files_to_drive`（`WorkspaceSettingsOut` にも：bootstrap と `workspace.settings_updated`） |
+| `GET /search/drive` | `origin=all\|uploads\|posts`（既定 all。§12.6。`posts` = `source = 'message'` のバージョンを持つファイル、`uploads` = それ以外（フォルダを含む）） |
 | `GET /files` | 変えない（`drive_state` が NULL か `available` のものだけ。項目が別の場所・ゴミ箱のものは出さない）。`FileItem.attachment.drive` で「ドライブで表示」 |
 | エラー（`apps/shared/errors.json`） | 409 `drive_folder_system`（特別なフォルダは名前の変更・移動・ゴミ箱ができない）、409 `drive_version_posted`（メッセージが指すバージョン） |
 | WS | 新しいイベントは無い。`message.updated`（`change = "attachments"`、今の値）と `drive.changed` |
@@ -449,9 +463,11 @@ message.created（attachments に drive が入った形）
 
 ## 13. 並行と冪等
 
-- **ロックの順**：ドライブの木（親のフォルダ → 場所の行）を先に、`attachments` の行を後に。送る時（§6.1）は、bind が自分の pending の
-  添付を先に `FOR UPDATE` で取るが、pending の行はまだドライブの行ではないので、ドライブの操作がそれを取ることはない（輪にならない）。
-  メッセージの削除（§7.3）は行を読むだけで先にドライブのゴミ箱を行い、その後で行を取る。
+- **ロックの順**（CF1 で決めた形）：ドライブの木（親のフォルダ → 場所の行）→ チャンネルの行（`allocate_seq`）→ `attachments` の行。
+  送る時（§6.1）はドライブを seq の前に取る（`prepare_in_tx`）。ドライブの移動・ゴミ箱・戻す・完全削除は、木と場所を取った後に
+  変わるメッセージのチャンネルの行を id の順に取り、それから添付の行を取る（`drive/posted.py`）。完全削除は場所の行を先に取るよう
+  並べ替えた。メッセージの削除（§7.3）は行を読むだけで先にドライブのゴミ箱を行い、その後でチャンネル、添付の行を取る。
+  プレビューの loop の「チャンネル → 添付」とも同じ向き。
 - **同時に 2 つの投稿が「2026-10」を作る**：「投稿のファイル」の行を `FOR UPDATE` で取ってから探す・作るので、2 つ目は 1 つ目の
   コミットを待ってそれを使う。「投稿のファイル」も根の行のロックで 1 つ（部分一意索引 `drive_items_system_role_uniq` が最後の守り）。
 - **同じチャンネルの送信が場所の行で直列になる**：`used_bytes` の加算は場所の行のロックの中。研究室の規模（1 チャンネルの毎秒の
@@ -474,7 +490,10 @@ message.created（attachments に drive が入った形）
   今の守り（作った人が読める間だけ、場所とワークスペースのスイッチ、admin の一覧と取り消し）で足りると考える。チャンネルのオーナーが
   場所の「外部リンク」を切れば、そのチャンネルでは作れない（§18 Q8）。
 - メッセージの削除からのゴミ箱は、送った本人かモデレーターだけ（§7.3）。ドライブでのゴミ箱は DRIVE.md §3.2 のまま。
-- 監査：ゴミ箱・完全削除は今の `drive.trash`・`drive.delete`・`drive.purge`（`via` を足す）。入れる操作（投稿）は監査に載せない（ふつうの投稿）。
+- 監査：完全削除は今の `drive.delete`・`drive.purge`（投稿のファイルを含めば `posted_messages`）。**ゴミ箱の監査は今まで無かった**
+  （本書の前の版の「今の `drive.trash`」は誤り）。CF1 で `drive.trash` を足した：メッセージの削除から（`via: "message_delete"`）と、
+  ドライブのゴミ箱で投稿のファイルがメッセージから見えなくなるとき（`via: "drive"`、まとまりごと、`messages` の数）。入れる操作
+  （投稿）は監査に載せない（ふつうの投稿）。
 - SECURITY.md §4 の「ドライブ」に「投稿のファイル」の段落を足す（§5 の規則、墓石、外部リンクの経路）。
 
 ## 15. 段階（マイルストーン）
@@ -488,7 +507,7 @@ message.created（attachments に drive が入った形）
 | **CF3** iOS | M176 | 添付の状態・「ドライブで表示」・ビューアの上の行・削除の確認の印、ドライブの特別なフォルダと「投稿」、`drive` の端末の保存 | xcodebuild・XCTest（デコード：古い形と新しい形、状態の描き分け）、シミュレータで CF2 と同じ通し |
 | **CF4** Android | M177 | 同上 | `compileDebugKotlin`・`testDebugUnitTest`・`lintDebug`、ChikuwaChat_Pixel_9 で同じ通し |
 | **CF5** 大きなファイル | M178 | 入力欄の「ドライブにアップロードしてリンクを投稿」（Desktop / Web・iOS・Android、ドライブのアップロードの仕組みのまま） | 2 GB の動画をチャンネルに投稿してカードから再生できる（3 端末） |
-| **CF6** 今までの添付 | M179 | `channel-files-backfill`（§10）、infra/README.md の手順 | pytest：冪等・`--dry-run`・キャンバスとページの添付を入れない・年月。本番は利用者と `--dry-run` の表を見てから |
+| **CF6** 今までの添付 | M179 | `channel-files-backfill`（§10、**CF1 で作った**）、infra/README.md の手順 | pytest：冪等・`--dry-run`・キャンバスとページの添付を入れない・年月（CF1 で済み）。本番は利用者と `--dry-run` の表を見てから |
 
 - CF1 の後は CF2〜CF4 を並べて進められる。CF5・CF6 はいつでも。
 - 見積もりの目安：CF1 1 週、CF2 0.5〜1 週、CF3・CF4 各 0.5 週、CF5 0.5 週、CF6 2 日。
@@ -510,7 +529,9 @@ message.created（attachments に drive が入った形）
 
 ## 18. 利用者に確かめること
 
-| # | 質問 | 推め（決まらなければこれで作る） |
+**2026-10-28、すべて推めの答えで決まった**（利用者）。下の「推め」がそのまま決定。
+
+| # | 質問 | 推め（決まらなければこれで作る） → 決定 |
 | --- | --- | --- |
 | Q1 | 既定でオンにするか（ワークスペース）。チャンネルごとに切れるようにするか | ワークスペースは既定オン、チャンネルのオーナーが「しない」にできる |
 | Q2 | フォルダの名前と分け方 | 「投稿のファイル」の下に「2026-10」（年月、ワークスペースのタイムゾーン）。スレッドの返信も同じ。案：「チャンネルのファイル」（ドライブ自体がチャンネルのものなので重なる）、平ら（活発なチャンネルで 10,000 件の上限に届く） |
@@ -523,3 +544,91 @@ message.created（attachments に drive が入った形）
 | Q9 | ドライブの検索に投稿のファイルを出すか | 出す（中身の検索も効く）。検索の画面に「投稿のファイルを含む」の切り替え |
 | Q10 | 100 MB を超えるファイルを入力欄に入れたら、ドライブに上げてリンクで投稿するか | する（CF5） |
 | Q11 | チャンネルの「ファイル」のタブと「ドライブ」のタブを 1 つにまとめるか | しばらく両方残す。使ってみて決める |
+
+## 19. 段階 CF1 の実装（M174、2026-10-28）
+
+### 19.1 作ったもの
+
+- **移行 0126**：`attachments.drive_state`（CHECK・部分索引 `attachments_drive_state_idx`）、`drive_items.system_role`（CHECK：
+  `channel_posts` はフォルダだけ、部分一意索引 `drive_items_system_role_uniq`）、`workspace_settings.channel_files_to_drive`（既定 true）、
+  `channels.files_to_drive`（NULL = ワークスペースに従う）。`attachments.status` に `purged`（墓石。CHECK は無い）。downgrade は
+  墓石を `deleted` に戻してから列を消す。0118 が延期の外部キーで行を入れるので、移行の初めに `SET CONSTRAINTS ALL IMMEDIATE`。
+- **`app/modules/drive/channel_files.py`**：切り替え（`enabled_for`）、送る時の `prepare_in_tx`・`file_in_tx`（どちらも SAVEPOINT。
+  失敗はふつうの添付と warning）、名前（`file_name`：断られる名前は「ファイル」+ 拡張子）、年月（`month_name`、`CHANNEL_FILES_TZ`）、
+  メッセージの削除の決まり（`delete_rules`・`on_message_delete_in_tx`）、`impact`、`backfill`。
+- **`app/modules/drive/posted.py`**：ドライブがメッセージを import せずに要るもの。2 つ目の読む経路（`posted_readable`、main.py が
+  `attachments.set_posted_access_check` で注入）、`drive_state` の移り変わり（`restate_in_tx`：場所をまたぐ移動・ゴミ箱・戻す、
+  `purge_posted_in_tx`：完全削除で墓石）と `message.updated`（main.py が `messages.announce_change_by_id_in_tx` を注入）、
+  `posts_of`・`posted_items`・`posted_versions`、エラー `drive_folder_system`・`drive_version_posted`。
+- **送信**（`messages.service.create_message`）：`prepare_in_tx` を seq の前に、`file_in_tx` を bind の直後に。`message.created` の
+  添付に `drive` が入る。
+- **読む人**（`attachments.get_for_access`）：`drive_state` のある行は (1) ドライブで読める、または (2) `posted_readable`（§5.2）。
+- **ドライブの操作**：`system_role` のフォルダの名前の変更・移動・ゴミ箱は 409 `drive_folder_system`（移動・ゴミ箱は `results` の
+  `error`）。名前の変更は投稿のファイルの添付の `filename` を変えない。場所をまたぐ移動・ゴミ箱・戻す・完全削除で `drive_state` と
+  `message.updated`（`change = "attachments"`、新しい `updated_seq`）。完全削除は墓石（`drive_state = 'deleted'`）にし、GC は
+  バイト列と派生物を消して `status = 'purged'` で行を残す（メッセージが消えれば行も消す）。
+- **バージョン**：整理（`versions.prune`）は投稿の版を消さず、新しい 10 版の数にも入れない。手での削除は 409
+  `drive_version_posted`（`details.message_id`、読めれば `channel_id`）。
+- **メッセージの削除**：`DELETE /messages/{id}?drive_files=auto|keep|trash`、`GET /messages/{id}/drive-files`。ゴミ箱に入れる項目は
+  `drive.service.trash_posted_in_tx`（ドライブの権利を見ない、監査 `drive.trash` via `message_delete`）、残りの行は
+  `attachments.mark_deleted_in_tx` がメッセージから外す（`message_id`・`channel_id`・`drive_state` を NULL、ふつうのバージョンに）。
+- **容量**：入れる時に場所の `used_bytes`・`item_count` に足す（上限は見ない）。管理の `chat_attachments_bytes` は `drive_item_id IS NULL`
+  で墓石を除く。場所ごとの `posted_bytes`。
+- **API**：`AttachmentOut.drive`（`AttachmentDriveOut {item_id, version_id, version_number, state}`、墓石は 3 つとも null）、
+  `FileItem.attachment.drive`、`GET /attachments/{id}` も `drive` 付き、`DriveItemOut.system_role`・`posted`・`posts`、
+  `POST /drive/items/impact`、`ChannelOut.files_to_drive`・`files_to_drive_effective`、`ChannelUpdate.files_to_drive`、
+  `WorkspaceSettingsOut.channel_files_to_drive`・`WorkspaceSettingsUpdate.channel_files_to_drive`、`GET /search/drive?origin=`、
+  `DriveLocationUsageOut.posted_bytes`。新しい WS のイベントは無い（`message.updated` と `drive.changed`）。
+- **検索と一覧**：メッセージの検索のファイル名の枝と `GET /files` は `drive_state` が NULL か `available` の行だけ。
+- **ほかの loop**：プレビューの loop（チャットの待ちの数・`generate-previews` の候補）と `probe-videos` は投稿のファイルを
+  チャットの行として扱う。プレビューができたら `message.updated` に加えて `drive.changed`。
+- **古い端末の「ドライブに保存」**：投稿のファイルも写せる（§11.2）。
+- **CLI**：`app.cli channel-files-backfill --channel <名前> … | --all [--since 2025-04-01] [--dry-run] [--limit N]`（§10。オフの
+  チャンネルは飛ばす、1 件ずつコミット、`message.updated` は出さない）。
+- **エラーの文言**：`drive_folder_system`・`drive_version_posted`（ja / en / zh-Hans、`apps/shared/errors.json` → 生成）。
+- **Desktop の型**：`schema.d.ts` を作り直し、`types.ts` の `WorkspaceSettingsOut` で `channel_files_to_drive` を任意に（CF1 より前の
+  サーバは送らない）、試験の固定値に `posted`・`posted_bytes`。画面は CF2。
+- 試験：`tests/test_channel_files.py`（入れる・フォルダと名前・送り直しで 1 回・同時の 2 送信・送信とゴミ箱の同時・失敗の逃げ道 3 通り・
+  DM とグループ DM・切り替え・オーナーだけのチャンネルの返信・容量・§5.1 の表 × 状態・削除したメッセージ・版と名前・特別なフォルダ・
+  移動 / ゴミ箱 / 戻す / 完全削除のイベントと `updated_seq`・墓石と GC・削除の決まりとモデレーター・impact・検索・
+  backfill（dry run・冪等・`--limit`・キャンバスの添付と消したメッセージを入れない・年月）・古い形として読めること）。
+
+### 19.2 本書と違うところ・決めたこと（本文は直した）
+
+- **ロックの順**：本書は「bind の直後に入れる」だけだったが、それではチャンネルの行 → ドライブの順になり、ドライブの操作
+  （ドライブ → チャンネル）と輪になる。送信はドライブを seq の前に取る（§6.1・§13）。完全削除は場所の行を先に取るよう並べ替えた。
+- **ゾーン**：`workspace_settings` にゾーンが無かったので設定 `CHANNEL_FILES_TZ`（既定 `Asia/Tokyo`）。
+- **403 は残す**：項目がチャンネルのドライブにありメッセージが生きている間は、チャンネルの断り（403）を今の添付と同じに返す
+  （§5.2。本書は「どの経路でも 404」）。移した・ゴミ箱・墓石は 404。
+- **`DELETE /messages/{id}` の応答**は 200 と墓石（本書の「204」は誤り）。`trash` は `auto` と同じ決まり（§7.1 の表のとおりで違いが
+  無い）。確認のために `GET /messages/{id}/drive-files` を足した。
+- **監査 `drive.trash`** は無かったので足した（§14）。
+- **墓石の `AttachmentOut`**：`status` は `"attached"` のまま（メッセージに付いている。古い端末はふつうの行を出し、開くと 404）、
+  サムネイル・ポスター・プレビューは出さない、`drive` は `{item_id: null, version_id: null, version_number: null, state: "deleted"}`。
+- **足したもの**：`DriveItemOut.posted`、`DrivePostOut.sender_id`、`DriveImpactChannelOut.unreadable_guests`、
+  `DriveLocationUsageOut.posted_bytes`。`ChannelOut.files_to_drive_effective` は 1 つのチャンネルの応答だけで埋める。
+- **`origin`**：`posts` = `source = 'message'` のバージョンを持つファイル（メッセージを消した後も投稿から来たもの）。
+- **backfill** は本書では CF6 だったが CF1 で作った（CF6 は本番で流すのと手順書）。
+- **メトリクス**の仕組みが無いので、逃げ道はログの warning だけ。
+
+### 19.3 CF2〜CF4 の端末に要るもの
+
+- **メッセージ**：`AttachmentOut.drive`（null ならふつうの添付）。`state` で描き分け（§12.1）：`available` はふつう +「ドライブで表示」
+  （`GET /drive/items/{item_id}` の `path` でフォルダを開く）、`moved` は `GET /drive/items/{item_id}` が 200 ならふつう + 場所の
+  1 行・404 なら「表示できないファイル」、`trashed` / `deleted` は「削除されたファイル」（名前・サムネイルを出さない）、`trashed` で
+  チャンネルのドライブに書ける人には「戻す」（`POST /drive/items/{item_id}/restore`）。ビューアの「新しいバージョンがあります」は
+  `GET /drive/items/{item_id}` の `item.file.version_id` を `drive.version_id` と比べる。状態が変わると `message.updated`
+  （`change = "attachments"`）が届く。Desktop の SQLite の添付に `drive` を持つ。
+- **削除の確認**：`GET /messages/{id}/drive-files` の `trash` の数を「ドライブの n 件のファイルもゴミ箱に移す」の既定に、`reason =
+  changed` を「投稿の後に変更されたため、ドライブに残ります」に。外せば `DELETE …?drive_files=keep`、そのままなら `auto`。
+- **ドライブ**：`system_role = channel_posts` のフォルダは端末の言語の名前（投稿のファイル / Posted files / 帖子中的文件）と専用の
+  アイコン、名前の変更・移動・ゴミ箱を出さない（送れば 409 `drive_folder_system`）。`posted` の行に吹き出しの印、詳細の
+  `posts`（「メッセージを表示」は `channel_id`・`parent_id`・`message_id`）。版の削除の 409 `drive_version_posted`。
+- **移動・ゴミ箱の確かめ**：`POST /drive/items/impact` が `posted_messages > 0` のときだけダイアログ（`channels` の
+  `messages`・`unreadable_after`・`unreadable_guests`）。
+- **入力欄**：公開・非公開チャンネルで `files_to_drive ?? channel_files_to_drive` が真なら「#ch のドライブの「投稿のファイル」に
+  保存されます」。
+- **設定**：チャンネルの設定（オーナー）で `PATCH /channels/{id} {files_to_drive: true | false | null}`、管理画面で
+  `PATCH /admin/workspace-settings {channel_files_to_drive}`、使用量の `posted_bytes`。
+- **検索**：ドライブのタブに `origin`（「投稿のファイルを含む」= `all`、外す = `uploads`）。
+- **古い形**：iOS・Android の出荷版のデコーダの試験に `drive` 付きの実物の JSON を足す（§16）。

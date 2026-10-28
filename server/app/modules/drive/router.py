@@ -15,6 +15,7 @@ from app.modules.attachments.models import Attachment
 from app.modules.attachments.schemas import AttachmentOut
 from app.modules.auth.deps import CurrentUser, require_capability
 from app.modules.drive import (
+    channel_files,
     conversation,
     copying,
     names,
@@ -33,6 +34,8 @@ from app.modules.drive.schemas import (
     DriveCopyResultsOut,
     DriveDownloadTicketOut,
     DriveFolderCreate,
+    DriveImpactIn,
+    DriveImpactOut,
     DriveItemDetailOut,
     DriveItemOut,
     DriveItemRename,
@@ -152,6 +155,18 @@ async def move_items(
     return await service.move(
         db, user, request.app.state.settings, data.item_ids, data.target_folder_id, data.on_conflict
     )
+
+
+@router.post("/drive/items/impact", response_model=DriveImpactOut)
+async def item_impact(data: DriveImpactIn, user: CurrentUser, db: Db) -> DriveImpactOut:
+    """CF1 (docs/CHANNEL_FILES.md §6.4): before a move into `target_folder_id` (or, without one,
+    a trash), what it would do to the messages showing posted files among the items (and what is
+    under them): per channel I can read, the messages concerned and how many members (guests
+    among them) would no longer see a file in its message. Nothing is changed. 404 for an item
+    (or a target) I cannot read."""
+    out = await channel_files.impact(db, user, data)
+    await db.rollback()
+    return out
 
 
 @router.post("/drive/items/trash", response_model=DriveResultsOut)
