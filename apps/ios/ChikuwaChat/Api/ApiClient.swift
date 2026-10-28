@@ -310,6 +310,11 @@ final class ApiClient: SyncApi, DraftApi, ChannelLinksApi, ActivityApi, CanvasAp
         return try await request("PATCH", "/api/v1/channels/\(id)", body: .object(body))
     }
 
+    /// CF1 (docs/CHANNEL_FILES.md §9): owners and admins; nil = as the workspace says.
+    func setChannelFilesToDrive(id: String, value: Bool?) async throws -> ChannelOut {
+        try await request("PATCH", "/api/v1/channels/\(id)", body: .object(["files_to_drive": value.map(JSONValue.bool) ?? .null]))
+    }
+
     /// level nil = follow my overall setting (M35); muted nil = leave the mute until unmuted as it is.
     func setNotificationPreference(channelId: String, level: String?, mutedUntil: String?, muted: Bool? = nil) async throws -> NotificationPreferenceOut {
         var body: [String: JSONValue] = ["level": level.map(JSONValue.string) ?? .null, "muted_until": mutedUntil.map(JSONValue.string) ?? .null]
@@ -784,7 +789,12 @@ final class ApiClient: SyncApi, DraftApi, ChannelLinksApi, ActivityApi, CanvasAp
     }
 
     /// Returns the tombstone (deleted = true) so the caller can apply it locally.
-    func deleteMessage(id: String) async throws -> MessageOut { try await request("DELETE", "/api/v1/messages/\(id)") }
+    /// CF1 (docs/CHANNEL_FILES.md §7.3): `driveFiles` "keep" leaves the message's files in the channel's drive; nil is
+    /// the server's `auto` (what a server before CF1 does without the word).
+    func deleteMessage(id: String, driveFiles: String? = nil) async throws -> MessageOut {
+        let path = driveFiles.map { Self.pathWithQuery("/api/v1/messages/\(id)", [URLQueryItem(name: "drive_files", value: $0)]) }
+        return try await request("DELETE", path ?? "/api/v1/messages/\(id)")
+    }
     func message(id: String) async throws -> MessageOut { try await request("GET", "/api/v1/messages/\(id)") }
 
     func addReaction(id: String, emoji: String) async throws -> MessageOut {

@@ -375,6 +375,11 @@ struct ChannelOut: Codable, Identifiable, Equatable {
     /// to a member carry it (bootstrap, GET /channels, GET /channels/{id}, POST /dms); elsewhere, and from servers before
     /// M49, it is nil, which means "not said" (the store keeps the one it holds) except in bootstrap ("no message").
     var lastMessage: LastMessageOut? = nil
+    /// CF1 (docs/CHANNEL_FILES.md §9): files posted here go to the channel's drive: true / false as an owner set it, nil
+    /// = as the workspace says (WorkspaceSettings.channelFilesToDrive). `filesToDriveEffective` only comes in the
+    /// answers about one channel (GET / PATCH /channels/{id}).
+    var filesToDrive: Bool? = nil
+    var filesToDriveEffective: Bool? = nil
 
     var isDm: Bool { type == "dm" || type == "group_dm" }
     var isAnnouncement: Bool { postingPolicy == "owners" }
@@ -690,6 +695,9 @@ struct AttachmentOut: Codable, Equatable, Identifiable {
     var durationMs: Int? = nil
     /// M108 (docs/PREVIEWS.md): a PDF's or Office file's preview; nil without one (or from an older server).
     var preview: AttachmentPreviewOut? = nil
+    /// CF1 (docs/CHANNEL_FILES.md §11.1): a file posted in a public or private channel is also a version of an item in
+    /// the channel's drive; nil for a plain attachment (a DM, a server before CF1, a channel that keeps files out).
+    var drive: AttachmentDriveOut? = nil
 
     /// A picture: it has a thumbnail. A video with one (its poster) stays a video (M38).
     var isImage: Bool { hasThumbnail && !isVideo }
@@ -714,7 +722,20 @@ extension AttachmentOut {
         hasPoster = try c.decodeIfPresent(Bool.self, forKey: .hasPoster) ?? false
         durationMs = try c.decodeIfPresent(Int.self, forKey: .durationMs)
         preview = try c.decodeIfPresent(AttachmentPreviewOut.self, forKey: .preview)
+        // CF3: a `drive` this build cannot read is taken as none (the plain attachment row), never a failed message.
+        drive = try? c.decodeIfPresent(AttachmentDriveOut.self, forKey: .drive)
     }
+}
+
+/// CF1 (docs/CHANNEL_FILES.md §11.1, §12.1): the drive item a posted file is a version of, and what became of it, the
+/// same for every viewer: `available` (in the channel's drive), `moved` (in another drive: only who can read it there
+/// sees it; GET /drive/items/{id} tells), `trashed` (in the drive's trash: 「削除されたファイル」, it can be restored),
+/// `deleted` (purged: a tombstone, the ids are null).
+struct AttachmentDriveOut: Codable, Equatable {
+    var itemId: String? = nil
+    var versionId: String? = nil
+    var versionNumber: Int? = nil
+    let state: String
 }
 
 /// M108 (docs/PREVIEWS.md §5): `pending` (the card says 「プレビューを作成中…」), `ready` (the first page at
@@ -941,12 +962,16 @@ struct WorkspaceSettings: Codable, Equatable {
     var callsEnabled = false
     /// The meeting service rooms are made on, for display only (the server makes the rooms); nil = calls off.
     var meetingBaseUrl: String?
+    /// CF1 (docs/CHANNEL_FILES.md §9): files posted in channels go to the channel's drive (unless the channel says
+    /// otherwise); nil from a server before CF1 (no channel files at all).
+    var channelFilesToDrive: Bool?
 
     static let defaults = WorkspaceSettings()
 
     /// `iconVersion`: .none = the field is missing (a server before M93), .some(nil) = no icon.
     init(showMembershipMessages: Bool = true, previewBeforeJoin: Bool = true, iconVersion: String?? = .none,
-         callsEnabled: Bool = false, meetingBaseUrl: String? = nil) {
+         callsEnabled: Bool = false, meetingBaseUrl: String? = nil, channelFilesToDrive: Bool? = nil) {
+        self.channelFilesToDrive = channelFilesToDrive
         self.showMembershipMessages = showMembershipMessages
         self.previewBeforeJoin = previewBeforeJoin
         self.callsEnabled = callsEnabled
@@ -965,6 +990,7 @@ struct WorkspaceSettings: Codable, Equatable {
         iconVersion = try? c.decodeIfPresent(String.self, forKey: .iconVersion)
         callsEnabled = (try? c.decodeIfPresent(Bool.self, forKey: .callsEnabled)) ?? false
         meetingBaseUrl = try? c.decodeIfPresent(String.self, forKey: .meetingBaseUrl)
+        channelFilesToDrive = try? c.decodeIfPresent(Bool.self, forKey: .channelFilesToDrive)
     }
 
     func encode(to encoder: Encoder) throws {
@@ -974,9 +1000,12 @@ struct WorkspaceSettings: Codable, Equatable {
         if hasIconVersion { try c.encode(iconVersion, forKey: .iconVersion) }
         try c.encode(callsEnabled, forKey: .callsEnabled)
         try c.encodeIfPresent(meetingBaseUrl, forKey: .meetingBaseUrl)
+        try c.encodeIfPresent(channelFilesToDrive, forKey: .channelFilesToDrive)
     }
 
-    enum CodingKeys: String, CodingKey { case showMembershipMessages, previewBeforeJoin, iconVersion, callsEnabled, meetingBaseUrl }
+    enum CodingKeys: String, CodingKey {
+        case showMembershipMessages, previewBeforeJoin, iconVersion, callsEnabled, meetingBaseUrl, channelFilesToDrive
+    }
 }
 
 /// M15e: one member's 「確認しました」.

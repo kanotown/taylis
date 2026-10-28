@@ -69,9 +69,14 @@ func formatSize(_ bytes: Int64) -> String {
 
 /// Images show their thumbnail, videos a tile that plays them; documents download with authentication before a local
 /// system preview. `present` shows a downloaded file from the conversation (MessageSheet), not from the row.
+/// CF3 (docs/CHANNEL_FILES.md §12.1): a posted file follows its drive item — the usual tile while it is in the
+/// channel's drive, the tile with where it is now (or 「表示できないファイル」) once moved to another drive, 「削除されたファイル」
+/// in the trash or purged (no name, no picture; 「戻す」 for who may write the channel's drive).
 struct AttachmentsView: View {
     let attachments: [AttachmentOut]
     @Bindable var controller: AppController
+    /// The message's conversation (whose drive 「戻す」 writes to).
+    var channelId: String? = nil
     var present: ((URL) -> Void)? = nil
 
     /// Several photos sit side by side as square tiles (testers, 2026-09-29: they came one under another), two in a
@@ -80,15 +85,141 @@ struct AttachmentsView: View {
     static let photoGridWidth: CGFloat = 280
 
     var body: some View {
+        let plain = attachments.filter { ChannelFiles.look($0) == .plain }
+        VStack(alignment: .leading, spacing: 6) {
+            if !plain.isEmpty { AttachmentTiles(attachments: plain, controller: controller, present: present) }
+            ForEach(attachments.filter { ChannelFiles.look($0) != .plain }) { attachment in
+                switch ChannelFiles.look(attachment) {
+                case .moved(let itemId):
+                    MovedAttachmentView(attachment: attachment, itemId: itemId, controller: controller, present: present)
+                case .deleted(let restoreId):
+                    DeletedAttachmentRow(restoreId: restoreId, channelId: channelId, controller: controller)
+                case .plain:
+                    EmptyView()
+                }
+            }
+        }
+    }
+}
+
+/// A posted file moved to another drive (CF3, §12.1): asked once a minute (the `/d/` cards' answers, DriveHub); readable,
+/// the usual tile and 「研究室ドライブ › 論文」 under it; not, 「表示できないファイル」 and why (never its name).
+struct MovedAttachmentView: View {
+    let attachment: AttachmentOut
+    let itemId: String
+    @Bindable var controller: AppController
+    var present: ((URL) -> Void)? = nil
+
+    var body: some View {
+        Group {
+            switch controller.drive?.linkState(itemId) {
+            case .item(let detail)?:
+                VStack(alignment: .leading, spacing: 4) {
+                    AttachmentTiles(attachments: [attachment], controller: controller, present: present)
+                    let place = DriveRules.whereLabel(detail.path, kind: detail.locationKind)
+                    if !place.isEmpty {
+                        Label(place, systemImage: "folder").font(.caption).foregroundStyle(.secondary).lineLimit(1)
+                    }
+                }
+            case .unreadable?:
+                PostedFileNotice(icon: "lock", title: tr("表示できないファイル"), detail: tr("このファイルは別の場所へ移されました。"))
+            case .failed?:
+                Button { Task { await controller.drive?.resolveLink(itemId, force: true) } } label: {
+                    PostedFileNotice(icon: "exclamationmark.triangle", title: tr("ファイルを読み込めませんでした"), detail: tr("タップでもう一度試します。"))
+                }
+                .buttonStyle(.plain)
+            case nil:
+                PostedFileNotice(icon: "externaldrive", title: tr("ファイルを読み込み中…"), detail: nil)
+            }
+        }
+        // Again when the message changes (moved back and forth: message.updated, change "attachments").
+        .task(id: "\(itemId):\(attachment.drive?.state ?? "")") { await controller.drive?.resolveLink(itemId) }
+    }
+}
+
+/// 「🗑 削除されたファイル」 (CF3, §12.1): one faint line, no name, no picture. In the trash, who may write the channel's
+/// drive also reads 「ゴミ箱にあります」 and 「戻す」.
+struct DeletedAttachmentRow: View {
+    let restoreId: String?
+    let channelId: String?
+    @Bindable var controller: AppController
+    @State private var restoring = false
+
+    private var canRestore: Bool {
+        guard restoreId != nil, let channelId else { return false }
+        return controller.drive?.canWriteChannelDrive(channelId) ?? false
+    }
+
+    var body: some View {
+        HStack(spacing: 8) {
+            Image(systemName: "trash").foregroundStyle(.secondary).accessibilityHidden(true)
+            Text("削除されたファイル").font(.subheadline).foregroundStyle(.secondary)
+            if canRestore, let restoreId {
+                Text("·").foregroundStyle(.tertiary).accessibilityHidden(true)
+                Text("ゴミ箱にあります").font(.footnote).foregroundStyle(.secondary)
+                if restoring {
+                    ProgressView().controlSize(.small)
+                } else {
+                    Button("戻す") {
+                        restoring = true
+                        Task {
+                            await controller.restorePostedFile(restoreId)
+                            restoring = false
+                        }
+                    }
+                    .font(.footnote.weight(.semibold))
+                    .buttonStyle(.borderless)
+                }
+            }
+            Spacer(minLength: 0)
+        }
+        .padding(.vertical, 6)
+        .padding(.horizontal, 10)
+        .frame(maxWidth: AttachmentsView.photoGridWidth, alignment: .leading)
+        .overlay(RoundedRectangle(cornerRadius: 8).stroke(Color.secondary.opacity(0.25), lineWidth: 0.5))
+        .accessibilityElement(children: .combine)
+    }
+}
+
+/// A posted file's line in place of its tile: an icon, a title and why.
+private struct PostedFileNotice: View {
+    let icon: String
+    let title: String
+    let detail: String?
+
+    var body: some View {
+        HStack(spacing: 8) {
+            Image(systemName: icon).foregroundStyle(.secondary).accessibilityHidden(true)
+            VStack(alignment: .leading, spacing: 1) {
+                Text(title).font(.subheadline).foregroundStyle(.secondary)
+                if let detail { Text(detail).font(.caption).foregroundStyle(.secondary).fixedSize(horizontal: false, vertical: true) }
+            }
+            Spacer(minLength: 0)
+        }
+        .padding(.vertical, 6)
+        .padding(.horizontal, 10)
+        .frame(maxWidth: AttachmentsView.photoGridWidth, alignment: .leading)
+        .overlay(RoundedRectangle(cornerRadius: 8).stroke(Color.secondary.opacity(0.25), lineWidth: 0.5))
+        .accessibilityElement(children: .combine)
+    }
+}
+
+/// The usual tiles: photos (side by side when several), videos, documents with a preview, other files.
+struct AttachmentTiles: View {
+    let attachments: [AttachmentOut]
+    @Bindable var controller: AppController
+    var present: ((URL) -> Void)? = nil
+
+    var body: some View {
         let photos = attachments.filter(\.isImage)
         VStack(alignment: .leading, spacing: 6) {
             if photos.count > 1 {
-                let columns = Self.photoColumns(photos.count)
-                let side = (Self.photoGridWidth - CGFloat(columns - 1) * 4) / CGFloat(columns)
+                let columns = AttachmentsView.photoColumns(photos.count)
+                let side = (AttachmentsView.photoGridWidth - CGFloat(columns - 1) * 4) / CGFloat(columns)
                 LazyVGrid(columns: Array(repeating: GridItem(.fixed(side), spacing: 4), count: columns), alignment: .leading, spacing: 4) {
                     ForEach(photos) { photo in ThumbnailView(attachment: photo, controller: controller, square: side, gallery: photos) }
                 }
-                .frame(width: Self.photoGridWidth, alignment: .leading)
+                .frame(width: AttachmentsView.photoGridWidth, alignment: .leading)
             }
             ForEach(attachments) { attachment in
                 if attachment.isImage {

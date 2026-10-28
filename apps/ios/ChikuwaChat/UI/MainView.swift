@@ -250,7 +250,7 @@ struct MainView: View {
         }
         // M166: a drive link tapped in a message: the folder or the file's details; a file's viewer straight away.
         .sheet(item: $controller.driveLink) { target in
-            DriveLinkSheet(controller: controller, itemId: target.id)
+            DriveLinkSheet(controller: controller, itemId: target.id, inFolder: target.inFolder)
         }
         .fullScreenCover(item: $controller.driveViewer) { viewing in
             DriveViewerView(viewing: viewing, controller: controller)

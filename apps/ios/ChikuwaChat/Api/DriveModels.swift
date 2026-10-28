@@ -52,15 +52,52 @@ struct DriveItemOut: Codable, Equatable, Identifiable {
     var file: DriveFileOut? = nil
     var linkCount: Int = 0
     var trashedAt: String? = nil
+    /// CF1 (docs/CHANNEL_FILES.md §3.3): `channel_posts` for a channel drive's 「投稿のファイル」 (named in my language,
+    /// no rename, move or trash), else nil.
+    var systemRole: String? = nil
+    /// CF1: a version of this file is attached to a message (the row's speech-bubble mark); nil from older servers.
+    var posted: Bool? = nil
+    /// CF1: those messages that I can read, newest first, at most 5; only in GET /drive/items/{id}.
+    var posts: [DrivePostOut]? = nil
 
     var isFolder: Bool { kind == "folder" }
+    var isChannelPosts: Bool { systemRole == "channel_posts" }
+    var isPosted: Bool { posted ?? false }
     /// What the list shows as its date: the file's own (its upload's lastModified, Nextcloud's mtime), else ours.
     var shownDate: String { contentModifiedAt ?? updatedAt }
+}
+
+/// CF1: a message that shows a version of the file (「投稿」 in its details: who posted it where, 「メッセージを表示」).
+struct DrivePostOut: Codable, Equatable, Hashable {
+    let messageId: String
+    let channelId: String
+    /// The thread's parent when the message is a reply.
+    var parentId: String? = nil
+    let senderId: String
+    let versionNumber: Int
+    let postedAt: String
+}
+
+/// CF1 (docs/CHANNEL_FILES.md §7.3): GET /messages/{id}/drive-files — what deleting the message does to each posted file.
+/// `trash`: drive_files=auto puts it in the drive's trash; else why it stays (`in_trash`, `moved`, `not_permitted`,
+/// `changed`).
+struct MessageDriveFileOut: Codable, Equatable {
+    let attachmentId: String
+    let itemId: String
+    let state: String
+    let trash: Bool
+    var reason: String? = nil
+}
+
+struct MessageDriveFilesOut: Codable, Equatable {
+    let files: [MessageDriveFileOut]
 }
 
 struct DriveCrumb: Codable, Equatable, Hashable {
     let id: String
     let name: String
+    /// CF1 follow-up (docs/CHANNEL_FILES.md §19.4): as DriveItemOut.systemRole; nil from older servers.
+    var systemRole: String? = nil
 }
 
 /// GET /drive/items/{id}: the item and its folders from the location's root down to its parent.
@@ -147,7 +184,8 @@ protocol DriveApi: AnyObject {
     func resolveDrive(channelId: String?) async throws -> DriveLocationOut
     func driveChildren(folderId: String, sort: DriveSort, descending: Bool, cursor: String?) async throws -> DriveChildrenOut
     func driveItem(_ id: String) async throws -> DriveItemDetailOut
-    func searchDrive(query: String, locationId: String?, cursor: String?) async throws -> DriveSearchOut
+    /// CF1 (§12.6): `origin` "all" (the default), "uploads" (no posted files) or "posts".
+    func searchDrive(query: String, locationId: String?, cursor: String?, origin: String) async throws -> DriveSearchOut
     func driveDownloadTicket(_ itemId: String) async throws -> DriveTicketOut
     func driveZip(_ itemIds: [String]) async throws -> DriveZipOut
     /// §27: the current version's preview, queued now when it was never made (imported files); nil: it gets none.
@@ -182,10 +220,12 @@ extension ApiClient: DriveApi {
 
     func driveItem(_ id: String) async throws -> DriveItemDetailOut { try await requestJSON("GET", "/api/v1/drive/items/\(id)") }
 
-    func searchDrive(query: String, locationId: String?, cursor: String?) async throws -> DriveSearchOut {
+    func searchDrive(query: String, locationId: String?, cursor: String?, origin: String = "all") async throws -> DriveSearchOut {
         var items = [URLQueryItem(name: "q", value: query), URLQueryItem(name: "limit", value: "50")]
         if let locationId { items.append(URLQueryItem(name: "location_id", value: locationId)) }
         if let cursor { items.append(URLQueryItem(name: "cursor", value: cursor)) }
+        // A server before CF1 does not know the word: sent only when it narrows.
+        if origin != "all" { items.append(URLQueryItem(name: "origin", value: origin)) }
         // §29: names and the text inside PDF, Office and text files.
         items.append(URLQueryItem(name: "content", value: "true"))
         return try await requestJSON("GET", Self.pathWithQuery("/api/v1/search/drive", items))
@@ -207,5 +247,15 @@ extension ApiClient: DriveApi {
     func createDriveFolder(parentId: String, name: String, clientOpId: String) async throws -> DriveItemOut {
         try await requestJSON("POST", "/api/v1/drive/folders",
                               body: .object(["parent_id": .string(parentId), "name": .string(name), "client_op_id": .string(clientOpId)]))
+    }
+
+    /// CF3 (docs/CHANNEL_FILES.md §6.5): a posted file back from the drive's trash (「戻す」 under 「削除されたファイル」).
+    func restoreDriveItem(_ id: String) async throws -> DriveItemOut {
+        try await requestJSON("POST", "/api/v1/drive/items/\(id)/restore", body: .object([:]))
+    }
+
+    /// CF3 (§7.3): what deleting this message would do to its files in the channel's drive.
+    func messageDriveFiles(_ messageId: String) async throws -> MessageDriveFilesOut {
+        try await requestJSON("GET", "/api/v1/messages/\(messageId)/drive-files")
     }
 }

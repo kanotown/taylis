@@ -63,6 +63,12 @@ struct FilesView: View {
                 ForEach(items) { item in
                     Button { onOpen(item.messageId, item.channelId, item.parentId) } label: { FileRowView(item: item, controller: controller) }
                         .buttonStyle(.plain)
+                        .contextMenu {
+                            // CF3 (docs/CHANNEL_FILES.md §12.5): a posted file's place in the channel's drive.
+                            if let itemId = ChannelFiles.driveItemId(item.attachment) {
+                                Button("ドライブで表示", systemImage: "externaldrive") { controller.showInDrive(itemId) }
+                            }
+                        }
                 }
                 if cursor != nil { Button("さらに読み込む") { Task { await load(more: true) } } }
             } else {

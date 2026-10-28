@@ -453,6 +453,19 @@ struct ChannelInfoView: View {
                     Label(channel.channel.isTimes ? "他の人はスレッドでだけ返信できるようにする" : "投稿をオーナーと管理者に限る", systemImage: "megaphone")
                 }
             }
+            // CF3 (docs/CHANNEL_FILES.md §9, §12.7): where files posted here go; a server with channel files only.
+            if canManage && !channel.channel.archived, let workspace = controller.store.workspaceSettings.channelFilesToDrive {
+                Picker(selection: Binding(get: { FilesToDriveChoice(channel.channel.filesToDrive) }, set: { choice in
+                    Task { _ = await controller.setChannelFilesToDrive(channelId, value: choice.value) }
+                })) {
+                    Text(workspace ? "ワークスペースに従う（保存する）" : "ワークスペースに従う（保存しない）").tag(FilesToDriveChoice.workspace)
+                    Text("保存する").tag(FilesToDriveChoice.on)
+                    Text("保存しない").tag(FilesToDriveChoice.off)
+                } label: {
+                    Label("投稿したファイルをチャンネルのドライブに保存する", systemImage: "externaldrive")
+                }
+                .pickerStyle(.navigationLink)
+            }
             if channel.canEditLinks(isAdmin: isAdmin, isGuest: controller.store.me?.role == "guest") {
                 Button("リンクを追加", systemImage: "link") { addingLink = true }  // M15f
             }
