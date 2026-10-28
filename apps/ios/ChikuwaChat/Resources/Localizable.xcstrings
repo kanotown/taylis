@@ -10704,6 +10704,38 @@
         }
       }
     },
+    "このチャンネルの予定" : {
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "This channel's events"
+          }
+        },
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "此频道的日程"
+          }
+        }
+      }
+    },
+    "このチャンネルの予定（今日・明日 %lld 件）" : {
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "This channel's events (%lld today and tomorrow)"
+          }
+        },
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "此频道的日程（今明两天 %lld 项）"
+          }
+        }
+      }
+    },
     "このチャンネルをアーカイブしますか？" : {
       "localizations" : {
         "en" : {
@@ -11632,22 +11664,6 @@
         }
       }
     },
-    "これから %lld 日" : {
-      "localizations" : {
-        "en" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "Next %lld days"
-          }
-        },
-        "zh-Hans" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "接下来 %lld 天"
-          }
-        }
-      }
-    },
     "これから %lld 日の予定はありません" : {
       "localizations" : {
         "en" : {
@@ -11660,22 +11676,6 @@
           "stringUnit" : {
             "state" : "translated",
             "value" : "接下来 %lld 天没有日程"
-          }
-        }
-      }
-    },
-    "これからの予定はありません" : {
-      "localizations" : {
-        "en" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "No upcoming events"
-          }
-        },
-        "zh-Hans" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "没有即将到来的日程"
           }
         }
       }
@@ -15010,22 +15010,6 @@
           "stringUnit" : {
             "state" : "translated",
             "value" : "分组名称（例：研究、课程）"
-          }
-        }
-      }
-    },
-    "ゼミや締切など、このチャンネルのメンバーと共有する予定を追加できます。" : {
-      "localizations" : {
-        "en" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "Add events to share with this channel's members, such as seminars and deadlines."
-          }
-        },
-        "zh-Hans" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "可以添加与此频道成员共享的日程，例如研讨会和截止日期。"
           }
         }
       }
@@ -18960,22 +18944,6 @@
           "stringUnit" : {
             "state" : "translated",
             "value" : "日程"
-          }
-        }
-      }
-    },
-    "予定 %lld" : {
-      "localizations" : {
-        "en" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "Events %lld"
-          }
-        },
-        "zh-Hans" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "日程 %lld"
           }
         }
       }

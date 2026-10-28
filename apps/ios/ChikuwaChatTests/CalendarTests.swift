@@ -222,8 +222,18 @@ final class CalendarDatesTests: XCTestCase {
         XCTAssertEqual(CalendarDates.alarmText(F.timed("ゼミ", "2026-10-01T05:00:00Z", "2026-10-01T06:00:00Z", channelId: "c1", channelName: "m2-進捗")),
                        "14:00 ゼミ (#m2-進捗)")
         XCTAssertEqual(CalendarDates.alarmText(F.allDay("学会", "2026-10-05")), "終日 学会")
-        XCTAssertEqual(CalendarDates.eventsTabLabel(0), "予定")
-        XCTAssertEqual(CalendarDates.eventsTabLabel(2), "予定 2")
+        // 2026-10-28: the conversation's ⋯ / details item (no 「予定」 tab any more), as the desktop's channelCalendarLabel.
+        XCTAssertEqual(CalendarDates.channelCalendarLabel(0), "このチャンネルの予定")
+        XCTAssertEqual(CalendarDates.channelCalendarLabel(2), "このチャンネルの予定（今日・明日 2 件）")
+    }
+
+    func testAChannelsCalendarOpensTheWorkspaceCalendarOnIt() {
+        // 「このチャンネルの予定」 (no event) and a channel event's notification: the calendar filtered to the channel,
+        // when I see that calendar; my own event's: the filter as it is.
+        XCTAssertEqual(CalendarOpen.filter(CalendarOpen(eventId: nil, channelId: "c1"), readable: ["c1", "c2"]), .channel("c1"))
+        XCTAssertEqual(CalendarOpen.filter(CalendarOpen(eventId: "e1", channelId: "c2"), readable: ["c1", "c2"]), .channel("c2"))
+        XCTAssertNil(CalendarOpen.filter(CalendarOpen(eventId: "e1", channelId: nil), readable: ["c1"]))
+        XCTAssertNil(CalendarOpen.filter(CalendarOpen(eventId: "e1", channelId: "gone"), readable: ["c1"]))
     }
 
     func testChannelColoursMatchTheWeb() {
@@ -248,11 +258,13 @@ final class CalendarDatesTests: XCTestCase {
                                            lastMessageAt: nil, createdAt: "", updatedAt: "", membership: nil, dmUserIds: nil), isMember: true)
             return store.channel(type)!
         }
-        XCTAssertEqual(ChannelTab.tabs(for: state("public")), [.messages, .canvas, .events, .tasks, .pins, .files]) // M56: タスク
-        XCTAssertEqual(ChannelTab.tabs(for: state("private")), [.messages, .canvas, .events, .tasks, .pins, .files])
-        XCTAssertEqual(ChannelTab.tabs(for: state("dm")), [.messages, .canvas, .pins, .files]) // no shared calendar in a DM (§9 5.)
+        // 2026-10-28: no 「予定」 tab (one calendar per workspace); M56: タスク in channels only.
+        XCTAssertEqual(ChannelTab.tabs(for: state("public")), [.messages, .canvas, .tasks, .pins, .files])
+        XCTAssertEqual(ChannelTab.tabs(for: state("private")), [.messages, .canvas, .tasks, .pins, .files])
+        XCTAssertEqual(ChannelTab.tabs(for: state("dm")), [.messages, .canvas, .pins, .files])
         XCTAssertEqual(ChannelTab.tabs(for: state("group_dm")), [.messages, .canvas, .pins, .files])
-        XCTAssertEqual(ChannelTab.events.label(upcoming: 3), "予定 3")
+        XCTAssertTrue(AppController.hasCalendar(state("public")))
+        XCTAssertFalse(AppController.hasCalendar(state("dm"))) // no shared calendar in a DM (§9 5.)
     }
 }
 

@@ -107,7 +107,7 @@ struct PushPayload: Equatable, Sendable {
         self.canvasId = canvasId
     }
 
-    /// M52: a calendar alarm opens its event (in its channel's 「予定」 tab, or in the calendar for my own).
+    /// M52: a calendar alarm opens its event in the workspace calendar (filtered to its channel for a channel's event).
     var opensEvent: Bool { kind == "calendar" && eventId != nil }
 
     /// M56: a task's notification opens the task (in its channel's 「タスク」 tab, or in 「自分のタスク」 for my own).

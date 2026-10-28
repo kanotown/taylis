@@ -376,7 +376,8 @@ struct ChannelInfoView: View {
                         .lineLimit(2)
                         .accessibilityAddTraits(.isHeader)
                     if let topic = channel.channel.topic, !topic.isEmpty {
-                        Text(topic).font(.subheadline).foregroundStyle(.secondary).multilineTextAlignment(.center).lineLimit(3)
+                        TopicTextView(controller: controller, topic: topic)  // its links tappable (2026-10-28)
+                            .font(.subheadline).foregroundStyle(.secondary).multilineTextAlignment(.center).lineLimit(3)
                     }
                     if let members, !channel.channel.isDm || others.count > 1 {
                         Text("メンバー \(members.count) 人").font(.footnote).foregroundStyle(.secondary)
@@ -493,7 +494,7 @@ struct ChannelInfoView: View {
                             }
                         } else {
                             if let current = channel.channel.topic, !current.isEmpty {
-                                Text(current)
+                                TopicTextView(controller: controller, topic: current)  // edited as plain text
                             } else {
                                 Text("未設定").foregroundStyle(.secondary)
                             }
@@ -527,8 +528,16 @@ struct ChannelInfoView: View {
                     }
                 }
                 if isChannel {
-                    // M95: the workflows the channel offers (read when the page opens); running only.
                     Section {
+                        if channel.isMember && AppController.hasCalendar(channel) {
+                            // 2026-10-28 (CALENDAR.md §7): 「このチャンネルの予定」, the workspace calendar on this channel.
+                            Button {
+                                controller.openChannelCalendar(channelId)
+                            } label: {
+                                Label(CalendarDates.channelCalendarLabel(controller.upcomingCount(channelId)), systemImage: "calendar")
+                            }
+                        }
+                        // M95: the workflows the channel offers (read when the page opens); running only.
                         NavigationLink {
                             WorkflowListView(controller: controller, channelId: channelId) { workflow in
                                 controller.runWorkflow(workflow, here: channelId)

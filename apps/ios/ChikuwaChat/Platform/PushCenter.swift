@@ -15,7 +15,8 @@ final class PushCenter {
     var pendingChannelId: String?
     /// The tapped notification's thread, when it was a reply (M28d): opened with the channel.
     var pendingParentId: String?
-    /// M52: a tapped alarm of my own calendar: MainView opens the calendar (the event is AppController.calendarOpen).
+    /// M52: a tapped calendar alarm (2026-10-28: a channel's too), or 「このチャンネルの予定」: MainView opens the calendar
+    /// (the event and the channel are AppController.calendarOpen).
     var pendingCalendar = false
     /// M56: a tapped notification of my own task: MainView opens 「自分のタスク」 (the task is AppController.taskOpen).
     var pendingTasks = false

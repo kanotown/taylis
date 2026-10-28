@@ -319,7 +319,7 @@ struct MainView: View {
             nav.dropChannels { store.channel($0) == nil }
         }
         .onChange(of: PushCenter.shared.pendingCalendar, initial: true) { _, pending in
-            // M52: a tapped alarm of my own calendar: the calendar, on the home tab, shows the event.
+            // M52: a tapped calendar alarm, or 「このチャンネルの予定」: the calendar, on the home tab, shows it (CalendarOpen).
             guard pending else { return }
             PushCenter.shared.pendingCalendar = false
             nav.landList(CalendarView.selectionId)

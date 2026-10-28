@@ -1,10 +1,18 @@
 import Foundation
 
-/// M52: an event to show, from a calendar alarm's notification (PUSH_NOTIFICATIONS.md §4, kind = calendar).
+/// M52: an event to show, from a calendar alarm's notification (PUSH_NOTIFICATIONS.md §4, kind = calendar), in the
+/// workspace calendar (CalendarView). 2026-10-28: also 「このチャンネルの予定」 (no event), the calendar on that channel.
 struct CalendarOpen: Equatable {
-    let eventId: String
-    /// nil: my own calendar (the calendar screen shows it); else that channel's 「予定」 tab.
+    /// nil: no event, only the channel's filter.
+    let eventId: String?
+    /// nil: my own calendar; else the channel's, which the calendar filters to.
     let channelId: String?
+
+    /// The filter the calendar takes: the channel's when I see its calendar; nil (the filter as it is) otherwise.
+    static func filter(_ open: CalendarOpen, readable: [String]) -> CalendarFilter? {
+        guard let channelId = open.channelId, readable.contains(channelId) else { return nil }
+        return .channel(channelId)
+    }
 }
 
 /// M52: which calendars a screen offers (CALENDAR.md §3, §9 5.).
@@ -29,4 +37,13 @@ extension AppController {
     nonisolated static func hasCalendar(_ channel: ChannelState) -> Bool {
         channel.channel.type == "public" || channel.channel.type == "private"
     }
+
+    /// 2026-10-28 (CALENDAR.md §7): 「このチャンネルの予定」: the workspace calendar (home tab) filtered to the channel.
+    func openChannelCalendar(_ channelId: String) {
+        calendarOpen = CalendarOpen(eventId: nil, channelId: channelId)
+        PushCenter.shared.pendingCalendar = true
+    }
+
+    /// The channel's events today and tomorrow (CalendarHub's upcoming, read when the conversation opens).
+    func upcomingCount(_ channelId: String) -> Int { calendarHub?.upcomingOf(channelId)?.count ?? 0 }
 }

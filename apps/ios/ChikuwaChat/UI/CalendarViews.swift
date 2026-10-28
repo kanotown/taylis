@@ -105,10 +105,13 @@ struct CalendarView: View {
             }
         }
         .onChange(of: controller.calendarOpen, initial: true) { _, open in
-            // A notification of my own calendar's event (M52): shown here.
-            guard let open, open.channelId == nil, let hub = calendarHub else { return }
+            // A notification of an event (M52), or 「このチャンネルの予定」 (2026-10-28, no event): the channel's events
+            // (its filter, so 「＋」 starts in its calendar), the event's form over them.
+            guard let open, let hub = calendarHub else { return }
             controller.calendarOpen = nil
-            Task { await CalendarNote.show(open.eventId, hub: hub, controller: controller) { form = .event($0) } }
+            if let preset = CalendarOpen.filter(open, readable: controller.readableCalendars.map(\.id)) { filter = preset }
+            guard let eventId = open.eventId else { return }
+            Task { await CalendarNote.show(eventId, hub: hub, controller: controller) { form = .event($0) } }
         }
         .fullScreenCover(item: $form) { target in
             CalendarEventForm(controller: controller, hub: calendarHub, target: target)
@@ -433,75 +436,6 @@ private struct CompactLabelStyle: LabelStyle {
         HStack(spacing: 2) {
             configuration.icon
             configuration.title
-        }
-    }
-}
-
-/// M52: a channel's 「予定」 tab (public and private channels; DMs have no shared calendar): its events for the next 60
-/// days and 「予定を追加」 for those who may post.
-struct ChannelEventsPane: View {
-    @Bindable var controller: AppController
-    let channel: ChannelState
-    var hub: CalendarHub? = nil
-    var today: DayKey? = nil
-    @State private var form: CalendarFormTarget?
-
-    private var calendarHub: CalendarHub? { hub ?? controller.calendarHub }
-    private var now: DayKey { today ?? CalendarDates.today() }
-    private var key: String { "channel:\(channel.id)" }
-
-    var body: some View {
-        let window = calendarHub?.window(key)
-        let end = CalendarDates.addDays(now, CalendarDates.listDays)
-        let canAdd = controller.writableCalendars.contains { $0.id == channel.id }
-        VStack(spacing: 0) {
-            HStack(spacing: 8) {
-                Text("予定").font(.subheadline.weight(.semibold))
-                Text("これから \(CalendarDates.listDays) 日").font(.caption).foregroundStyle(.secondary)
-                Spacer()
-                if canAdd {
-                    Button { form = .new(EventDraft.new(on: now, channelId: channel.id)) } label: {
-                        Label("予定を追加", systemImage: "plus").font(.subheadline)
-                    }
-                    .buttonStyle(.borderedProminent).prominentTint()
-                    .controlSize(.small)
-                    .disabled(calendarHub == nil)
-                }
-            }
-            .padding(.horizontal, 16)
-            .padding(.vertical, 8)
-            Divider()
-            let days = CalendarDates.agenda(window?.events ?? [], from: now, to: end)
-            if calendarHub == nil {
-                CalendarNote(title: tr("接続すると表示します"), systemImage: "calendar")
-            } else if window?.state == .unsupported {
-                CalendarNote(title: tr("このサーバはカレンダーに対応していません"), systemImage: "calendar", detail: tr("サーバの更新後に使えるようになります。"))
-            } else if days.isEmpty {
-                if window == nil || window?.state == .loading {
-                    ProgressView("読み込み中…").frame(maxWidth: .infinity, maxHeight: .infinity)
-                } else if window?.state == .failed {
-                    CalendarLoadFailed { await calendarHub?.reload(key) }
-                } else {
-                    CalendarNote(title: tr("これからの予定はありません"), systemImage: "calendar",
-                                 detail: canAdd ? tr("ゼミや締切など、このチャンネルのメンバーと共有する予定を追加できます。") : nil)
-                }
-            } else {
-                CalendarAgendaList(days: days, today: now, showCalendar: false, failed: window?.state == .failed) { form = .event($0) }
-                    .refreshable { await calendarHub?.reload(key) }
-            }
-        }
-        .task(id: "\(key) \(now)") {
-            await calendarHub?.open(key, from: CalendarDates.parseDay(now), to: CalendarDates.parseDay(end), channelId: channel.id)
-        }
-        .onDisappear { if form == nil { calendarHub?.close(key) } }
-        .onChange(of: controller.calendarOpen, initial: true) { _, open in
-            // A notification of this channel's event (M52): shown over its tab.
-            guard let open, open.channelId == channel.id, let hub = calendarHub else { return }
-            controller.calendarOpen = nil
-            Task { await CalendarNote.show(open.eventId, hub: hub, controller: controller) { form = .event($0) } }
-        }
-        .fullScreenCover(item: $form) { target in
-            CalendarEventForm(controller: controller, hub: calendarHub, target: target)
         }
     }
 }

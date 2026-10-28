@@ -17,7 +17,7 @@ protocol CalendarApi: AnyObject {
     func deleteCalendarOccurrence(seriesId: String, occurrenceStart: String, scope: OccurrenceScope) async throws
 }
 
-/// A screen's range of the calendar: the calendar's month or list, a channel's 「予定」 tab.
+/// A screen's range of the calendar: the calendar's month or list.
 struct CalendarWindow: Equatable {
     enum State: Equatable {
         case loading, ready, failed

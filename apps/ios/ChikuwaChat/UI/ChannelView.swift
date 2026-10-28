@@ -439,7 +439,6 @@ struct ChannelView: View {
                     }
                     // M29: the tabs, then the links (the link bar of M15f moved into this row).
                     ChannelTabsRow(controller: controller, channel: channel, tab: $tab,
-                                   upcoming: controller.calendarHub?.upcomingOf(channel.id)?.count ?? 0,
                                    onAddLink: { sheet = .link(nil) }, onEditLink: { sheet = .link($0) })
                 } else {
                     ChannelLinksRow(controller: controller, channel: channel, onAdd: { sheet = .link(nil) }, onEdit: { sheet = .link($0) })  // M15f
@@ -658,8 +657,6 @@ struct ChannelView: View {
                     Group {
                         if tab == .canvas, let channel {
                             CanvasPane(controller: controller, channel: channel) { thread = ThreadTarget(id: $0) }  // M45; M58 コメント
-                        } else if tab == .events, let channel {
-                            ChannelEventsPane(controller: controller, channel: channel)  // M52
                         } else if tab == .tasks, let channel {
                             ChannelTasksPane(controller: controller, channel: channel)  // M56
                         } else if tab == .drive, let channel {
@@ -719,6 +716,12 @@ struct ChannelView: View {
                         }
                         NotificationMenu(controller: controller, channel: channel)
                         DmCloseButton(controller: controller, channel: channel)  // M141
+                        if AppController.hasCalendar(channel) {
+                            // 2026-10-28 (CALENDAR.md §7): the workspace calendar on this channel (no 「予定」 tab any more).
+                            Button(CalendarDates.channelCalendarLabel(controller.upcomingCount(channelId)), systemImage: "calendar") {
+                                controller.openChannelCalendar(channelId)
+                            }
+                        }
                     }
                     if controller.canSummarize(channelId) {  // M66
                         AiSummaryMenu(channelId: channelId, target: controller.aiHub?.target(channelId)) { request in aiSummary = request; controller.summarize(request) }
@@ -767,10 +770,6 @@ struct ChannelView: View {
                        markUnread: markUnreadAction, onClosed: sheetClosed)
         .modifier(ConversationCarrier(controller: controller, channelId: channelId, tab: $tab, keptRowId: $keptRowId, showInfo: $showInfo,
                                       messageSheet: $messageSheet, channelSheet: $sheet, carriedRowId: $carriedRowId))
-        .onChange(of: controller.calendarOpen, initial: true) { _, open in
-            // M52: a notification of this channel's event: its 「予定」 tab, which shows the event.
-            if let open, open.channelId == channelId, channel.map(AppController.hasCalendar) == true { tab = .events }
-        }
         .onChange(of: controller.taskOpen, initial: true) { _, open in
             // M56: a task's notification, or 「自分の担当」's channel name: its 「タスク」 tab (which shows the task).
             guard let open, open.channelId == channelId, channel.map(TaskRules.hasBoard) == true else { return }
@@ -796,7 +795,9 @@ struct ChannelView: View {
     }
 
     private func headerSubtitle(_ channel: ChannelState) -> String? {
-        if let topic = channel.channel.topic, !topic.isEmpty { return topic }
+        // The topic as it reads (a link: its label; 2026-10-28): the header is one button that opens the details, where
+        // the topic's links can be tapped (TopicText).
+        if let topic = channel.channel.topic, !topic.isEmpty { return TopicText.plain(topic) { controller.store.users[$0]?.displayName } }
         if channel.channel.isDm {
             // 1:1 DM: the other person's presence (SYNC_PROTOCOL.md §5.2; 「取り込み中（〜15:30）」 with its end, as the
             // profile card, PRESENCE.md §11.5) and custom status (M11d).

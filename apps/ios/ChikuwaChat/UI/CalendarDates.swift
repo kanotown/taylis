@@ -8,7 +8,7 @@ typealias DayKey = String
 /// start on Sunday (日曜始まり). A timed event covers the local days from its start to the instant before its end; an
 /// all-day one its dates (the end included), whatever the zone.
 enum CalendarDates {
-    /// How far ahead the list (一覧) and a channel's 「予定」 tab read.
+    /// How far ahead the list (一覧) reads.
     static let listDays = 60
     /// The longest events (the server refuses longer ones: 400 calendar_event_too_long).
     static let maxTimedDays = 14
@@ -16,7 +16,7 @@ enum CalendarDates {
     static let maxTitle = 200
     static let maxLocation = 200
     static let maxDescription = 4000
-    /// Today and tomorrow (the 「予定 N」 count of a channel's tab).
+    /// Today and tomorrow (the count of 「このチャンネルの予定（今日・明日 N 件）」).
     static let upcomingDays = 2
 
     static var weekdays: [String] { AppDates.weekdaysSundayFirst }
@@ -263,8 +263,11 @@ enum CalendarDates {
         return "\(when) \(event.title)" + ((event.channelName ?? channelName).map { " (#\($0))" } ?? "")
     }
 
-    /// A channel's tab: 「予定 2」 while it has events today or tomorrow.
-    static func eventsTabLabel(_ count: Int) -> String { count > 0 ? tr("予定 \(count)") : tr("予定") }
+    /// 2026-10-28 (CALENDAR.md §7): the conversation's ⋯ / details item that opens the workspace calendar filtered to
+    /// the channel, with its events today and tomorrow when it has some (the desktop's channelCalendarLabel).
+    static func channelCalendarLabel(_ count: Int) -> String {
+        count > 0 ? tr("このチャンネルの予定（今日・明日 \(count) 件）") : tr("このチャンネルの予定")
+    }
 
     // MARK: colours
 
