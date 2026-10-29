@@ -431,6 +431,12 @@ export function Sidebar({ controller, channels, currentId, unreadOnly, onToggleU
         onDropChannel={backToDefault}
         // Its header drags among the sections (a server without desktop_places: it stays where it is).
         sectionId={timesMovable ? TIMES_SECTION : undefined}
+        // 2026-10-30 (TIMES_FEED.md §10): the feed one click away again, always shown left of ＋ and ⋯ as before v0.1.56.
+        shortcut={onTimesFeed ? (
+          <IconButton tone="sidebar" label={t("sidebar.timesFeed")} className="h-6 w-6" onClick={onTimesFeed}>
+            <Newspaper size={14} />
+          </IconButton>
+        ) : undefined}
         add={onCreateTimes && !hasMyTimes && !controller.isGuest ? (
           <IconButton tone="sidebar" label={t("sidebar.createTimes")} className="h-6 w-6" onClick={onCreateTimes}>
             <Plus size={14} />
@@ -847,9 +853,11 @@ function SidebarIdentity({ controller, meId, name, status, presence, withAvatar 
  * A sidebar section. M26 (Slack): the header folds it (`onToggle`), with an icon before the title; a conversation row
  * dropped on it goes to `onDropChannel`.
  */
-function Section({ title, icon, add, menu, children, collapsed = false, onToggle, onDropChannel, sectionId, acceptsSection: takes, onDropSection }: {
+function Section({ title, icon, shortcut, add, menu, children, collapsed = false, onToggle, onDropChannel, sectionId, acceptsSection: takes, onDropSection }: {
   title: string;
   icon?: ReactNode;
+  /** An always-shown header button left of `add` and the ⋯ `menu` (Times: its feed, TIMES_FEED.md §10). */
+  shortcut?: ReactNode;
   /** The header's one primary action (＋), before its ⋯ `menu` (2026-10-12: both show on hover / focus, always on touch). */
   add?: ReactNode;
   menu?: ReactNode;
@@ -940,6 +948,7 @@ function Section({ title, icon, add, menu, children, collapsed = false, onToggle
         ) : (
           <span className="flex min-w-0 items-center gap-1 truncate">{icon}{title}</span>
         )}
+        {shortcut && <span data-section-shortcut="" className="flex shrink-0 items-center">{shortcut}</span>}
         {(add || menu) && (
           // Shown while the header is hovered or has the focus, or one of its menus is open; always on a touch screen.
           <span

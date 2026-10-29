@@ -100,16 +100,28 @@ describe("the section headers: one ＋ and one ⋯", () => {
     expect(w.handlers.onDirectory).toHaveBeenCalledTimes(1);
   });
 
-  it("「Times」: ＋ to make my times (until I have one) and ⋯ with the feed and 上へ / 下へ", async () => {
+  it("「Times」: the feed button, ＋ to make my times (until I have one) and ⋯ with the feed and 上へ / 下へ", async () => {
     const w = draw();
-    expect(headerButtons("Times")).toEqual(["Times", "自分の times を作る", "Times のメニュー"]);
+    expect(headerButtons("Times")).toEqual(["Times", "Times フィード", "自分の times を作る", "Times のメニュー"]);
     const menu = await sectionMenu("Times");
     expect(items(menu)).toEqual(["Times フィード", "上へ", "下へ"]);
     fireEvent.click(within(menu).getByRole("menuitem", { name: "Times フィード" }));
     expect(w.handlers.onTimesFeed).toHaveBeenCalledTimes(1);
     cleanup();
     draw({ myTimes: true });
-    expect(headerButtons("Times")).toEqual(["Times", "Times のメニュー"]);
+    expect(headerButtons("Times")).toEqual(["Times", "Times フィード", "Times のメニュー"]);
+  });
+
+  it("「Times」: the feed button left of ⋯ is always shown and opens the feed in one click (TIMES_FEED.md §10)", () => {
+    const w = draw({ myTimes: true });
+    const feed = within(headerOf("Times")).getByRole("button", { name: "Times フィード" });
+    const more = within(headerOf("Times")).getByRole("button", { name: "Times のメニュー" });
+    expect(feed.compareDocumentPosition(more) & Node.DOCUMENT_POSITION_FOLLOWING).toBeTruthy();
+    // Not among the hover-only ＋ / ⋯.
+    expect(feed.closest("[data-section-actions]")).toBeNull();
+    expect(feed.closest("[data-section-shortcut]")).not.toBeNull();
+    fireEvent.click(feed);
+    expect(w.handlers.onTimesFeed).toHaveBeenCalledTimes(1);
   });
 
   it("my own section: only its ⋯ (unchanged)", () => {
