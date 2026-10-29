@@ -71,7 +71,7 @@ extension AppController {
     /// The plan's folder, asked of the server (the channel's drive is made on first use); nil after saying why not.
     func composerDriveTarget(_ channelId: String, plan: ComposerDrive.Plan) async -> ComposerDrive.Resolved? {
         guard let api, let channel = store.channel(channelId)?.channel else { return nil }
-        do { return try await ComposerDrive.resolve(plan, channel: channel, api: api) } catch {
+        do { return try await ComposerDrive.resolve(plan, channel: channel, api: api, zone: store.channelFilesZone ?? DriveUploadRules.postsZone) } catch {
             self.error = describe(error)
             return nil
         }

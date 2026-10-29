@@ -648,6 +648,7 @@ final class SyncEngine {
     private func applyBootstrap(_ bootstrap: BootstrapOut) {
         store.setMe(bootstrap.me)
         store.limits = bootstrap.limits
+        store.channelFilesZone = bootstrap.channelFilesTimezone.flatMap { TimeZone(identifier: $0) }
         for user in bootstrap.users { store.upsertUser(user) }
         var seen = Set<String>()
         for channel in bootstrap.channels {

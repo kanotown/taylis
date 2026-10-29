@@ -204,6 +204,20 @@ protocol DriveApi: AnyObject {
     func requestDrivePreview(_ itemId: String) async throws -> AttachmentPreviewOut?
     /// §29: a folder made from the phone (`client_op_id`: a retry answers the same folder).
     func createDriveFolder(parentId: String, name: String, clientOpId: String) async throws -> DriveItemOut
+    /// CF5 (docs/CHANNEL_FILES.md §26): the channel's 「投稿のファイル › 2026-10」, made when missing (a server before it:
+    /// 404 / 405, no such route).
+    func driveChannelPosts(channelId: String) async throws -> DriveChannelPostsOut
+}
+
+/// POST /drive/channel-posts (CF5 §26): both folders nil while the channel's files stay out of its drive.
+struct DriveChannelPostsOut: Codable, Equatable {
+    var location: DriveLocationOut
+    var filesToDrive: Bool
+    var postsFolder: DriveItemOut?
+    var monthFolder: DriveItemOut?
+    /// 「2026-10」 in `timezone` (CHANNEL_FILES_TZ).
+    var month: String? = nil
+    var timezone: String? = nil
 }
 
 /// POST /drive/items/{id}/preview.
@@ -259,6 +273,10 @@ extension ApiClient: DriveApi {
     func createDriveFolder(parentId: String, name: String, clientOpId: String) async throws -> DriveItemOut {
         try await requestJSON("POST", "/api/v1/drive/folders",
                               body: .object(["parent_id": .string(parentId), "name": .string(name), "client_op_id": .string(clientOpId)]))
+    }
+
+    func driveChannelPosts(channelId: String) async throws -> DriveChannelPostsOut {
+        try await requestJSON("POST", "/api/v1/drive/channel-posts", body: .object(["channel_id": .string(channelId)]))
     }
 
     /// CF3 (docs/CHANNEL_FILES.md §6.5): a posted file back from the drive's trash (「戻す」 under 「削除されたファイル」).

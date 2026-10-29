@@ -94,13 +94,39 @@ extension ShareApi {
         var filesToDriveEffective: Bool?
     }
 
+    private struct ChannelPosts: Decodable {
+        let location: ShareDriveLocation
+        let postsFolder: ShareDriveItem?
+        let monthFolder: ShareDriveItem?
+    }
+
     /// Where files over the attachment limit shared into this conversation go — the app's composer's rules
-    /// (ComposerDrive): a public or private channel's 「投稿のファイル › 2026-10」 (the month made on completion), its
-    /// drive's top when its posted files stay out of the drive or 「投稿のファイル」 is not made yet, マイドライブ for a DM
-    /// or a channel drive I cannot write to. nil: archived (the size limit as before).
+    /// (ComposerDrive, §26): a public or private channel's 「投稿のファイル › 2026-10」 (POST /drive/channel-posts; an older
+    /// server: the root's listing and the month made on completion), its drive's top when its posted files stay out of the
+    /// drive or 「投稿のファイル」 is not made yet, マイドライブ for a DM or a channel drive I cannot write to. nil: archived
+    /// (the size limit as before).
     func largeFilesTarget(channelId: String, now: Date = Date()) async throws -> DriveUploadTarget? {
         let channel: LargeFilesChannel = try await getJSON("/api/v1/channels/\(channelId)")
         if channel.archived { return nil }
+        if (channel.type == "public" || channel.type == "private") && channel.filesToDriveEffective == true {
+            let (data, status) = try await driveCall("POST", "/api/v1/drive/channel-posts", json: ["channel_id": channelId])
+            if (200..<300).contains(status), let out = try? JSON.snakeDecoder.decode(ChannelPosts.self, from: data) {
+                let name = channel.name ?? out.location.name
+                if out.location.canWrite == true {
+                    if out.postsFolder != nil, let month = out.monthFolder {
+                        return DriveUploadTarget(parentId: month.id, locationId: out.location.id,
+                                                 label: "#\(name) › \(localized("投稿のファイル")) › \(month.name)")
+                    }
+                    return DriveUploadTarget(parentId: out.location.rootId, locationId: out.location.id, label: "#\(name)")
+                }
+            } else if status == 403 {
+                let mine = try await myDrive()
+                return DriveUploadTarget(parentId: mine.rootId, locationId: mine.id, label: mine.title)
+            } else if !(status == 405 || (status == 404 && !String(decoding: data, as: UTF8.self).contains("drive_item_not_found"))) {
+                throw Self.failure(status: status, data: data)
+            }
+            // A server before §26: below.
+        }
         if channel.type == "public" || channel.type == "private" {
             let (data, status) = try await driveCall("POST", "/api/v1/drive/locations/resolve", json: ["kind": "channel", "channel_id": channelId])
             guard (200..<300).contains(status), let location = try? JSON.snakeDecoder.decode(ShareDriveLocation.self, from: data) else {

@@ -396,10 +396,39 @@ enum ComposerDrive {
     /// The root's pages read to find 「投稿のファイル」 (folders come first, by name).
     static let rootPages = 10
 
-    /// The upload's folder: the plan's drive, resolved (made on first use) through the drive's API.
+    /// A server before §26 (no POST /drive/channel-posts), not a refusal of it.
+    static func noChannelPostsRoute(_ error: Error) -> Bool {
+        guard case ApiError.api(let status, let code, _) = error else { return false }
+        return status == 405 || (status == 404 && code != "drive_item_not_found")
+    }
+
+    /// The upload's folder (§26, the same on every client): with the channel's files going to its drive, the month folder
+    /// POST /drive/channel-posts names (made when missing); refused there (403: I cannot write) → マイドライブ. A server
+    /// before it: the channel's drive, its 「投稿のファイル」 found in the root's listing and the month made on completion
+    /// (`relative_dir`, in `zone`), or the top while 「投稿のファイル」 is not made yet.
     @MainActor
-    static func resolve(_ plan: Plan, channel: ChannelOut, api: DriveApi, now: Date = Date()) async throws -> Resolved {
+    static func resolve(_ plan: Plan, channel: ChannelOut, api: DriveApi, now: Date = Date(),
+                        zone: TimeZone = DriveUploadRules.postsZone) async throws -> Resolved {
         let name = channel.name ?? ""
+        if case .channel(posts: true) = plan {
+            do {
+                let out = try await api.driveChannelPosts(channelId: channel.id)
+                if out.location.canWrite {
+                    if out.postsFolder != nil, let month = out.monthFolder {
+                        let label = "#\(name) › \(tr("投稿のファイル")) › \(month.name)"
+                        return Resolved(target: DriveUploadTarget(parentId: month.id, locationId: out.location.id, label: label),
+                                        destination: .channelPosts(channelName: name))
+                    }
+                    return Resolved(target: DriveUploadTarget(parentId: out.location.rootId, locationId: out.location.id, label: "#\(name)"),
+                                    destination: .channelRoot(channelName: name))
+                }
+                return try await myDrive(api, fromChannel: true)
+            } catch ApiError.api(status: 403, _, _) {
+                return try await myDrive(api, fromChannel: true)
+            } catch let error where noChannelPostsRoute(error) {
+                // An older server: below.
+            }
+        }
         if case .channel(let posts) = plan {
             let location = try await api.resolveDrive(channelId: channel.id)
             if location.canWrite {
@@ -407,7 +436,7 @@ enum ComposerDrive {
                 for _ in 0..<(posts ? rootPages : 0) {
                     let page = try await api.driveChildren(folderId: location.rootId, sort: .name, descending: false, cursor: cursor)
                     if let posts = postsFolder(page.items) {
-                        let month = monthName(now)
+                        let month = monthName(now, zone: zone)
                         let label = "#\(name) › \(tr("投稿のファイル")) › \(month)"
                         return Resolved(target: DriveUploadTarget(parentId: posts.id, locationId: location.id, label: label, relativeDir: month),
                                         destination: .channelPosts(channelName: name))
@@ -419,9 +448,14 @@ enum ComposerDrive {
                                 destination: .channelRoot(channelName: name))
             }
         }
+        return try await myDrive(api, fromChannel: plan != .myDrive)
+    }
+
+    @MainActor
+    private static func myDrive(_ api: DriveApi, fromChannel: Bool) async throws -> Resolved {
         let mine = try await api.resolveDrive(channelId: nil)
         return Resolved(target: DriveUploadTarget(parentId: mine.rootId, locationId: mine.id, label: tr("マイドライブ")),
-                        destination: .myDrive(fromChannel: plan != .myDrive))
+                        destination: .myDrive(fromChannel: fromChannel))
     }
 
     /// The question's text: where the file goes, and who cannot open its link.
