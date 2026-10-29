@@ -494,7 +494,7 @@ async def _completed_out(
         except AppError:
             row = None
         if row is not None:
-            item: DriveItemOut = await service.item_out(db, row)
+            item: DriveItemOut = await service.item_out(db, row, viewer=actor)
             return DriveUploadCompleteOut(
                 status="completed", item=item, version_id=upload.version_id
             )
