@@ -377,7 +377,6 @@ struct MessageActionsSheet: View {
                 QuickReactionsRow {
                     ForEach(quickReactions, id: \.self) { emoji in
                         Button {
-                            if !mine.contains(emoji) { EmojiUsage.note(emoji) } // C10: counts toward the picker's 「よく使う」
                             run { await controller.toggleReaction(message, emoji: emoji) }
                         } label: {
                             QuickReactionFace(wide: QuickReactions.isWide(emoji, store: store),

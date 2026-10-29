@@ -4,7 +4,7 @@ import { type ReactNode, useEffect, useState } from "react";
 import type { AppController } from "../state/app";
 import type { MessageState } from "../sync/types";
 import { CustomEmojiImage, customEmojiName } from "./customEmoji";
-import { EmojiPicker, readRecentEmoji, rememberEmoji } from "./EmojiPicker";
+import { EmojiPicker, readRecentEmoji } from "./EmojiPicker";
 import { DeleteDriveFilesOption } from "./ChannelFiles";
 import { firstPostedItem } from "../drive/channelFiles";
 import { type MessageActionKey, messageActions } from "./messageActions";
@@ -144,12 +144,10 @@ export function MessageActionsSheet({ controller, message, initialView = "action
         {view === "emoji" ? (
           <div className="px-3 pb-3">
             <EmojiPicker
-              recent={readRecentEmoji()}
               custom={[...store.customEmoji.values()]}
               controller={controller}
               onPick={(entry) => {
                 onClose();
-                rememberEmoji(entry.glyph);
                 void controller.toggleReaction(message, entry.glyph);
               }}
             />

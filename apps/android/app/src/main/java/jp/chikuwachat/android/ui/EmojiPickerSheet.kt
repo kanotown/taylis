@@ -50,6 +50,9 @@ import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
+import androidx.compose.ui.layout.onSizeChanged
+import androidx.compose.ui.platform.LocalDensity
+import androidx.compose.runtime.mutableIntStateOf
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.semantics.Role
 import androidx.compose.ui.semantics.contentDescription
@@ -76,25 +79,28 @@ data class EmojiSection(val key: String, val label: String, val cells: List<Stri
 object EmojiPicker {
     const val FREQUENT = "frequent"
     const val CUSTOM = "custom"
-    /** Two rows of the eight-column grid. */
-    const val FREQUENT_MAX = 16
+    /** The sheet's columns. */
+    const val COLUMNS = 8
     private val CUSTOM_GLYPH = Regex("^:([^:\\s]+):$")
 
     fun customName(glyph: String): String? = if (!glyph.startsWith(':')) null else CUSTOM_GLYPH.find(glyph)?.groupValues?.get(1)
 
     /**
-     * 「よく使う」: this device's recently used emoji (QuickReactions' list, most recent first: reactions and emoji put in
-     * the composer), as the web's 「最近」. A custom emoji only while it still exists.
+     * 「よく使う」 (docs/EMOJI.md §9.4): this device's [FrequentEmoji] list (best first), a custom emoji only while it still
+     * exists, each once, then whole rows of [COLUMNS] ([FrequentEmoji.fill]; [span]: the cells a text emoji's pill takes).
      */
-    fun frequent(recent: List<String>, customNames: Set<String>, max: Int = FREQUENT_MAX): List<String> =
-        recent.filter { it.isNotEmpty() && (customName(it)?.let { name -> name in customNames } ?: true) }.distinct().take(max)
+    fun frequent(ranked: List<String>, customNames: Set<String>, span: (String) -> Int = { 1 }): List<String> =
+        FrequentEmoji.fill(
+            ranked.filter { it.isNotEmpty() && (customName(it)?.let { name -> name in customNames } ?: true) }.distinct(),
+            COLUMNS, span = span,
+        ).flatten()
 
     /**
      * Browsing (no search words), one list as in Slack: 「よく使う」 first when there is any, then 「カスタム」 (M100: the
      * ungrouped custom emoji), then a section per pack ([customAndPacks]), then the standard categories.
      */
-    fun sections(recent: List<String>, customNames: List<String>, packs: List<EmojiSection> = emptyList()): List<EmojiSection> {
-        val frequent = frequent(recent, customNames.toSet() + packs.flatMap { p -> p.cells.mapNotNull { customName(it) } })
+    fun sections(ranked: List<String>, customNames: List<String>, packs: List<EmojiSection> = emptyList(), span: (String) -> Int = { 1 }): List<EmojiSection> {
+        val frequent = frequent(ranked, customNames.toSet() + packs.flatMap { p -> p.cells.mapNotNull { customName(it) } }, span)
         return buildList {
             if (frequent.isNotEmpty()) add(EmojiSection(FREQUENT, L10n.str(R.string.emoji_picker_sheet_frequently_used), frequent))
             if (customNames.isNotEmpty()) add(EmojiSection(CUSTOM, L10n.str(R.string.common_custom), customNames.map { ":$it:" }))
@@ -162,8 +168,8 @@ object EmojiPicker {
 fun EmojiPickerSheet(
     onDismiss: () -> Unit,
     onPick: (String) -> Unit,
-    /** This device's recent emoji, most recent first (QuickReactions.read). */
-    recent: List<String> = emptyList(),
+    /** This device's 「よく使う」, best first (FrequentEmoji.read). */
+    frequent: List<String> = emptyList(),
     /**
      * M12f: the custom emoji (under 「カスタム」, found by name; a pick hands back `:name:`) and their images, animated
      * ones moving. The sheet follows the store's version itself: an image that arrives while it is open shows at once.
@@ -184,7 +190,13 @@ fun EmojiPickerSheet(
     // M100: a section (and tab) per pack after 「カスタム」, which keeps the ungrouped ones.
     val packs = remember(version) { store.sortedEmojiPacks() }
     val split = remember(custom, packs) { EmojiPicker.customAndPacks(custom, packs) }
-    val sections = remember(recent, split) { EmojiPicker.sections(recent, split.first, split.second) }
+    // The grid's width: 「よく使う」 fills whole rows, a text emoji's pill taking the cells its width needs.
+    val density = LocalDensity.current
+    var gridWidth by remember { mutableIntStateOf(0) }
+    val cellDp = if (gridWidth > 0) with(density) { gridWidth.toDp().value } / EmojiPicker.COLUMNS else 44f
+    val sections = remember(frequent, split, cellDp) {
+        EmojiPicker.sections(frequent, split.first, split.second) { glyph -> pillSpan(customByName, glyph, cellDp, EmojiPicker.COLUMNS) }
+    }
     val headers = remember(sections) { EmojiPicker.headerIndices(sections) }
     val packById = remember(packs) { packs.associateBy { it.id } }
     val searching = query.isNotBlank()
@@ -214,7 +226,7 @@ fun EmojiPickerSheet(
     fun span(section: String, glyph: String, maxLineSpan: Int): GridItemSpan {
         val emoji = EmojiPicker.customName(glyph)?.let { customByName[it] } ?: return GridItemSpan(1)
         return when {
-            emoji.isText -> GridItemSpan(kotlin.math.ceil((28 * CustomEmoji.aspect(emoji) + 12) / 44f).toInt().coerceIn(1, maxLineSpan))
+            emoji.isText -> GridItemSpan(pillSpan(customByName, glyph, cellDp, maxLineSpan))
             section.startsWith(EmojiPicker.PACK_PREFIX) -> GridItemSpan(2.coerceAtMost(maxLineSpan))
             else -> GridItemSpan(1)
         }
@@ -301,7 +313,7 @@ fun EmojiPickerSheet(
             }
             LazyVerticalGrid(
                 columns = GridCells.Fixed(8), state = grid,
-                modifier = Modifier.fillMaxWidth().weight(1f).padding(horizontal = 8.dp),
+                modifier = Modifier.fillMaxWidth().weight(1f).padding(horizontal = 8.dp).onSizeChanged { gridWidth = it.width },
             ) {
                 if (searching) {
                     items(results, key = { "s:$it" }, contentType = { if (it.startsWith(':')) "custom" else "emoji" }, span = { span("search", it, maxLineSpan) }) { Cell("search", it) }
@@ -330,4 +342,10 @@ fun EmojiPickerSheet(
             }
         }
     }
+}
+
+/** The cells of [cell] dp a text emoji's pill (28 dp high, 12 dp around) takes in the sheet's grid; 1 for anything else. */
+private fun pillSpan(customByName: Map<String, CustomEmojiOut>, glyph: String, cell: Float, columns: Int): Int {
+    val emoji = EmojiPicker.customName(glyph)?.let { customByName[it] }?.takeIf { it.isText } ?: return 1
+    return FrequentEmoji.span(28.0 * CustomEmoji.aspect(emoji) + 12, cell.toDouble(), 0.0, columns)
 }

@@ -21,7 +21,7 @@ import { aiBotIds, conversationContext, encodeMentions, type MentionCandidate, m
 import { AddEmojiDialog, CustomEmojiImage } from "./customEmoji";
 import { canPostTopLevel } from "./channels";
 import { completeEmoji, customEmojiCandidates, emojiCandidates, emojiQuery, type EmojiEntry } from "./emoji";
-import { EmojiPicker, readRecentEmoji, rememberEmoji } from "./EmojiPicker";
+import { EmojiPicker, rememberEmoji } from "./EmojiPicker";
 import { MessageBody } from "./MessageBody";
 import { isSendKey, readFormatBar, sendKeyLabel, writeFormatBar } from "./prefs";
 import { decidePaste, plainPasteRequested, tableInsertion } from "./tablePaste";
@@ -1036,7 +1036,7 @@ export function Composer({
                 <Smile size={15} />
               </button>
               <PopoverContent align="start" side="top" className="w-auto p-3" onInteractOutside={emojiAnchor.keepOpenOnButton}>
-                <EmojiPicker recent={readRecentEmoji()} custom={[...store.customEmoji.values()]} controller={controller} onAddCustom={() => { setEmojiOpen(false); setAddEmojiOpen(true); }} onPick={insertEmoji} />
+                <EmojiPicker custom={[...store.customEmoji.values()]} controller={controller} onAddCustom={() => { setEmojiOpen(false); setAddEmojiOpen(true); }} onPick={insertEmoji} />
               </PopoverContent>
             </PopoverRoot>
             <IconButton label={t("composer.addMention")} className="hidden h-7 w-7 shrink-0 text-muted hover:text-ink @[16rem]:inline-flex" disabled={preview} onMouseDown={(e) => e.preventDefault()} onClick={startMention}>

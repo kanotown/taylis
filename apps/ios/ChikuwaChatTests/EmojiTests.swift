@@ -11,41 +11,88 @@ final class EmojiTests: XCTestCase {
         XCTAssertEqual(Emoji.byShortcode("bento")?.glyph, "🍱")
     }
 
-    /// MOBILE_POLISH.md C10: 「よく使う」 is the most used first, the latest among equals; it starts from the recent list.
-    func testFrequentEmojiRanksByUseThenRecency() {
-        var usage = EmojiUsage()
-        XCTAssertEqual(usage.frequent, [])
-        for glyph in ["👍", "🎉", "👍", "❤️", "🎉", "👍"] { usage.record(glyph) }
-        XCTAssertEqual(usage.frequent, ["👍", "🎉", "❤️"])
-        usage.record("❤️")
-        usage.record("❤️") // 3 uses, as 👍, and later
-        XCTAssertEqual(usage.frequent, ["❤️", "👍", "🎉"])
-        usage.record("")
-        XCTAssertEqual(usage.entries.count, 3)
+    /// docs/EMOJI.md §9.4: 「よく使う」's rule, the cases shared with the web and Android (apps/shared/emoji-frequent.json).
+    func testFrequentEmojiSharedCases() throws {
+        let url = URL(fileURLWithPath: #filePath).deletingLastPathComponent().deletingLastPathComponent().deletingLastPathComponent()
+            .appendingPathComponent("shared/emoji-frequent.json")
+        let doc = try XCTUnwrap(JSONSerialization.jsonObject(with: Data(contentsOf: url)) as? [String: Any])
+        XCTAssertEqual((doc["half_life_ms"] as? NSNumber)?.int64Value, EmojiUsage.halfLife)
+        XCTAssertEqual(doc["kept"] as? Int, EmojiUsage.kept)
+        XCTAssertEqual(doc["rows"] as? Int, EmojiUsage.rows)
+        for c in try XCTUnwrap(doc["rank"] as? [[String: Any]]) {
+            var usage = EmojiUsage()
+            for use in try XCTUnwrap(c["uses"] as? [[Any]]) {
+                usage.record(try XCTUnwrap(use[0] as? String), now: try XCTUnwrap(use[1] as? NSNumber).int64Value)
+            }
+            XCTAssertEqual(usage.frequent, c["ranked"] as? [String], c["name"] as? String ?? "")
+        }
+        let k = try XCTUnwrap(doc["kept_case"] as? [String: Any])
+        var full = EmojiUsage()
+        let start = try XCTUnwrap(k["start"] as? NSNumber).int64Value, step = try XCTUnwrap(k["step"] as? NSNumber).int64Value
+        for i in 0..<(try XCTUnwrap(k["uses_count"] as? Int)) { full.record("e\(i)", now: start + Int64(i) * step) }
+        XCTAssertEqual(full.entries.count, k["count"] as? Int)
+        XCTAssertFalse(full.entries.contains { $0.glyph == k["forgotten"] as? String })
+        XCTAssertEqual(full.frequent.first, k["first"] as? String)
+        for c in try XCTUnwrap(doc["seed"] as? [[String: Any]]) {
+            let legacy = try XCTUnwrap(c["legacy"] as? [[String: Any]]).map { ($0["glyph"] as? String ?? "", $0["count"] as? Int) }
+            let seeded = EmojiUsage.seed(legacy, now: try XCTUnwrap(c["now"] as? NSNumber).int64Value)
+            let expected = try XCTUnwrap(c["entries"] as? [[String: Any]]).map {
+                EmojiUsage.Entry(glyph: $0["glyph"] as? String ?? "", score: ($0["score"] as? NSNumber)?.doubleValue ?? 0,
+                                 last: ($0["last"] as? NSNumber)?.int64Value ?? 0)
+            }
+            XCTAssertEqual(seeded.entries, expected, c["name"] as? String ?? "")
+        }
+        for c in try XCTUnwrap(doc["span"] as? [[String: Any]]) {
+            let n = { (key: String) in (c[key] as? NSNumber)?.doubleValue ?? 0 }
+            XCTAssertEqual(EmojiUsage.span(pill: n("pill"), cell: n("cell"), gap: n("gap"), columns: c["columns"] as? Int ?? 0), c["span"] as? Int, "\(c)")
+        }
+        for c in try XCTUnwrap(doc["fill"] as? [[String: Any]]) {
+            let items = try XCTUnwrap(c["items"] as? [[String: Any]]).map { ($0["glyph"] as? String ?? "", $0["span"] as? Int ?? 1) }
+            let rows = EmojiUsage.fill(items, span: \.1, columns: c["columns"] as? Int ?? 0, rows: c["rows"] as? Int ?? 0)
+            XCTAssertEqual(rows.map { $0.map(\.0) }, c["expected"] as? [[String]], c["name"] as? String ?? "")
+        }
+    }
 
-        // Stored and read back; an unreadable value starts from 「emoji.recent」 (newest first), once each.
+    /// The stored list starts from what this device kept before (the old counts, else the recent list), and a use is
+    /// counted in 「よく使う」 and the quick reactions' recent list alike.
+    func testFrequentEmojiStorage() {
+        let usage = EmojiUsage(entries: [.init(glyph: "👍", score: 2.5, last: 1_790_000_000_000)])
         XCTAssertEqual(EmojiUsage.decode(usage.encoded), usage)
         XCTAssertEqual(EmojiUsage.decode("", recent: "😂 :party: 👀").frequent, ["😂", ":party:", "👀"])
         XCTAssertEqual(EmojiUsage.decode("{broken", recent: "").frequent, [])
+        let old = #"{"entries":[{"glyph":"👀","count":1,"last":9},{"glyph":"👍","count":5,"last":3},{"glyph":"🎉","count":2,"last":7}]}"#
+        XCTAssertEqual(EmojiUsage.decode("", legacy: old, recent: "🙏").frequent, ["👍", "🎉", "👀"])
 
-        // Past the limit the least used go; what was just used stays.
-        var full = EmojiUsage()
-        full.record("⭐️")
-        full.record("⭐️")
-        for index in 0..<EmojiUsage.kept { full.record("e\(index)") }
-        XCTAssertEqual(full.entries.count, EmojiUsage.kept)
-        XCTAssertEqual(full.frequent.first, "⭐️")
-        XCTAssertTrue(full.entries.contains { $0.glyph == "e\(EmojiUsage.kept - 1)" })
-        XCTAssertFalse(full.entries.contains { $0.glyph == "e0" })
-        XCTAssertEqual(full.frequent.count, EmojiUsage.shown)
-
-        // A quick reaction counts in the stored usage (per device: UserDefaults).
         let defaults = UserDefaults(suiteName: "EmojiUsageTests")!
         defaults.removePersistentDomain(forName: "EmojiUsageTests")
         defaults.set("🎉 👍", forKey: EmojiUsage.recentKey)
-        EmojiUsage.note("👍", defaults: defaults)
-        XCTAssertEqual(EmojiUsage.decode(defaults.string(forKey: EmojiUsage.key) ?? "").frequent, ["👍", "🎉"])
+        EmojiUsage.note("👍", defaults: defaults, now: 1_790_000_000_000)
+        EmojiUsage.note("😂", defaults: defaults, now: 1_790_000_060_000)
+        XCTAssertEqual(EmojiUsage.decode(defaults.string(forKey: EmojiUsage.key) ?? "").frequent, ["👍", "😂", "🎉"])
+        XCTAssertEqual(defaults.string(forKey: EmojiUsage.recentKey), "😂 👍 🎉")
         defaults.removePersistentDomain(forName: "EmojiUsageTests")
+    }
+
+    /// 2026-10-29: 「よく使う」 shows whole rows — 2 × 8 from a longer list, fewer only when there are fewer; a text
+    /// emoji's pill takes the cells its width needs (fewer squares come), and a wider list needs fewer for it.
+    func testFrequentRowsFillWholeRows() {
+        let glyphs = ["😀", "😃", "😄", "😁", "😆", "😅", "🤣", "😂", "🙂", "🙃", "😉", "😊", "😇", "🥰", "😍", "🤩", "😘", "😗"]
+        let rows = EmojiPickerLayout.frequentRows(glyphs, byName: [:], width: 393)
+        XCTAssertEqual(rows.map(\.items.count), [8, 8])
+        XCTAssertEqual(rows.map(\.style), [.spans, .spans])
+        XCTAssertEqual(EmojiPickerLayout.frequentRows(Array(glyphs.prefix(5)), byName: [:], width: 393).map(\.items.count), [5])
+        // 393 pt: columns of (393 − 32 − 28) / 8 ≈ 41.6 pt, 4 apart; a pill 100 pt wide takes 3.
+        let thanks = emoji("t1", "thanks", text: true)
+        let withPill = EmojiPickerLayout.frequentRows([":thanks:"] + glyphs, byName: ["thanks": thanks], width: 393, pillWidth: { _ in 100 })
+        XCTAssertEqual(withPill.map { $0.spans.reduce(0, +) }, [8, 8])
+        XCTAssertEqual(withPill[0].items.first, .custom(thanks))
+        XCTAssertEqual(withPill[0].spans, [3, 1, 1, 1, 1, 1])
+        XCTAssertEqual(withPill.flatMap(\.items).count, 14)
+        // An iPad's wide sheet: columns of about 85 pt, the pill takes 2.
+        XCTAssertEqual(EmojiPickerLayout.frequentRows([":thanks:"] + glyphs, byName: ["thanks": thanks], width: 744, pillWidth: { _ in 100 })[0].spans.first, 2)
+        // The section uses them.
+        let sections = EmojiPickerLayout.sections(frequent: glyphs, custom: [], packs: [], width: 393)
+        XCTAssertEqual(sections[0].rows.flatMap(\.items).count, 16)
     }
 
     /// 2026-10-02 (picking a custom emoji in 「よく使う」 crashed now and then): what the grid draws has each glyph once
@@ -53,7 +100,7 @@ final class EmojiTests: XCTestCase {
     @MainActor
     func testFrequentShownSkipsUnknownCustomEmojiAndRepeats() {
         // A stored list with a repeat (written by another build or by hand) and the fallback from a repeating recent list.
-        let stored = #"{"entries":[{"glyph":":party:","count":3,"last":3},{"glyph":"👍","count":2,"last":2},{"glyph":":party:","count":1,"last":1},{"glyph":":gone:","count":1,"last":4},{"glyph":"","count":5,"last":5}]}"#
+        let stored = #"{"entries":[{"glyph":":party:","score":3,"last":3000},{"glyph":"👍","score":2,"last":2000},{"glyph":":party:","score":1,"last":1000},{"glyph":":gone:","score":1,"last":4000},{"glyph":"","score":5,"last":5000}]}"#
         let frequent = EmojiUsage.decode(stored).frequent
         XCTAssertEqual(EmojiUsage.shown(frequent, customNames: ["party"]), [":party:", "👍"])
         XCTAssertEqual(EmojiUsage.shown(EmojiUsage.decode("", recent: "🎉 :party: 🎉").frequent, customNames: ["party"]), ["🎉", ":party:"])

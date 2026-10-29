@@ -2673,7 +2673,7 @@ export const en: Readonly<Record<MessageKey, string>> = {
   "changePassword.note": "You logged in with a temporary password. Set a new one before you continue.",
   "saved.none": "No saved messages",
   "saved.hint": "Use a message's bookmark icon to collect things to look at later.",
-  "emojiPicker.recent": "Recently used",
+  "emojiPicker.frequent": "Frequently used",
   "emojiPicker.search": "Search (e.g. tada, cheers)",
   "emojiPicker.emptyPack": "This set is empty",
   "emojiPicker.add": "+ Add emoji…",

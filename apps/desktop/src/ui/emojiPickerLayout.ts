@@ -3,9 +3,9 @@
  * position is in, and the lazily drawn chunks of a section's grid. Pure, for the tests.
  */
 
-/** The section keys in list (and tab) order: recent, the ungrouped custom emoji, each pack, then the standard categories. */
-export function pickerSectionKeys(opts: { recent: boolean; custom: boolean; packIds: readonly string[]; standard: readonly string[] }): string[] {
-  return [...(opts.recent ? ["recent"] : []), ...(opts.custom ? ["custom"] : []), ...opts.packIds.map((id) => `pack:${id}`), ...opts.standard];
+/** The section keys in list (and tab) order: よく使う, the ungrouped custom emoji, each pack, then the standard categories. */
+export function pickerSectionKeys(opts: { frequent: boolean; custom: boolean; packIds: readonly string[]; standard: readonly string[] }): string[] {
+  return [...(opts.frequent ? ["frequent"] : []), ...(opts.custom ? ["custom"] : []), ...opts.packIds.map((id) => `pack:${id}`), ...opts.standard];
 }
 
 /**

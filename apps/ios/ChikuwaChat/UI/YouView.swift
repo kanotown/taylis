@@ -546,7 +546,7 @@ struct AppearanceView: View {
             let store = controller.store
             EmojiPickerView(custom: Array(store.customEmoji.values), images: store.emojiImages, animations: store.emojiAnimations,
                             onNeedImage: { controller.loadEmojiImage($0) }, packs: store.sortedEmojiPacks,
-                            packTabs: store.packTabImages, onNeedPackTab: { controller.loadPackTab($0) }, countsUse: false) { glyph in
+                            packTabs: store.packTabImages, onNeedPackTab: { controller.loadPackTab($0) }) { glyph in
                 guard let index = slot else { return }
                 let row = QuickReactions.replacing(quickRow, slot: index, with: glyph)
                 Task { _ = await controller.setQuickReactions(row) }

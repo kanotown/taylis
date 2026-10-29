@@ -17,6 +17,8 @@ enum EmojiPickerLayout {
         case big
         /// Text emoji as pills, wrapping (M100).
         case chips
+        /// 「よく使う」: `columns` cells, a text emoji's pill spanning `spans[i]` of them (EmojiUsage.fill).
+        case spans
     }
 
     struct Row: Identifiable, Equatable {
@@ -24,6 +26,8 @@ enum EmojiPickerLayout {
         let section: String
         let style: Style
         let items: [Item]
+        /// `.spans`: the cells each item takes.
+        var spans: [Int] = []
     }
 
     struct Section: Identifiable, Equatable {
@@ -36,6 +40,11 @@ enum EmojiPickerLayout {
 
     static let columns = 8
     static let bigColumns = 4
+    /// The list's side padding and the space between cells (EmojiPickerView), for a column's width.
+    static let inset: CGFloat = 16
+    static let spacing: CGFloat = 4
+    /// A text emoji's pill in 「よく使う」: drawn 24 pt high with 4 pt around (EmojiPickerView.textCell).
+    static func pillWidth(_ emoji: CustomEmojiOut) -> CGFloat { CustomEmoji.size(of: emoji, height: 24).width + 8 }
     static let frequentId = "frequent"
     static let customId = "custom"
 
@@ -67,17 +76,33 @@ enum EmojiPickerLayout {
         return head + rows(images, section: section, style: style, from: head.count)
     }
 
+    /// 「よく使う」 as rows for a list `width` wide: whole rows of `columns` (EmojiUsage.fill), a text emoji's pill taking
+    /// the cells `pillWidth` needs. `frequent`: glyphs and `:name:`s best first (EmojiUsage.shown has dropped unknown
+    /// custom ones).
+    static func frequentRows(_ frequent: [String], byName: [String: CustomEmojiOut], width: CGFloat,
+                             pillWidth: (CustomEmojiOut) -> CGFloat = pillWidth) -> [Row] {
+        let cell = (width - 2 * inset - CGFloat(columns - 1) * spacing) / CGFloat(columns)
+        let items: [(item: Item, span: Int)] = frequent.compactMap { glyph in
+            if let name = CustomEmoji.name(of: glyph) {
+                guard let emoji = byName[name] else { return nil }
+                let span = emoji.isText ? EmojiUsage.span(pill: Double(pillWidth(emoji)), cell: Double(max(cell, 1)), gap: Double(spacing), columns: columns) : 1
+                return (.custom(emoji), span)
+            }
+            return (.glyph(glyph, shortcode: EmojiData.all.first { $0.glyph == glyph }?.shortcode), 1)
+        }
+        return EmojiUsage.fill(items, span: \.span, columns: columns).enumerated().map { index, row in
+            Row(id: "\(frequentId)#\(index)", section: frequentId, style: .spans, items: row.map(\.item), spans: row.map(\.span))
+        }
+    }
+
     /// The browsing sections, in order; an empty one is left out (no 「よく使う」 yet, no custom emoji, an empty pack).
-    /// `frequent`: glyphs and `:name:`s (EmojiUsage.shown has dropped unknown custom ones).
-    static func sections(frequent: [String], custom: [CustomEmojiOut], packs: [EmojiPackOut]) -> [Section] {
+    static func sections(frequent: [String], custom: [CustomEmojiOut], packs: [EmojiPackOut], width: CGFloat = 393,
+                         pillWidth: (CustomEmojiOut) -> CGFloat = pillWidth) -> [Section] {
         var out: [Section] = []
         let byName = Dictionary(custom.map { ($0.name, $0) }, uniquingKeysWith: { a, _ in a })
-        let recent: [Item] = frequent.compactMap { glyph in
-            if let name = CustomEmoji.name(of: glyph) { return byName[name].map(Item.custom) }
-            return .glyph(glyph, shortcode: EmojiData.all.first { $0.glyph == glyph }?.shortcode)
-        }
+        let recent = frequentRows(frequent, byName: byName, width: width, pillWidth: pillWidth)
         if !recent.isEmpty {
-            out.append(Section(id: frequentId, label: tr("よく使う"), rows: rows(recent, section: frequentId, style: .cells)))
+            out.append(Section(id: frequentId, label: tr("よく使う"), rows: recent))
         }
         let packIds = Set(packs.map(\.id))
         let loose = inOrder(custom.filter { $0.packId.map { !packIds.contains($0) } ?? true })
@@ -153,6 +178,33 @@ struct EmojiPickerHighlight: Equatable {
         target = nil
         hold = nil
         if let seen { active = seen }
+    }
+}
+
+/// The cells an item of a `.spans` row takes.
+private struct CellSpan: LayoutValueKey {
+    static let defaultValue = 1
+}
+
+/// A row of `columns` equal cells `spacing` apart; each subview takes its `CellSpan` of them, left to right.
+private struct SpanRowLayout: Layout {
+    let columns: Int
+    let spacing: CGFloat
+
+    func sizeThatFits(proposal: ProposedViewSize, subviews: Subviews, cache: inout ()) -> CGSize {
+        let height = subviews.map { $0.sizeThatFits(.unspecified).height }.max() ?? 0
+        return CGSize(width: proposal.width ?? 0, height: proposal.height ?? height)
+    }
+
+    func placeSubviews(in bounds: CGRect, proposal: ProposedViewSize, subviews: Subviews, cache: inout ()) {
+        let cell = max(0, (bounds.width - CGFloat(columns - 1) * spacing) / CGFloat(columns))
+        var x = bounds.minX
+        for subview in subviews {
+            let span = CGFloat(min(columns, max(1, subview[CellSpan.self])))
+            let width = span * cell + (span - 1) * spacing
+            subview.place(at: CGPoint(x: x, y: bounds.minY), anchor: .topLeading, proposal: ProposedViewSize(width: width, height: bounds.height))
+            x += width + spacing
+        }
     }
 }
 
@@ -235,8 +287,8 @@ struct EmojiPickerView: View {
     var packs: [EmojiPackOut] = []
     var packTabs: [String: UIImage] = [:]
     var onNeedPackTab: ((EmojiPackOut) -> Void)? = nil
-    /// false where a pick is a choice rather than a use (M50's quick reaction slots): 「よく使う」 and the recents stay.
-    var countsUse = true
+    /// A pick is not counted here: where it is a use, the caller does (EmojiUsage.note: a reaction added, an emoji put
+    /// in the composer), not where it is a choice (a status, a section's icon, the quick reaction slots).
     let onPick: (String) -> Void
     @Environment(\.dismiss) private var dismiss
     @State private var query = ""
@@ -244,15 +296,17 @@ struct EmojiPickerView: View {
     /// scrolled-to section changes (that cost 30–45 ms frames at each section boundary, measured 2026-10-07).
     @State private var scroll = EmojiPickerScrollModel()
     @AppStorage(EmojiUsage.recentKey) private var recentRaw = ""
-    /// C10: how often each emoji was used here (EmojiUsage), for 「よく使う」.
+    /// 「よく使う」 (EmojiUsage, §9.4); before it is first written, it starts from the old counts or the recent list.
     @AppStorage(EmojiUsage.key) private var usageRaw = ""
+    @AppStorage(EmojiUsage.legacyKey) private var legacyRaw = ""
+    /// The list's width: 「よく使う」 fills whole rows, and a text emoji's pill takes the cells its width needs.
+    @State private var listWidth: CGFloat = 0
 
     private static let headerHeight: CGFloat = 28
     private static let rowHeight: CGFloat = 40
     private static let bigRowHeight: CGFloat = 76
     private static let space = "emoji-picker-list"
 
-    private var recent: [String] { recentRaw.split(separator: " ").map(String.init).filter { !$0.isEmpty } }
     private var trimmed: String { query.trimmingCharacters(in: .whitespaces) }
     /// Browsing (no search words): the sectioned list; searching: one flat grid of the hits.
     private var browsing: Bool { trimmed.isEmpty }
@@ -262,12 +316,6 @@ struct EmojiPickerView: View {
     private let columns = Array(repeating: GridItem(.flexible(), spacing: 4), count: EmojiPickerLayout.columns)
 
     private func pick(_ glyph: String) {
-        if countsUse {
-            var usage = EmojiUsage.decode(usageRaw, recent: recentRaw)
-            usage.record(glyph)
-            usageRaw = usage.encoded
-            recentRaw = ([glyph] + recent.filter { $0 != glyph }).prefix(16).joined(separator: " ")
-        }
         onPick(glyph)
         dismiss()
     }
@@ -275,11 +323,11 @@ struct EmojiPickerView: View {
     /// 「よく使う」 that can be shown: a custom emoji only while it exists (testers, 2026-09-29: a removed or unknown
     /// `:name:` was shown as its text, wider than its cell).
     private var frequentShown: [String] {
-        EmojiUsage.shown(EmojiUsage.decode(usageRaw, recent: recentRaw).frequent, customNames: Set(custom.map(\.name)))
+        EmojiUsage.shown(EmojiUsage.decode(usageRaw, legacy: legacyRaw, recent: recentRaw).frequent, customNames: Set(custom.map(\.name)))
     }
 
     private var sections: [EmojiPickerLayout.Section] {
-        EmojiPickerLayout.sections(frequent: frequentShown, custom: custom, packs: packs)
+        EmojiPickerLayout.sections(frequent: frequentShown, custom: custom, packs: packs, width: listWidth > 0 ? listWidth : 393)
     }
 
     @ViewBuilder
@@ -343,6 +391,20 @@ struct EmojiPickerView: View {
                 }
                 .frame(maxWidth: .infinity, alignment: .leading)
                 .padding(.vertical, 4)
+            case .spans:
+                SpanRowLayout(columns: EmojiPickerLayout.columns, spacing: EmojiPickerLayout.spacing) {
+                    ForEach(Array(zip(row.items, row.spans)), id: \.0) { item, span in
+                        Group {
+                            if case let .custom(emoji) = item, emoji.isText {
+                                textCell(emoji).frame(maxWidth: .infinity, alignment: .leading)
+                            } else {
+                                cell(item, big: false)
+                            }
+                        }
+                        .layoutValue(key: CellSpan.self, value: span)
+                    }
+                }
+                .frame(height: Self.rowHeight)
             case .cells, .big:
                 let big = row.style == .big
                 let width = big ? EmojiPickerLayout.bigColumns : EmojiPickerLayout.columns
@@ -437,6 +499,9 @@ struct EmojiPickerView: View {
                 }
                 .coordinateSpace(.named(Self.space))
                 .onGeometryChange(for: CGFloat.self, of: { $0.size.height }) { scroll.listHeight = $0 }
+                .onGeometryChange(for: CGFloat.self, of: { $0.size.width.rounded() }) { width in
+                    if width > 0, width != listWidth { listWidth = width }
+                }
                 .onPreferenceChange(EmojiRowFrames.self) { frames in
                     let computed = EmojiPickerLayout.activeSection(frames, top: Self.headerHeight)
                     scroll.update { $0.observe(computed) }

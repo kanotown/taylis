@@ -2022,7 +2022,7 @@ struct ComposerView: View {
                 ScrollView(.horizontal, showsIndicators: false) {
                     HStack(spacing: 6) {
                         ForEach(emojiCandidates, id: \.shortcode) { entry in
-                            Button { textBinding.wrappedValue = Emoji.complete(text, glyph: entry.glyph) } label: {
+                            Button { EmojiUsage.note(entry.glyph); textBinding.wrappedValue = Emoji.complete(text, glyph: entry.glyph) } label: {
                                 if entry.category == "custom", let controller {
                                     // The image (or text pill) and its label, not `:name:` twice.
                                     CustomEmoji.text(entry.glyph, custom: controller.store.customEmoji, images: controller.store.emojiImages,
@@ -2181,7 +2181,7 @@ struct ComposerView: View {
                             animations: controller?.store.emojiAnimations ?? [:],
                             onNeedImage: { emoji in controller?.loadEmojiImage(emoji) },
                             packs: controller?.store.sortedEmojiPacks ?? [], packTabs: controller?.store.packTabImages ?? [:],
-                            onNeedPackTab: { controller?.loadPackTab($0) }) { glyph in insert(glyph) }
+                            onNeedPackTab: { controller?.loadPackTab($0) }) { glyph in EmojiUsage.note(glyph); insert(glyph) }
         }
         // M95: the channel's workflows when `/` starts the input (kept a minute by the controller).
         .task(id: offersWorkflows && text.hasPrefix("/") ? channelId : nil) {
