@@ -179,3 +179,54 @@ final class ImagePagerControllerTests: XCTestCase {
         XCTAssertTrue(pager.pager.isScrollEnabled)
     }
 }
+
+/// The squares behind a transparent photo (PREVIEWS.md §15).
+final class CheckerboardTests: XCTestCase {
+    private func picture(_ size: CGSize, opaque: Bool) -> UIImage {
+        let format = UIGraphicsImageRendererFormat.default()
+        format.opaque = opaque
+        format.scale = 1
+        return UIGraphicsImageRenderer(size: size, format: format).image { context in
+            UIColor.red.setFill()
+            context.fill(CGRect(x: 0, y: 0, width: size.width / 2, height: size.height))
+        }
+    }
+
+    func testOnlyAPictureWithAnAlphaChannelGetsTheSquares() throws {
+        let transparent = picture(CGSize(width: 20, height: 10), opaque: false)
+        XCTAssertTrue(Checkerboard.hasAlpha(transparent))
+        XCTAssertFalse(Checkerboard.hasAlpha(picture(CGSize(width: 20, height: 10), opaque: true)))
+        // Decoded from the files the viewer reads: a PNG keeps its alpha, a JPEG has none.
+        XCTAssertTrue(Checkerboard.hasAlpha(UIImage(data: try XCTUnwrap(transparent.pngData()))))
+        XCTAssertFalse(Checkerboard.hasAlpha(UIImage(data: try XCTUnwrap(transparent.jpegData(compressionQuality: 0.8)))))
+        XCTAssertFalse(Checkerboard.hasAlpha(nil))
+    }
+
+    func testTheFittedRectangle() {
+        let bounds = CGRect(x: 0, y: 0, width: 390, height: 844)
+        XCTAssertEqual(Checkerboard.fittedRect(of: CGSize(width: 200, height: 100), in: bounds), CGRect(x: 0, y: 324.5, width: 390, height: 195))
+        XCTAssertEqual(Checkerboard.fittedRect(of: CGSize(width: 100, height: 400), in: bounds), CGRect(x: 89.5, y: 0, width: 211, height: 844))
+        XCTAssertEqual(Checkerboard.fittedRect(of: .zero, in: bounds), .zero)
+    }
+
+    func testTheSquaresAreThePhotosRectangleAndFollowTheZoom() {
+        let page = ImagePageView(frame: CGRect(x: 0, y: 0, width: 390, height: 844))
+        page.layoutIfNeeded()
+        page.state = .shown(picture(CGSize(width: 200, height: 100), opaque: false))
+        XCTAssertFalse(page.checker.isHidden)
+        XCTAssertEqual(page.checker.frame, CGRect(x: 0, y: 324.5, width: 390, height: 195))
+        // Behind the photo, never over it.
+        XCTAssertLessThan(page.scrollView.subviews.firstIndex(of: page.checker)!, page.scrollView.subviews.firstIndex(of: page.imageView)!)
+        page.scrollView.setZoomScale(2, animated: false)
+        XCTAssertEqual(page.checker.frame.width, 780, accuracy: 0.5)
+        XCTAssertEqual(page.checker.frame.height, 390, accuracy: 0.5)
+        XCTAssertEqual(page.checker.frame.minY, 649, accuracy: 0.5)
+        // An opaque photo (and none, while loading) keeps the black.
+        page.state = .shown(picture(CGSize(width: 200, height: 100), opaque: true))
+        XCTAssertTrue(page.checker.isHidden)
+        page.state = .shown(picture(CGSize(width: 200, height: 100), opaque: false))
+        XCTAssertFalse(page.checker.isHidden)
+        page.state = .loading
+        XCTAssertTrue(page.checker.isHidden)
+    }
+}
