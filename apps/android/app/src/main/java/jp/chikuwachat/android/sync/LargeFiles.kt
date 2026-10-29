@@ -2,7 +2,9 @@ package jp.chikuwachat.android.sync
 
 import jp.chikuwachat.android.L10n
 import jp.chikuwachat.android.R
+import jp.chikuwachat.android.api.ApiException
 import jp.chikuwachat.android.api.ChannelOut
+import jp.chikuwachat.android.api.DriveChannelPostsOut
 import jp.chikuwachat.android.api.DriveChildrenOut
 import jp.chikuwachat.android.api.DriveItemOut
 import jp.chikuwachat.android.api.DriveLocationOut
@@ -18,9 +20,10 @@ import java.util.UUID
  * CF5 (docs/CHANNEL_FILES.md §12.4, 「CF5 の Android」): a file over the attachments' limit (100 MB) added to the composer, or shared
  * into a conversation, goes up with the drive's background upload (DriveUploadCenter, DRIVE.md §6) instead of being
  * refused, and a `/d/<item_id>` link to it goes into the draft (the composer) or is posted (the share sheet) once it is
- * there. Where it goes: a public or private channel whose files go to its drive → that drive's 「投稿のファイル › 2026-10」;
- * such a channel with the switch off → the channel drive's top; a channel drive I cannot write (an owners-only channel)
- * and a DM → マイドライブ. Plain Kotlin (LargeFilesTest).
+ * there. Where it goes (§26, the same on every client): a public or private channel whose files go to its drive → that
+ * drive's 「投稿のファイル › 2026-10」 (POST /drive/channel-posts; an older server: the top's listing and `path`); such a
+ * channel with the switch off → the channel drive's top; a channel drive I cannot write (an owners-only channel) and a
+ * DM → マイドライブ. Plain Kotlin (LargeFilesTest).
  */
 
 /** A drive upload that belongs to a conversation (kept in its [DriveUploadJob]). */
@@ -40,10 +43,14 @@ data class DrivePost(
     val resolved: String? = null,
     /** The link is in the draft / the message was posted: never twice. */
     val linked: Boolean = false,
+    /** CF5 §26: the server's month-folder zone when it said (bootstrap); for a server without POST /drive/channel-posts. */
+    val zone: String? = null,
 )
 
 /** The calls that find the folder (ApiClient; a fake in LargeFilesTest). */
 interface DrivePostApi {
+    /** CF5 §26: POST /drive/channel-posts (a server before it: 404 / 405, no such route). */
+    suspend fun driveChannelPosts(channelId: String): DriveChannelPostsOut
     suspend fun resolveDriveLocation(channelId: String?): DriveLocationOut
     suspend fun driveChildren(folderId: String, sort: String, order: String, cursor: String?, limit: Int): DriveChildrenOut
     /** POST /drive/folders {parent_id, path}: the folder of that name, made when missing (mkdir -p). */
@@ -58,11 +65,12 @@ object LargeFiles {
     const val MODE_SEND = "send"
 
     /**
-     * The zone of the month folders. The server names them in `CHANNEL_FILES_TZ` (default Asia/Tokyo) and does not say
-     * which zone it uses (「CF5 の Android」): the default is assumed. A wrong guess near a month's edge only puts the file in the
-     * month folder next to it (`path` finds or makes it).
+     * The zone of the month folders when the server does not say (`CHANNEL_FILES_TZ`, default Asia/Tokyo; bootstrap's
+     * `channel_files_timezone` since §26). Only a server without POST /drive/channel-posts needs it.
      */
     val MONTH_ZONE: ZoneId = ZoneId.of("Asia/Tokyo")
+
+    fun zoneOf(name: String?): ZoneId = name?.let { runCatching { ZoneId.of(it) }.getOrNull() } ?: MONTH_ZONE
 
     /** Over the attachments' limit (bootstrap `limits`; unknown size or limits: not). */
     fun overLimit(size: Long?, limits: Limits?): Boolean = limits != null && size != null && size > limits.maxAttachmentBytes
@@ -79,6 +87,20 @@ object LargeFiles {
             "dm", "group_dm" -> PLACE_MINE
             else -> null
         }
+    }
+
+    /** The question before a large file goes up (§26, asked once): where it goes, as [place] says. */
+    fun askText(place: String): String = when (place) {
+        PLACE_POSTS -> L10n.str(R.string.large_file_ask_posts)
+        PLACE_CHANNEL -> L10n.str(R.string.large_file_ask_channel)
+        else -> L10n.str(R.string.large_file_ask_mine)
+    }
+
+    /** The files the question is about: 「「a.mp4」（1.2 GB）」, or 「2 件のファイル（合わせて 3 GB）」. */
+    fun askFiles(names: List<String>, sizes: List<Long?>, format: (Long) -> String): String {
+        val total = sizes.sumOf { it ?: 0L }
+        return if (names.size == 1) L10n.str(R.string.large_file_ask_one, names[0], format(total))
+        else L10n.str(R.string.large_file_ask_many, names.size, format(total))
     }
 
     /** The month folder of [nowMs]: 「2026-10」. */
@@ -99,12 +121,42 @@ object LargeFiles {
     data class Resolved(val locationId: String, val folderId: String, val label: String, val place: String)
 
     /**
-     * Finds the folder of [post] (§12.4): the channel's drive (made when missing; one I cannot write → マイドライブ),
-     * its 「投稿のファイル」 (`system_role = channel_posts`, folders come first in the listing) and the month under it
-     * (`path`: the one there, else made). A channel whose 「投稿のファイル」 is not there yet (no file was ever posted in
-     * it: only the server makes that folder, §3.3) takes the file at the drive's top (「CF5 の Android」).
+     * Finds the folder of [post] (§12.4, §26): with the channel's files going to its drive, POST /drive/channel-posts
+     * names (and makes when missing) 「投稿のファイル › 2026-10」; refused (403: I cannot write the channel's drive) →
+     * マイドライブ; the switch off meanwhile → the drive's top. A server without that route: the channel's drive (one I
+     * cannot write → マイドライブ), its 「投稿のファイル」 (`system_role = channel_posts`, folders come first in the
+     * listing) and the month under it (`path`), or the drive's top while 「投稿のファイル」 is not there yet.
      */
     suspend fun resolve(api: DrivePostApi, post: DrivePost, nowMs: Long, newId: () -> String = { UUID.randomUUID().toString() }): Resolved {
+        if (post.place == PLACE_POSTS) {
+            val out = try {
+                api.driveChannelPosts(post.channelId)
+            } catch (e: ApiException.Api) {
+                if (e.status == 403) null else if (noChannelPostsRoute(e)) return legacy(api, post, nowMs, newId) else throw e
+            }
+            if (out != null && out.location.canWrite) {
+                val drive = DriveNames.locationName(out.location)
+                val month = out.monthFolder
+                if (out.postsFolder != null && month != null) {
+                    val label = listOf(drive, L10n.str(R.string.channel_files_folder), month.name.ifEmpty { out.month }).joinToString(" › ")
+                    return Resolved(out.location.id, month.id, label, PLACE_POSTS)
+                }
+                return Resolved(out.location.id, out.location.rootId, drive, PLACE_CHANNEL)
+            }
+            return mine(api)
+        }
+        return legacy(api, post, nowMs, newId)
+    }
+
+    /** A server before §26 (no POST /drive/channel-posts), not a refusal of it. */
+    private fun noChannelPostsRoute(e: ApiException.Api): Boolean = e.status == 405 || (e.status == 404 && e.code != "drive_item_not_found")
+
+    private suspend fun mine(api: DrivePostApi): Resolved {
+        val mine = api.resolveDriveLocation(null)
+        return Resolved(mine.id, mine.rootId, DriveNames.locationName(mine), PLACE_MINE)
+    }
+
+    private suspend fun legacy(api: DrivePostApi, post: DrivePost, nowMs: Long, newId: () -> String): Resolved {
         if (post.place != PLACE_MINE) {
             val location = api.resolveDriveLocation(post.channelId)
             if (location.canWrite) {
@@ -112,16 +164,16 @@ object LargeFiles {
                 if (post.place == PLACE_POSTS) {
                     val posts = postsFolder(api, location.rootId)
                     if (posts != null) {
-                        val month = api.ensureDriveFolderPath(posts.id, monthName(nowMs), newId())
-                        val label = listOf(drive, L10n.str(R.string.channel_files_folder), month.name.ifEmpty { monthName(nowMs) }).joinToString(" › ")
+                        val name = monthName(nowMs, zoneOf(post.zone))
+                        val month = api.ensureDriveFolderPath(posts.id, name, newId())
+                        val label = listOf(drive, L10n.str(R.string.channel_files_folder), month.name.ifEmpty { name }).joinToString(" › ")
                         return Resolved(location.id, month.id, label, PLACE_POSTS)
                     }
                 }
                 return Resolved(location.id, location.rootId, drive, PLACE_CHANNEL)
             }
         }
-        val mine = api.resolveDriveLocation(null)
-        return Resolved(mine.id, mine.rootId, DriveNames.locationName(mine), PLACE_MINE)
+        return mine(api)
     }
 
     /** 「投稿のファイル」 among the root's folders (listed first; the pages stop at the first file). */

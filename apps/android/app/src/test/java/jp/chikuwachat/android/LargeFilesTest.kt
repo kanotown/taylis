@@ -2,6 +2,7 @@ package jp.chikuwachat.android
 
 import jp.chikuwachat.android.api.ApiException
 import jp.chikuwachat.android.api.ChannelOut
+import jp.chikuwachat.android.api.DriveChannelPostsOut
 import jp.chikuwachat.android.api.DriveChildrenOut
 import jp.chikuwachat.android.api.DriveItemOut
 import jp.chikuwachat.android.api.DriveLocationOut
@@ -35,8 +36,17 @@ class LargeFilesTest {
         id = "c1", type = type, name = "m2-seminar", archived = archived, lastSeq = 0, createdAt = "", updatedAt = "", filesToDrive = filesToDrive,
     )
 
-    /** A drive with a channel location (root `root`) and マイドライブ (root `mine-root`). */
-    private class FakeDrive(var canWrite: Boolean = true, val rootPages: List<List<DriveItemOut>> = emptyList()) : DrivePostApi {
+    /**
+     * A drive with a channel location (root `root`) and マイドライブ (root `mine-root`). [channelPosts]: POST
+     * /drive/channel-posts's answer (null: a server before it, 404 not_found; [postsRefusal]: that status).
+     */
+    private class FakeDrive(
+        var canWrite: Boolean = true,
+        val rootPages: List<List<DriveItemOut>> = emptyList(),
+        val channelPosts: DriveChannelPostsOut? = null,
+        val postsRefusal: Int? = null,
+    ) : DrivePostApi {
+        val asked = mutableListOf<String>()
         val resolved = mutableListOf<String?>()
         val listed = mutableListOf<String?>()
         val paths = mutableListOf<Pair<String, String>>()
@@ -54,6 +64,12 @@ class LargeFilesTest {
             val index = cursor?.toInt() ?: 0
             val items = rootPages.getOrElse(index) { emptyList() }
             return DriveChildrenOut(folder = DriveItemOut(id = folderId, kind = "folder"), items = items, nextCursor = if (index + 1 < rootPages.size) (index + 1).toString() else null)
+        }
+
+        override suspend fun driveChannelPosts(channelId: String): DriveChannelPostsOut {
+            asked += channelId
+            postsRefusal?.let { throw ApiException.Api(it, if (it == 403) "drive_read_only" else "drive_item_not_found", "no") }
+            return channelPosts ?: throw ApiException.Api(404, "not_found", "Not Found")
         }
 
         override suspend fun ensureDriveFolderPath(parentId: String, path: String, clientOpId: String): DriveItemOut {
@@ -95,6 +111,52 @@ class LargeFilesTest {
     fun theMonthIsTheWorkspaceZones() {
         assertEquals("2026-11", LargeFiles.monthName(now))
         assertEquals("2026-10", LargeFiles.monthName(now, ZoneId.of("UTC")))
+    }
+
+    private val channelDrive = DriveLocationOut(id = "loc", kind = "channel", channelId = "c1", rootId = "root", name = "m2-seminar", canWrite = true)
+
+    @Test
+    fun theServerNamesTheMonthOfPostedFiles() = runBlocking {
+        val month = DriveItemOut(id = "m", kind = "folder", name = "2026-11", parentId = "posts")
+        val drive = FakeDrive(channelPosts = DriveChannelPostsOut(location = channelDrive, filesToDrive = true, postsFolder = posts, monthFolder = month, month = "2026-11", timezone = "Asia/Tokyo"))
+        assertEquals(
+            LargeFiles.Resolved("loc", "m", "#m2-seminar › 投稿のファイル › 2026-11", LargeFiles.PLACE_POSTS),
+            LargeFiles.resolve(drive, DrivePost("c1", place = LargeFiles.PLACE_POSTS), now),
+        )
+        assertEquals(listOf("c1"), drive.asked)
+        // Nothing else: no listing, no folder made by the phone, no resolve.
+        assertTrue(drive.listed.isEmpty() && drive.paths.isEmpty() && drive.resolved.isEmpty())
+        // The switch turned off meanwhile: the top.
+        val off = FakeDrive(channelPosts = DriveChannelPostsOut(location = channelDrive, filesToDrive = false))
+        assertEquals(LargeFiles.Resolved("loc", "root", "#m2-seminar", LargeFiles.PLACE_CHANNEL), LargeFiles.resolve(off, DrivePost("c1", place = LargeFiles.PLACE_POSTS), now))
+        // Refused (I cannot write the channel's drive): マイドライブ.
+        val refused = FakeDrive(postsRefusal = 403)
+        assertEquals(LargeFiles.PLACE_MINE, LargeFiles.resolve(refused, DrivePost("c1", place = LargeFiles.PLACE_POSTS), now).place)
+        assertEquals(listOf<String?>(null), refused.resolved)
+        // Any other refusal is the job's failure, not a guess.
+        val gone = FakeDrive(postsRefusal = 404)
+        assertTrue(runCatching { LargeFiles.resolve(gone, DrivePost("c1", place = LargeFiles.PLACE_POSTS), now) }.exceptionOrNull() is ApiException.Api)
+        // The switch off: the channel's drive is resolved, the server is not asked for 「投稿のファイル」.
+        val top = FakeDrive(channelPosts = DriveChannelPostsOut(location = channelDrive, filesToDrive = true))
+        assertEquals("root", LargeFiles.resolve(top, DrivePost("c1", place = LargeFiles.PLACE_CHANNEL), now).folderId)
+        assertTrue(top.asked.isEmpty())
+    }
+
+    @Test
+    fun anOlderServersMonthFollowsTheZoneItSaid() = runBlocking {
+        val drive = FakeDrive(rootPages = listOf(listOf(posts)))
+        LargeFiles.resolve(drive, DrivePost("c1", place = LargeFiles.PLACE_POSTS, zone = "UTC"), now)
+        LargeFiles.resolve(drive, DrivePost("c1", place = LargeFiles.PLACE_POSTS, zone = "Not/AZone"), now)
+        assertEquals(listOf("posts" to "2026-10", "posts" to "2026-11"), drive.paths)
+    }
+
+    @Test
+    fun theQuestionSaysWhereTheFilesGo() {
+        assertTrue(LargeFiles.askText(LargeFiles.PLACE_POSTS).contains("投稿のファイル"))
+        assertFalse(LargeFiles.askText(LargeFiles.PLACE_CHANNEL).contains("投稿のファイル"))
+        assertTrue(LargeFiles.askText(LargeFiles.PLACE_MINE).contains("開けません"))
+        assertEquals("「a.mp4」（2 KB）", LargeFiles.askFiles(listOf("a.mp4"), listOf(2048L)) { "${it / 1024} KB" })
+        assertEquals("2 件のファイル（合わせて 3 KB）", LargeFiles.askFiles(listOf("a", "b"), listOf(2048L, 1024L)) { "${it / 1024} KB" })
     }
 
     @Test

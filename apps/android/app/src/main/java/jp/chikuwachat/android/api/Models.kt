@@ -683,6 +683,8 @@ data class BootstrapOut(
     val actions: ActionListOut? = null,
     /** M172 (docs/LENDING.md §5.1): the 「備品」 tile's numbers; null for guests, while off, and from a server before M167. */
     val lending: LendingSummaryOut? = null,
+    /** CF5 (docs/CHANNEL_FILES.md §26): the zone of the 「投稿のファイル」 month folders (CHANNEL_FILES_TZ); null before it. */
+    val channelFilesTimezone: String? = null,
 )
 
 /**

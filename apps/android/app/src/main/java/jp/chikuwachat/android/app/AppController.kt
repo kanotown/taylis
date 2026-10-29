@@ -2979,6 +2979,20 @@ class AppController(private val app: Application) {
         return uris.filterNot { it in large } to large
     }
 
+    /** CF5 §26: the names and sizes of [uris] for the question before they go up (unknown: the last path step, null). */
+    suspend fun fileFacts(uris: List<Uri>): List<Pair<String, Long?>> {
+        val resolver = app.contentResolver
+        return withContext(Dispatchers.IO) {
+            uris.map { uri ->
+                runCatching {
+                    resolver.query(uri, arrayOf(OpenableColumns.DISPLAY_NAME, OpenableColumns.SIZE), null, null, null)?.use { c ->
+                        if (!c.moveToFirst()) null else (c.getString(0) ?: "") to (if (c.isNull(1)) null else c.getLong(1))
+                    }
+                }.getOrNull()?.let { (name, size) -> name.ifEmpty { uri.lastPathSegment ?: "" } to size } ?: ((uri.lastPathSegment ?: "") to null)
+            }
+        }
+    }
+
     /**
      * §12.4: the large files of the composer of [channelId] (a thread's: [parentId]) go up with the drive's background
      * upload into the conversation's folder (found by the work); when one is there its `/d/` link goes into this draft
@@ -2994,7 +3008,7 @@ class AppController(private val app: Application) {
         val target = jp.chikuwachat.android.platform.DriveUploadCenter.Target(
             server, userId, session, locationId = "", parentId = "", label = title, onConflict = jp.chikuwachat.android.sync.ConflictChoice.RENAME,
         )
-        val post = jp.chikuwachat.android.sync.DrivePost(channelId = channelId, parentId = parentId, place = place, channelTitle = title)
+        val post = jp.chikuwachat.android.sync.DrivePost(channelId = channelId, parentId = parentId, place = place, channelTitle = title, zone = store.channelFilesTimezone)
         jp.chikuwachat.android.platform.DriveUploadCenter.addUris(app, scope, uris, target, onCopied, post = post)
     }
 
