@@ -26,6 +26,7 @@ from datetime import date
 from typing import Any
 
 from sqlalchemy import and_, func, or_, select
+from sqlalchemy.exc import IntegrityError
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.core.errors import AppError, bad_request, not_found
@@ -176,23 +177,46 @@ async def create(db: AsyncSession, actor: User, data: AlbumCreate) -> tuple[Albu
     name = names.normalize(data.name)
     description = _description(data.description) if data.description is not None else ""
     _dates(data.starts_on, data.ends_on)
-    if data.client_op_id is not None:
-        # The same request again (after the folder was renamed or moved too): the same album.
-        found = (
-            await db.execute(
-                select(DriveItem).where(
-                    DriveItem.created_by == actor.id, DriveItem.client_op_id == data.client_op_id
-                )
-            )
-        ).scalar_one_or_none()
-        if found is not None:
-            album = await db.get(DriveAlbum, found.id)
-            if found.kind != "folder" or album is None:
-                raise album_invalid("This client_op_id made something else")
-            await db.commit()
-            return AlbumCreatedOut(
-                folder=await service.item_out(db, found, viewer=actor), album=await out(db, album)
-            ), False
+    replayed = await _replay(db, actor, data)
+    if replayed is not None:
+        return replayed, False
+    actor_id = actor.id
+    try:
+        return await _create_in_tx(db, actor, data, name, description)
+    except IntegrityError:
+        # REVIEW-v0.1.82 #7: the same client_op_id made by a request that was faster, in another
+        # folder (drive_items_client_op_uniq); in the same folder, the lock lets `_create_in_tx`
+        # see it.
+        await db.rollback()
+        user = await db.get(User, actor_id)
+        again = await _replay(db, user, data) if user is not None else None
+        if again is None:
+            raise
+        return again, False
+
+
+async def _replay(db: AsyncSession, actor: User, data: AlbumCreate) -> AlbumCreatedOut | None:
+    """The album this `client_op_id` made (the same request again, after the folder was renamed
+    or moved too), committed; None when it made nothing yet. REVIEW-v0.1.82 #3: checked as a GET
+    would be now, so an album moved where the actor cannot read it, or in the trash, is 404 and
+    its new name and description are never answered."""
+    if data.client_op_id is None:
+        return None
+    found = await service.made_before(db, actor, data.client_op_id)
+    if found is None:
+        return None
+    album = await db.get(DriveAlbum, found.id, populate_existing=True)
+    if found.kind != "folder" or album is None:
+        raise album_invalid("This client_op_id made something else")
+    await db.commit()
+    return AlbumCreatedOut(
+        folder=await service.item_out(db, found, viewer=actor), album=await out(db, album)
+    )
+
+
+async def _create_in_tx(
+    db: AsyncSession, actor: User, data: AlbumCreate, name: str, description: str
+) -> tuple[AlbumCreatedOut, bool]:
     made: list[uuid.UUID] = []
     adopted: list[uuid.UUID] = []
     if data.location_id is not None:
@@ -207,6 +231,11 @@ async def create(db: AsyncSession, actor: User, data: AlbumCreate) -> tuple[Albu
         parent, _ = await service._writable_folder(db, actor, data.parent_id)
     if parent.system_role == posted.SYSTEM_ROLE:
         raise album_invalid("Albums cannot be made in a folder kept by the server")
+    # REVIEW-v0.1.82 #7: a request with the same client_op_id may have made it while this one
+    # waited for the folder's lock (the name is then taken by the very album asked for).
+    again = await _replay(db, actor, data)
+    if again is not None:
+        return again, False
     existing = await repo.child_by_key(db, parent.id, names.key(name))
     if existing is not None:
         raise service.name_taken(existing)

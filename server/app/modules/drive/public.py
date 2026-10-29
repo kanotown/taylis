@@ -46,6 +46,7 @@ from app.core.ratelimit import RateLimiter
 from app.core.security import verify_password
 from app.core.settings import Settings
 from app.core.time import utcnow
+from app.modules.attachments import gifclean
 from app.modules.attachments import service as attachments
 from app.modules.attachments.models import Attachment
 from app.modules.attachments.schemas import to_attachment_out
@@ -585,8 +586,9 @@ async def display(
     request: Request, db: AsyncSession, token: str, item_id: uuid.UUID
 ) -> StreamingResponse:
     """AL1 (docs/ALBUMS.md §7): an image's display-size WebP (no metadata), not counted. Without
-    one: a GIF as it is (it holds no EXIF), any image as it is when the link hands out
-    originals; else 404 display_not_found."""
+    one: any image as it is when the link hands out originals; else a GIF (an animated one has no
+    display image) without its comments and other extensions (REVIEW-v0.1.82 #4: a GIF holds no
+    EXIF, but those may hold anything; gifclean.py), and 404 display_not_found for the rest."""
     visit = await open_link(request, db, token)
     require_unlocked(request, visit)
     item = await shared_item(db, visit, item_id)
@@ -595,12 +597,18 @@ async def display(
     blobs = request.app.state.blobs
     if attachment.display_key is not None:
         return _image(blobs, attachment.display_key, "image/webp")
-    plain = attachment.content_type == "image/gif" or (
-        visit.link.originals and attachment.content_type in attachments.INLINE_TYPES
-    )
-    if not plain:
-        raise AppError(404, "display_not_found", "This file has no display image")
-    return _image(blobs, attachment.storage_key, attachment.content_type)
+    if visit.link.originals and attachment.content_type in attachments.INLINE_TYPES:
+        return _image(blobs, attachment.storage_key, attachment.content_type)
+    if attachment.content_type == "image/gif":
+        return StreamingResponse(
+            gifclean.scrub(attachments.stream(blobs, attachment.storage_key)),
+            headers={
+                "Content-Type": "image/gif",
+                "Content-Disposition": "inline",
+                "Content-Security-Policy": "sandbox",
+            },
+        )
+    raise AppError(404, "display_not_found", "This file has no display image")
 
 
 async def media(
@@ -640,9 +648,21 @@ def _stem(name: str) -> str:
     return stem or "photo"
 
 
+# A display ZIP entry's source with this in front is a GIF to stream through gifclean.scrub.
+_SCRUBBED_GIF = "gifclean:"
+
+
+def _open_source(blobs: Any, source: str) -> AsyncIterator[bytes]:
+    if source.startswith(_SCRUBBED_GIF):
+        return gifclean.scrub(blobs.stream(source.removeprefix(_SCRUBBED_GIF)))
+    stream: AsyncIterator[bytes] = blobs.stream(source)
+    return stream
+
+
 def _display_entries(root: tree.Node, prefix: str, taken: zips._Names) -> list[zipstream.ZipEntry]:
     """AL1 (docs/ALBUMS.md §7): a ZIP of what the public side shows: each image's display-size
-    WebP (「名前.webp」), videos and GIFs (which hold no EXIF) as they are, nothing else."""
+    WebP (「名前.webp」), videos as they are, GIFs without their comments and other extensions
+    (REVIEW-v0.1.82 #4, gifclean.py: the same length, so the plan holds), nothing else."""
     item = root.item
     when = zips._when(item)
     if item.kind == "folder":
@@ -658,7 +678,10 @@ def _display_entries(root: tree.Node, prefix: str, taken: zips._Names) -> list[z
     if attachment.display_key is not None and attachment.display_bytes is not None:
         name = taken.claim(prefix, f"{_stem(item.name)}.webp", is_file=True)
         size, source = attachment.display_bytes, attachment.display_key
-    elif is_video(attachment.content_type) or attachment.content_type == "image/gif":
+    elif attachment.content_type == "image/gif":
+        name = taken.claim(prefix, item.name, is_file=True)
+        size, source = root.version.size_bytes, _SCRUBBED_GIF + attachment.storage_key
+    elif is_video(attachment.content_type):
         name = taken.claim(prefix, item.name, is_file=True)
         size, source = root.version.size_bytes, attachment.storage_key
     else:
@@ -725,7 +748,7 @@ async def zip_folder(
 
     async def body() -> AsyncIterator[bytes]:
         try:
-            async for chunk in zipstream.stream(plan, lambda key: blobs.stream(key)):
+            async for chunk in zipstream.stream(plan, lambda key: _open_source(blobs, key)):
                 yield chunk
         finally:
             runtime.zip_slots.release(slot)
