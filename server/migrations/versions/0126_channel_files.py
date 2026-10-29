@@ -15,7 +15,7 @@ the workspace). drive_file_versions.source gets the value 'message' (no CHECK on
 from collections.abc import Sequence
 
 import sqlalchemy as sa
-from alembic import op
+from alembic import context, op
 
 revision: str = "0126"
 down_revision: str | None = "0125"
@@ -62,7 +62,40 @@ def upgrade() -> None:
     op.add_column("channels", sa.Column("files_to_drive", sa.Boolean(), nullable=True))
 
 
+# REVIEW-v0.1.82 #1: rows that are both a message's attachment and a drive version (a posted file
+# still in the drive). The server before 0126 deletes a message's attachments with it, and its GC
+# removes the bytes before the row, so the drive's version would lose its file.
+_SHARED = (
+    "drive_state IN ('available', 'moved', 'trashed') AND message_id IS NOT NULL "
+    "AND EXISTS (SELECT 1 FROM drive_file_versions v WHERE v.attachment_id = attachments.id)"
+)
+
+
+def _detach_or_refuse() -> None:
+    """Refuses the downgrade while shared rows exist, unless `alembic -x channel_files=detach`:
+    then each is taken off its message (message_id, channel_id and drive_state NULL, what the new
+    server does when the message is deleted) and stays in the drive only; the message keeps its
+    text but no longer shows that file. Nothing is deleted, and no object is touched."""
+    shared = op.get_bind().execute(sa.text(f"SELECT count(*) FROM attachments WHERE {_SHARED}"))
+    count = int(shared.scalar_one())
+    if count == 0:
+        return
+    if context.get_x_argument(as_dictionary=True).get("channel_files") != "detach":
+        raise RuntimeError(
+            f"0126 downgrade refused: {count} posted file(s) are both a message's attachment and "
+            "a drive version, and a server before 0126 would delete the drive's bytes with the "
+            "message. Run `alembic -x channel_files=detach downgrade <rev>` to keep them in the "
+            "drive only (the messages stop showing them), or restore a backup taken before 0126 "
+            "(docs/CHANNEL_FILES.md §27)."
+        )
+    op.execute(
+        "UPDATE attachments SET message_id = NULL, channel_id = NULL, drive_state = NULL "
+        f"WHERE {_SHARED}"
+    )
+
+
 def downgrade() -> None:
+    _detach_or_refuse()
     op.drop_column("channels", "files_to_drive")
     op.drop_column("workspace_settings", "channel_files_to_drive")
     op.drop_index("drive_items_system_role_uniq", table_name="drive_items")

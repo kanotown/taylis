@@ -1,3 +1,4 @@
+import argparse
 import asyncio
 import os
 import socket
@@ -146,7 +147,11 @@ def migrated_database() -> str:
         os.environ["DATABASE_URL"] = TEST_DATABASE_URL
         cfg = Config(str(SERVER_DIR / "alembic.ini"))
         cfg.set_main_option("script_location", str(SERVER_DIR / "migrations"))
+        # A test database left with rows by a run that stopped half-way: the downgrades that
+        # refuse to drop what an older server would break (REVIEW-v0.1.82 #1, #2) go on.
+        cfg.cmd_opts = argparse.Namespace(x=["channel_files=detach", "album_links=revoke"])
         command.downgrade(cfg, "base")
+        cfg.cmd_opts = None
         command.upgrade(cfg, "head")
 
     _run_in_thread(prepare)
