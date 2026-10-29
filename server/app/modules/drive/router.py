@@ -29,6 +29,8 @@ from app.modules.drive import (
 from app.modules.drive.access import item_not_found
 from app.modules.drive.models import DriveFileVersion, DriveItem
 from app.modules.drive.schemas import (
+    DriveChannelPostsIn,
+    DriveChannelPostsOut,
     DriveChildrenOut,
     DriveCopyIn,
     DriveCopyResultsOut,
@@ -94,6 +96,19 @@ async def resolve_location(
 ) -> DriveLocationOut:
     """A channel's drive or my My Drive, made on first use."""
     return await service.resolve(db, user, data)
+
+
+@router.post("/drive/channel-posts", response_model=DriveChannelPostsOut)
+async def channel_posts(
+    data: DriveChannelPostsIn, user: CurrentUser, db: Db
+) -> DriveChannelPostsOut:
+    """CF5 (docs/CHANNEL_FILES.md §26): where a file too big to attach goes in a channel. With
+    its switch on, 「投稿のファイル」 and this month's folder (CHANNEL_FILES_TZ) of the channel's
+    drive, made when missing; off, both null (nothing made; upload to `location.root_id`). For
+    whoever can write in the channel's drive: 404 drive_item_not_found (not a member), 422
+    drive_not_available (a DM or group DM), 403 drive_read_only (archived, only owners post),
+    409 drive_name_taken (a file holds the month folder's name)."""
+    return await channel_files.posts_month(db, user, data.channel_id)
 
 
 @router.get("/drive/locations/{location_id}/trash", response_model=DriveTrashOut)

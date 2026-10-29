@@ -3149,6 +3149,31 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/api/v1/drive/channel-posts": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /**
+         * Channel Posts
+         * @description CF5 (docs/CHANNEL_FILES.md §26): where a file too big to attach goes in a channel. With
+         *     its switch on, 「投稿のファイル」 and this month's folder (CHANNEL_FILES_TZ) of the channel's
+         *     drive, made when missing; off, both null (nothing made; upload to `location.root_id`). For
+         *     whoever can write in the channel's drive: 404 drive_item_not_found (not a member), 422
+         *     drive_not_available (a DM or group DM), 403 drive_read_only (archived, only owners post),
+         *     409 drive_name_taken (a file holds the month folder's name).
+         */
+        post: operations["channel_posts_api_v1_drive_channel_posts_post"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/api/v1/drive/download/{token}": {
         parameters: {
             query?: never;
@@ -9513,6 +9538,11 @@ export interface components {
              * @default []
              */
             bookmarks: string[];
+            /**
+             * Channel Files Timezone
+             * @default Asia/Tokyo
+             */
+            channel_files_timezone: string;
             /** Channels */
             channels: components["schemas"]["ChannelOut"][];
             /**
@@ -10862,6 +10892,32 @@ export interface components {
             channel_id: string;
             /** Parent Id */
             parent_id?: string | null;
+        };
+        /** DriveChannelPostsIn */
+        DriveChannelPostsIn: {
+            /**
+             * Channel Id
+             * Format: uuid
+             */
+            channel_id: string;
+        };
+        /**
+         * DriveChannelPostsOut
+         * @description POST /drive/channel-posts (CF5, docs/CHANNEL_FILES.md §26): where a file too big to attach
+         *     goes. With the channel's switch on, its 「投稿のファイル」 and this month's folder below it
+         *     (both made when missing, as a send files them); with it off, both null (nothing is made:
+         *     the clients upload to the drive's top, `location.root_id`).
+         */
+        DriveChannelPostsOut: {
+            /** Files To Drive */
+            files_to_drive: boolean;
+            location: components["schemas"]["DriveLocationOut"];
+            /** Month */
+            month: string;
+            month_folder: components["schemas"]["DriveItemOut"] | null;
+            posts_folder: components["schemas"]["DriveItemOut"] | null;
+            /** Timezone */
+            timezone: string;
         };
         /** DriveChildrenOut */
         DriveChildrenOut: {
@@ -23996,6 +24052,39 @@ export interface operations {
                 };
                 content: {
                     "application/json": components["schemas"]["AlbumAddOut"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    channel_posts_api_v1_drive_channel_posts_post: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["DriveChannelPostsIn"];
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["DriveChannelPostsOut"];
                 };
             };
             /** @description Validation Error */

@@ -100,6 +100,7 @@ async def bootstrap(
         activity=await activity.summary(db, actor, activity_include),
         workspace_settings=await workspace.settings(db),
         blocked_user_ids=await blocks.blocked_ids_of(db, actor.id),
+        channel_files_timezone=settings.channel_files_tz,
         wiki=await wiki.bootstrap(db),
         active_calls=await calls.active_calls(db, actor),
         attendance=await attendance.bootstrap(db, actor),

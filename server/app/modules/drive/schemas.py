@@ -246,6 +246,26 @@ class AlbumCreatedOut(BaseModel):
     album: AlbumOut
 
 
+class DriveChannelPostsIn(BaseModel):
+    channel_id: UUID
+
+
+class DriveChannelPostsOut(BaseModel):
+    """POST /drive/channel-posts (CF5, docs/CHANNEL_FILES.md §26): where a file too big to attach
+    goes. With the channel's switch on, its 「投稿のファイル」 and this month's folder below it
+    (both made when missing, as a send files them); with it off, both null (nothing is made:
+    the clients upload to the drive's top, `location.root_id`)."""
+
+    location: DriveLocationOut
+    # The channel's switch (ChannelOut.files_to_drive_effective).
+    files_to_drive: bool
+    posts_folder: DriveItemOut | None
+    month_folder: DriveItemOut | None
+    # 「2026-10」: this month in `timezone` (CHANNEL_FILES_TZ), the month folder's name.
+    month: str
+    timezone: str
+
+
 class AlbumListEntryOut(BaseModel):
     folder: DriveItemOut
     album: AlbumOut

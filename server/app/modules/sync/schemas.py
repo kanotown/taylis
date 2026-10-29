@@ -93,6 +93,10 @@ class BootstrapOut(BaseModel):
     # M167 (docs/LENDING.md §5.1): the 備品 numbers; null for guests, bots and while the feature
     # is off. Changes arrive as lending.updated (then GET /lending/items, GET /lending/settings).
     lending: LendingSummaryOut | None = None
+    # CF5 (docs/CHANNEL_FILES.md §26): the zone of the 「投稿のファイル」 month folders
+    # (CHANNEL_FILES_TZ); absent from an older server (Asia/Tokyo). The attachment size limit is
+    # `limits.max_attachment_bytes`.
+    channel_files_timezone: str = "Asia/Tokyo"
 
 
 class UnreadSummaryOut(BaseModel):

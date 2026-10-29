@@ -6029,6 +6029,11 @@
             "title": "Bookmarks",
             "type": "array"
           },
+          "channel_files_timezone": {
+            "default": "Asia/Tokyo",
+            "title": "Channel Files Timezone",
+            "type": "string"
+          },
           "channels": {
             "items": {
               "$ref": "#/components/schemas/ChannelOut"
@@ -9683,6 +9688,70 @@
           "body"
         ],
         "title": "DraftPut",
+        "type": "object"
+      },
+      "DriveChannelPostsIn": {
+        "properties": {
+          "channel_id": {
+            "format": "uuid",
+            "title": "Channel Id",
+            "type": "string"
+          }
+        },
+        "required": [
+          "channel_id"
+        ],
+        "title": "DriveChannelPostsIn",
+        "type": "object"
+      },
+      "DriveChannelPostsOut": {
+        "description": "POST /drive/channel-posts (CF5, docs/CHANNEL_FILES.md §26): where a file too big to attach\ngoes. With the channel's switch on, its 「投稿のファイル」 and this month's folder below it\n(both made when missing, as a send files them); with it off, both null (nothing is made:\nthe clients upload to the drive's top, `location.root_id`).",
+        "properties": {
+          "files_to_drive": {
+            "title": "Files To Drive",
+            "type": "boolean"
+          },
+          "location": {
+            "$ref": "#/components/schemas/DriveLocationOut"
+          },
+          "month": {
+            "title": "Month",
+            "type": "string"
+          },
+          "month_folder": {
+            "anyOf": [
+              {
+                "$ref": "#/components/schemas/DriveItemOut"
+              },
+              {
+                "type": "null"
+              }
+            ]
+          },
+          "posts_folder": {
+            "anyOf": [
+              {
+                "$ref": "#/components/schemas/DriveItemOut"
+              },
+              {
+                "type": "null"
+              }
+            ]
+          },
+          "timezone": {
+            "title": "Timezone",
+            "type": "string"
+          }
+        },
+        "required": [
+          "location",
+          "files_to_drive",
+          "posts_folder",
+          "month_folder",
+          "month",
+          "timezone"
+        ],
+        "title": "DriveChannelPostsOut",
         "type": "object"
       },
       "DriveChildrenOut": {
@@ -38017,6 +38086,53 @@
           }
         ],
         "summary": "Add To Album",
+        "tags": [
+          "drive"
+        ]
+      }
+    },
+    "/api/v1/drive/channel-posts": {
+      "post": {
+        "description": "CF5 (docs/CHANNEL_FILES.md §26): where a file too big to attach goes in a channel. With\nits switch on, 「投稿のファイル」 and this month's folder (CHANNEL_FILES_TZ) of the channel's\ndrive, made when missing; off, both null (nothing made; upload to `location.root_id`). For\nwhoever can write in the channel's drive: 404 drive_item_not_found (not a member), 422\ndrive_not_available (a DM or group DM), 403 drive_read_only (archived, only owners post),\n409 drive_name_taken (a file holds the month folder's name).",
+        "operationId": "channel_posts_api_v1_drive_channel_posts_post",
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/DriveChannelPostsIn"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/DriveChannelPostsOut"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "security": [
+          {
+            "HTTPBearer": []
+          }
+        ],
+        "summary": "Channel Posts",
         "tags": [
           "drive"
         ]
