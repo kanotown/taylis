@@ -60,6 +60,18 @@ final class FakeDriveApi: DriveApi {
         return folder("new-\(name)", parent: parentId)
     }
 
+    /// CF5 §26: POST /drive/channel-posts's answer, or its error. Neither set: a server before it (404 not_found, not
+    /// recorded in `calls`).
+    var channelPosts: DriveChannelPostsOut?
+    var channelPostsError: Error?
+
+    func driveChannelPosts(channelId: String) async throws -> DriveChannelPostsOut {
+        guard channelPosts != nil || channelPostsError != nil else { throw ApiError.api(status: 404, code: "not_found", message: "Not Found") }
+        calls.append("channel-posts \(channelId)")
+        if let channelPostsError { throw channelPostsError }
+        return channelPosts!
+    }
+
     func folder(_ id: String, parent: String? = nil) -> DriveItemOut {
         DriveItemOut(id: id, locationId: "ws", parentId: parent, kind: "folder", name: id, createdAt: "2026-10-01T00:00:00Z", updatedAt: "2026-10-01T00:00:00Z")
     }
@@ -840,6 +852,59 @@ final class ComposerDriveTests: XCTestCase {
         XCTAssertEqual(resolved.target, DriveUploadTarget(parentId: "posts-1", locationId: "loc-c",
                                                          label: "#m2-seminar › \(tr("投稿のファイル")) › 2026-10", relativeDir: "2026-10"))
         XCTAssertEqual(api.calls, ["resolve c", "children root-c name asc -", "children root-c name asc 2"])
+    }
+
+    private func channelDrive(canWrite: Bool = true) -> DriveLocationOut {
+        DriveLocationOut(id: "loc-c", kind: "channel", channelId: "c", rootId: "root-c", name: "ゼミ", canWrite: canWrite)
+    }
+
+    /// §26: the server names (and makes) the month folder; the upload goes into it, nothing listed or made on completion.
+    func testTheServersMonthFolderOfPostedFiles() async throws {
+        let api = FakeDriveApi()
+        var posts = api.folder("posts-1", parent: "root-c")
+        posts.systemRole = "channel_posts"
+        let month = DriveItemOut(id: "month-1", locationId: "loc-c", parentId: "posts-1", kind: "folder", name: "2026-11")
+        api.channelPosts = DriveChannelPostsOut(location: channelDrive(), filesToDrive: true, postsFolder: posts, monthFolder: month,
+                                                month: "2026-11", timezone: "Asia/Tokyo")
+        let resolved = try await ComposerDrive.resolve(.channel(posts: true), channel: channel("public"), api: api)
+        XCTAssertEqual(resolved.destination, .channelPosts(channelName: "m2-seminar"))
+        XCTAssertEqual(resolved.target, DriveUploadTarget(parentId: "month-1", locationId: "loc-c",
+                                                         label: "#m2-seminar › \(tr("投稿のファイル")) › 2026-11"))
+        XCTAssertEqual(api.calls, ["channel-posts c"])
+    }
+
+    func testTheServersAnswerWithTheSwitchOffOrRefused() async throws {
+        let off = FakeDriveApi()
+        off.channelPosts = DriveChannelPostsOut(location: channelDrive(), filesToDrive: false, postsFolder: nil, monthFolder: nil)
+        let top = try await ComposerDrive.resolve(.channel(posts: true), channel: channel("public"), api: off)
+        XCTAssertEqual(top.destination, .channelRoot(channelName: "m2-seminar"))
+        XCTAssertEqual(top.target.parentId, "root-c")
+        let refused = FakeDriveApi()
+        refused.channelPostsError = ApiError.api(status: 403, code: "drive_read_only", message: "")
+        let mine = try await ComposerDrive.resolve(.channel(posts: true), channel: channel("public"), api: refused)
+        XCTAssertEqual(mine.destination, .myDrive(fromChannel: true))
+        XCTAssertEqual(refused.calls, ["channel-posts c", "resolve me"])
+        let gone = FakeDriveApi()
+        gone.channelPostsError = ApiError.api(status: 404, code: "drive_item_not_found", message: "")
+        do {
+            _ = try await ComposerDrive.resolve(.channel(posts: true), channel: channel("public"), api: gone)
+            XCTFail("a refusal is not taken for an older server")
+        } catch {}
+        XCTAssertTrue(ComposerDrive.noChannelPostsRoute(ApiError.api(status: 404, code: "not_found", message: "")))
+        XCTAssertTrue(ComposerDrive.noChannelPostsRoute(ApiError.api(status: 405, code: "method_not_allowed", message: "")))
+        XCTAssertFalse(ComposerDrive.noChannelPostsRoute(ApiError.api(status: 404, code: "drive_item_not_found", message: "")))
+    }
+
+    /// An older server's month folder follows the zone bootstrap gave.
+    func testAnOlderServersMonthInItsZone() async throws {
+        let api = FakeDriveApi()
+        api.writable = ["c"]
+        var posts = api.folder("posts-1", parent: "root-c")
+        posts.systemRole = "channel_posts"
+        api.children["root-c"] = [posts]
+        let resolved = try await ComposerDrive.resolve(.channel(posts: true), channel: channel("public"), api: api,
+                                                       now: date("2026-10-31T15:30:00Z"), zone: TimeZone(identifier: "UTC")!)
+        XCTAssertEqual(resolved.target.relativeDir, "2026-10")
     }
 
     /// No 「投稿のファイル」 yet (no file posted): the client cannot make the special folder, so the drive's top.

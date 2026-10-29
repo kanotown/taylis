@@ -1084,6 +1084,8 @@ struct BootstrapOut: Codable {
     /// M171 (docs/LENDING.md §5.1): 「備品」 for me — whether it is on, my counts; nil for guests, while off and from a
     /// server before M167.
     var lending: LendingSummaryOut? = nil
+    /// CF5 (docs/CHANNEL_FILES.md §26): the zone of the 「投稿のファイル」 month folders (CHANNEL_FILES_TZ); nil before it.
+    var channelFilesTimezone: String? = nil
 }
 
 /// M39 (MOBILE_UI.md §6.4 / §7.2): one item of the activity, newest first. A mention of me, the reactions to one message

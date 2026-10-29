@@ -427,6 +427,8 @@ final class Store {
     var sidebarDefaults: [SidebarDefaultOut] = []
     /// Server limits from bootstrap (max attachment size …); nil until the first one.
     var limits: Limits?
+    /// CF5 §26: bootstrap's month-folder zone (the server's CHANNEL_FILES_TZ); nil from an older server (Asia/Tokyo).
+    var channelFilesZone: TimeZone?
     /// M88 (MEMBERSHIP.md §3): the workspace's switches, from bootstrap and workspace.settings_updated. Not persisted:
     /// the defaults (both on) until the first bootstrap.
     private(set) var workspaceSettings = WorkspaceSettings.defaults
