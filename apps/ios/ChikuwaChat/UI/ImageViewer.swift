@@ -674,11 +674,52 @@ final class ZoomScrollView: UIScrollView {
 
 /// One photo of the viewer: pinch / double-tap zoom in a UIScrollView (SwiftUI has no reliable pinch-to-zoom for
 /// images), or a spinner while it downloads, or the failure with 再試行.
+/// The squares behind a transparent photo (docs/PREVIEWS.md §15): on the viewers' black a transparent PNG / WebP / GIF
+/// looked the same as a black one. The same two greys and 8 pt squares as Desktop / Web and Android.
+enum Checkerboard {
+    static let light = UIColor(red: 0xE6 / 255, green: 0xE6 / 255, blue: 0xE6 / 255, alpha: 1)
+    static let dark = UIColor(red: 0xC4 / 255, green: 0xC4 / 255, blue: 0xC4 / 255, alpha: 1)
+    static let cell: CGFloat = 8
+
+    /// A 2 × 2-square tile, repeated as a pattern colour (the squares keep their size on the screen at any zoom).
+    static let pattern: UIColor = {
+        let tile = UIGraphicsImageRenderer(size: CGSize(width: cell * 2, height: cell * 2)).image { context in
+            light.setFill()
+            context.fill(CGRect(x: 0, y: 0, width: cell * 2, height: cell * 2))
+            dark.setFill()
+            context.fill(CGRect(x: cell, y: 0, width: cell, height: cell))
+            context.fill(CGRect(x: 0, y: cell, width: cell, height: cell))
+        }
+        return UIColor(patternImage: tile)
+    }()
+
+    /// Whether the decoded photo has an alpha channel (a JPEG, a HEIC photo and an opaque display size do not). An
+    /// opaque photo with one hides the squares anyway.
+    static func hasAlpha(_ image: UIImage?) -> Bool {
+        guard let info = image?.cgImage?.alphaInfo else { return false }
+        switch info {
+        case .first, .last, .premultipliedFirst, .premultipliedLast, .alphaOnly: return true
+        case .none, .noneSkipFirst, .noneSkipLast: return false
+        @unknown default: return false
+        }
+    }
+
+    /// Where a `.scaleAspectFit` image of `size` is drawn inside `bounds`.
+    static func fittedRect(of size: CGSize, in bounds: CGRect) -> CGRect {
+        guard size.width > 0, size.height > 0, bounds.width > 0, bounds.height > 0 else { return .zero }
+        let scale = min(bounds.width / size.width, bounds.height / size.height)
+        let shown = CGSize(width: size.width * scale, height: size.height * scale)
+        return CGRect(x: bounds.midX - shown.width / 2, y: bounds.midY - shown.height / 2, width: shown.width, height: shown.height)
+    }
+}
+
 final class ImagePageView: UIView, UIScrollViewDelegate {
     enum State { case loading, failed, shown(UIImage) }
 
     let scrollView = ZoomScrollView()
     let imageView = UIImageView()
+    /// The squares behind a transparent photo, exactly its drawn rectangle (it follows the zoom and the pan, §15).
+    let checker = UIView()
     private let spinner = UIActivityIndicatorView(style: .large)
     private let failure = UIStackView()
     var onRetry: () -> Void = {}
@@ -706,6 +747,10 @@ final class ImagePageView: UIView, UIScrollViewDelegate {
         imageView.contentMode = .scaleAspectFit
         imageView.isAccessibilityElement = true
         imageView.accessibilityTraits = .image
+        checker.backgroundColor = Checkerboard.pattern
+        checker.isUserInteractionEnabled = false
+        checker.isHidden = true
+        scrollView.addSubview(checker)
         scrollView.addSubview(imageView)
         addSubview(scrollView)
         doubleTap.addTarget(self, action: #selector(toggleZoom(_:)))
@@ -766,7 +811,12 @@ final class ImagePageView: UIView, UIScrollViewDelegate {
             return
         }
         let same = abs(old.size.width / old.size.height - image.size.width / image.size.height) < 0.02
-        if same { imageView.image = image } else { state = .shown(image) }
+        if same {
+            imageView.image = image
+            placeChecker()
+        } else {
+            state = .shown(image)
+        }
     }
 
     func resetZoom() {
@@ -790,6 +840,18 @@ final class ImagePageView: UIView, UIScrollViewDelegate {
             failure.isHidden = true
         }
         imageView.isAccessibilityElement = hasImage
+        placeChecker()
+    }
+
+    /// Shows the squares under the photo's drawn rectangle when it has an alpha channel.
+    func placeChecker() {
+        guard let image = imageView.image, Checkerboard.hasAlpha(image) else {
+            checker.isHidden = true
+            return
+        }
+        let rect = Checkerboard.fittedRect(of: image.size, in: imageView.bounds)
+        checker.frame = imageView.convert(rect, to: scrollView)
+        checker.isHidden = rect.isEmpty
     }
 
     override func layoutSubviews() {
@@ -801,12 +863,14 @@ final class ImagePageView: UIView, UIScrollViewDelegate {
         imageView.frame = bounds
         scrollView.contentSize = bounds.size
         centerImage()
+        placeChecker()
     }
 
     func viewForZooming(in scrollView: UIScrollView) -> UIView? { hasImage ? imageView : nil }
 
     func scrollViewDidZoom(_ scrollView: UIScrollView) {
         centerImage()
+        placeChecker()
         onZoomChange()
     }
 

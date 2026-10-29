@@ -239,6 +239,42 @@ def test_display_of_small_transparent_and_animated_images() -> None:
     assert animated is None
 
 
+def alpha_at(image: Image.Image, xy: tuple[int, int]) -> int:
+    pixel = image.getpixel(xy)
+    assert isinstance(pixel, tuple)
+    return int(pixel[3])
+
+
+def test_display_keeps_transparency_for_the_viewers_checkerboard() -> None:
+    """The viewers draw squares behind a picture with alpha (PREVIEWS.md §15): the WebP keeps it."""
+    rgba = io.BytesIO()
+    picture = Image.new("RGBA", (40, 20), (255, 0, 0, 255))
+    picture.paste((0, 0, 0, 0), (0, 0, 20, 20))  # the left half fully transparent
+    picture.save(rgba, format="PNG")
+    _, shown = photos.read_image(rgba.getvalue(), TOKYO, now=NOW)
+    assert shown is not None
+    decoded = opened(shown.data)
+    assert decoded.mode == "RGBA"
+    assert alpha_at(decoded, (5, 10)) == 0 and alpha_at(decoded, (35, 10)) == 255
+    # A palette PNG with a transparent index, and a grey one with alpha.
+    palette = Image.new("P", (16, 16), 1)
+    palette.putpalette([0, 0, 0, 255, 255, 255] + [0] * 762)
+    palette.paste(0, (0, 0, 8, 16))
+    indexed = io.BytesIO()
+    palette.save(indexed, format="PNG", transparency=0)
+    _, shown = photos.read_image(indexed.getvalue(), TOKYO, now=NOW)
+    assert shown is not None and alpha_at(opened(shown.data), (2, 2)) == 0
+    grey = io.BytesIO()
+    Image.new("LA", (16, 16), (128, 0)).save(grey, format="PNG")
+    _, shown = photos.read_image(grey.getvalue(), TOKYO, now=NOW)
+    assert shown is not None and alpha_at(opened(shown.data), (2, 2)) == 0
+    # An opaque PNG stays without alpha (the viewers keep the black).
+    plain = io.BytesIO()
+    Image.new("RGB", (16, 16), (0, 128, 0)).save(plain, format="PNG")
+    _, shown = photos.read_image(plain.getvalue(), TOKYO, now=NOW)
+    assert shown is not None and opened(shown.data).mode == "RGB"
+
+
 def test_display_refuses_past_the_pixel_limit_but_reads_the_metadata() -> None:
     huge = io.BytesIO()
     image = Image.new("L", (8000, 7000), 128)

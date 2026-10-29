@@ -385,3 +385,39 @@ trixie の ffmpeg 7.1 に上げた）。会話とドライブの格子・一覧�
 - `heix`（10 bit）などのブランドの HEIF も `image/heic` / `image/heif` と判定する（ALBUMS.md §23.3）。
 - 文書のプレビュー（§2 の表）の対象は変わらない。
 
+
+## 15. 透明な画像の後ろの市松模様（4 クライアント、2026-10-29）
+
+利用者の要望：全画面のビューアの背景は黒なので、透明な部分のある画像（ロゴ・図など）が透明かどうか分からず、黒い線や文字は
+背景に溶けて見えなかった。
+
+- **見た目**（全クライアントで同じ）：明るい灰色 2 色（`#E6E6E6` と `#C4C4C4`）の 1 辺 8 px・pt・dp の市松模様を、画像を
+  描いた矩形（ちょうどその範囲。拡大・移動にも付いていく）の後ろにだけ敷く。周りは今までどおり黒。暗い灰色（`#3A3A3A` /
+  `#2A2A2A`）も考えたが、黒い線や文字のロゴが黒の背景と同じく見えにくいので、写真編集のアプリでよく見る明るい方にした。
+- **出す画像**：透明の画素がある（Desktop / Web）・アルファチャンネルがある（iOS / Android）画像だけ。JPEG と不透明な画像は
+  今までどおり黒の上。読み込み中・読み込めなかったときも出さない。
+- **Desktop / Web**（`ui/transparency.ts`）：元のファイルの種類が透明を持てるもの（PNG・WebP・GIF・AVIF・HEIC / HEIF・
+  TIFF・BMP・ICO・SVG）のときだけ、読み込んだ画像を長辺 256 px 以下の canvas に描いて一度だけ画素のアルファを見る
+  （`getImageData`。縮めても透明な画素は 255 未満に残る。読めないときは不透明として扱う）。JPEG は画素を読まない。模様は
+  `<img>` 自身の背景（CSS の `repeating-conic-gradient`）なので、画面に合わせた大きさでも元の大きさ（スクロール）でも画像の
+  矩形と一致する。写真が替わると、その写真を読み終えて判定するまで模様は無い。対象は `Lightbox`（会話・送信前のタイル・
+  ドライブの `DriveViewer`）、アルバムの `AlbumViewer` とスライドショー。
+- **iOS**（`UI/ImageViewer.swift` の `Checkerboard`）：デコードした `CGImage` の `alphaInfo` がアルファ有り（first・last・
+  premultiplied・alphaOnly）。アルファチャンネルを持つ不透明な画像では、模様は画像に隠れて見えない。模様は拡大のスクロール
+  ビューの中で画像のビューの後ろに置いた別のビュー（`ImagePageView.checker`、パターンの色）で、`scaleAspectFit` で描かれた
+  矩形を画像のビューからスクロールビューの座標に変換して置く（拡大・移動・元の画像への差し替え・回転で置き直す）。升目は拡大
+  しても画面の上で 8 pt のまま。会話の写真・ドライブ・アルバムのビューアは同じ `ImagePageView`。アルバムのスライドショーは
+  SwiftUI の `Image` の `background`。
+- **Android**（`ui/ImageViewer.kt` の `Checkerboard`）：デコードした `ImageBitmap.hasAlpha`（`Bitmap.hasAlpha`）。
+  `PhotoViewer` の各ページ（会話・送信前のタイル・キャンバス・備品・ドライブ・アルバム）で、画像の拡大・移動の
+  `graphicsLayer` の中の画像の後ろに描く（`drawBehind`）。升目は拡大率で割って画面の上で 8 dp のまま、画面に見えている升目
+  だけ描く（`Checkerboard.visible`）。
+- **サーバ**：表示サイズ（`/display` の WebP、`attachments/photos.py` の `make_display`）は元から RGBA・LA・パレットの透明を
+  保つ（アルファ付きの WebP）。変更なし、既存の表示サイズの作り直し（`drive-photos --rebuild`）も要らない。
+  `test_albums.py::test_display_keeps_transparency_for_the_viewers_checkerboard` で確かめる。HEIC の表示サイズ（ffmpeg の
+  `rgb24`、§14）は不透明（ffmpeg は HEIF の補助のアルファ画像を合わせない）なので、透明な HEIC には模様が出ない（写真では
+  まず無い）。アニメーションの GIF は表示サイズを作らず元のファイルを見せる。
+- 会話・一覧のサムネイル（JPEG）は透明を持たないので変えていない。
+- 試験：Desktop `tests/transparency.test.tsx`（種類・画素の判定、読む大きさ、読み込み後だけ・次の写真では消える、JPEG は
+  読まない）、iOS `CheckerboardTests`（`alphaInfo` の判定・PNG と JPEG を通した判定・合わせた矩形・ページで画像の後ろに
+  置かれ拡大に付いていく・不透明と読み込み中は隠れる）、Android `ImageViewerTest`（合わせた矩形・升目・拡大中の見える範囲）。

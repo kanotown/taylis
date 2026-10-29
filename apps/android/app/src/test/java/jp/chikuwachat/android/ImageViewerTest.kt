@@ -1,5 +1,9 @@
 package jp.chikuwachat.android
 
+import androidx.compose.ui.geometry.Offset
+import androidx.compose.ui.geometry.Rect
+import androidx.compose.ui.geometry.Size
+import jp.chikuwachat.android.ui.Checkerboard
 import jp.chikuwachat.android.ui.ImageChrome
 import jp.chikuwachat.android.ui.ImageDismiss
 import jp.chikuwachat.android.ui.ImageDismiss.Gesture.PULL
@@ -50,5 +54,45 @@ class ImageViewerTest {
         // TalkBack turned on while hidden: the controls come back; loading or an error: they stay.
         assertTrue(ImageChrome.shown(wanted = false, touchExploration = true, loaded = true))
         assertTrue(ImageChrome.shown(wanted = false, touchExploration = false, loaded = false))
+    }
+
+    @Test fun theCheckerboardIsThePhotosFittedRectangle() {
+        // A wide photo on a tall screen: the full width, centred vertically (PREVIEWS.md §15).
+        assertRect(Rect(Offset(0f, 324.5f), Size(390f, 195f)), Checkerboard.fitted(200, 100, 390f, 844f))
+        assertRect(Rect(Offset(89.5f, 0f), Size(211f, 844f)), Checkerboard.fitted(100, 400, 390f, 844f))
+        assertEquals(Rect.Zero, Checkerboard.fitted(0, 0, 390f, 844f))
+    }
+
+    @Test fun theDarkSquaresAlternateAndStayInsideThePhoto() {
+        val rect = Rect(10f, 20f, 30f, 36f)  // 20 × 16: 3 columns (the last cut) and 2 rows of 8
+        val cells = darkCells(rect, 8f)
+        assertEquals(listOf(Rect(18f, 20f, 26f, 28f), Rect(10f, 28f, 18f, 36f), Rect(26f, 28f, 30f, 36f)), cells)
+        assertTrue(cells.all { it.left >= rect.left && it.right <= rect.right && it.top >= rect.top && it.bottom <= rect.bottom })
+        assertTrue(darkCells(Rect.Zero, 8f).isEmpty())
+        assertTrue(darkCells(rect, 0f).isEmpty())
+        // Zoomed in, only the squares on the screen are drawn, on the same grid.
+        assertEquals(listOf(Rect(26f, 28f, 30f, 36f)), darkCells(rect, 8f, visible = Rect(27f, 30f, 40f, 40f)))
+        assertTrue(darkCells(rect, 8f, visible = Rect(100f, 100f, 200f, 200f)).isEmpty())
+    }
+
+    @Test fun theVisiblePartOfAZoomedPhotosLayer() {
+        val size = Size(400f, 800f)
+        assertEquals(Rect(0f, 0f, 400f, 800f), Checkerboard.visible(size, 1f, Offset.Zero))
+        // 2×: the middle half; moved 100 px right, the part 50 px further left.
+        assertEquals(Rect(100f, 200f, 300f, 600f), Checkerboard.visible(size, 2f, Offset.Zero))
+        assertEquals(Rect(50f, 200f, 250f, 600f), Checkerboard.visible(size, 2f, Offset(100f, 0f)))
+    }
+
+    private fun assertRect(expected: Rect, actual: Rect) {
+        assertEquals(expected.left, actual.left, 0.01f)
+        assertEquals(expected.top, actual.top, 0.01f)
+        assertEquals(expected.right, actual.right, 0.01f)
+        assertEquals(expected.bottom, actual.bottom, 0.01f)
+    }
+
+    private fun darkCells(rect: Rect, cell: Float, visible: Rect = rect): List<Rect> {
+        val out = mutableListOf<Rect>()
+        Checkerboard.forEachDarkCell(rect, cell, visible) { l, t, r, b -> out += Rect(l, t, r, b) }
+        return out
     }
 }

@@ -1569,6 +1569,13 @@ PDF や Office のファイルのプレビュー（全ページのビューア�
   （ALBUMS.md §21.1）。
 - 試験：`AlbumsTest.swipingSidewaysTurnsThePageOnlyAmongSeveralAtTheFitSize`、エミュレータで 10 枚のアルバムを左右に払う・タップで隠す。
 
+### 22.9 透明な画像の後ろの市松模様（iOS / Android、2026-10-29）
+
+写真のビューア（iOS `ImageViewer`、Android `PhotoViewer`）で、アルファチャンネルのある画像の描かれた矩形の後ろにだけ、明るい
+灰色の 8 pt・dp の市松模様を敷く（拡大・移動に付いていき、升目は画面の上で同じ大きさ）。黒の上では透明な部分が分からず、黒い
+ロゴは見えなかった（利用者の要望）。JPEG と不透明な画像は今までどおり黒。判定は iOS が `CGImage.alphaInfo`、Android が
+`ImageBitmap.hasAlpha`。Desktop / Web も同じ見た目。詳しくは PREVIEWS.md §15。
+
 ## 23. メンションの候補の並び（4 クライアント、2026-10-21）
 
 利用者の要望：入力欄で `@` を打つと、ワークスペースの全員がユーザー名の順に並ぶだけで、話している相手がなかなか出てこない。

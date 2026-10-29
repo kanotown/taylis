@@ -46,6 +46,10 @@ import androidx.compose.ui.geometry.Offset
 import androidx.compose.ui.graphics.ImageBitmap
 import androidx.compose.ui.graphics.asImageBitmap
 import androidx.compose.ui.graphics.graphicsLayer
+import androidx.compose.ui.draw.drawBehind
+import androidx.compose.ui.geometry.Rect
+import androidx.compose.ui.geometry.Size
+import androidx.compose.ui.graphics.drawscope.DrawScope
 import androidx.compose.ui.input.pointer.pointerInput
 import androidx.compose.ui.input.pointer.positionChanged
 import androidx.compose.ui.input.pointer.util.VelocityTracker
@@ -176,6 +180,69 @@ internal object DisplayBytes {
         } catch (e: Exception) {
             // shown later from the page itself
         }
+    }
+}
+
+/**
+ * The squares behind a transparent photo (docs/PREVIEWS.md §15): on the viewer's black a transparent PNG / WebP / GIF
+ * looked the same as a black one. The same two greys and 8 dp squares as Desktop / Web and iOS.
+ */
+internal object Checkerboard {
+    val LIGHT = Color(0xFFE6E6E6)
+    val DARK = Color(0xFFC4C4C4)
+    const val CELL_DP = 8f
+
+    /** Whether the decoded photo has an alpha channel (a JPEG, a HEIC photo and an opaque display image do not). */
+    fun shows(image: ImageBitmap): Boolean = image.hasAlpha
+
+    /** Where a [ContentScale.Fit] image of `imageWidth` × `imageHeight` is drawn in a `width` × `height` box. */
+    fun fitted(imageWidth: Int, imageHeight: Int, width: Float, height: Float): Rect {
+        if (imageWidth <= 0 || imageHeight <= 0 || width <= 0f || height <= 0f) return Rect.Zero
+        val scale = min(width / imageWidth, height / imageHeight)
+        val w = imageWidth * scale
+        val h = imageHeight * scale
+        return Rect(Offset((width - w) / 2f, (height - h) / 2f), Size(w, h))
+    }
+
+    /**
+     * The dark squares of the board over `rect` (the light ones are its fill), `cell` px each from its top left, as
+     * (left, top, right, bottom); only those meeting `visible` (a zoomed photo's on-screen part).
+     */
+    inline fun forEachDarkCell(rect: Rect, cell: Float, visible: Rect = rect, action: (Float, Float, Float, Float) -> Unit) {
+        if (rect.isEmpty || cell <= 0f) return
+        val area = rect.intersect(visible)
+        if (area.width <= 0f || area.height <= 0f) return
+        val firstRow = ((area.top - rect.top) / cell).toInt()
+        val firstColumn = ((area.left - rect.left) / cell).toInt()
+        var row = firstRow
+        var y = rect.top + row * cell
+        while (y < area.bottom) {
+            var column = firstColumn
+            var x = rect.left + column * cell
+            while (x < area.right) {
+                if ((row + column) % 2 == 1) action(x, y, min(x + cell, rect.right), min(y + cell, rect.bottom))
+                x += cell
+                column++
+            }
+            y += cell
+            row++
+        }
+    }
+
+    /** The part of a box of `size` on the screen when its layer is scaled by `scale` about its centre and moved by `offset`. */
+    fun visible(size: Size, scale: Float, offset: Offset): Rect {
+        if (scale <= 0f) return Rect(Offset.Zero, size)
+        val centre = Offset(size.width / 2f, size.height / 2f)
+        fun back(screen: Offset) = centre + (screen - offset - centre) / scale
+        return Rect(back(Offset.Zero), back(Offset(size.width, size.height)))
+    }
+}
+
+private fun DrawScope.drawCheckerboard(rect: Rect, cell: Float, visible: Rect) {
+    if (rect.isEmpty) return
+    drawRect(Checkerboard.LIGHT, rect.topLeft, rect.size)
+    Checkerboard.forEachDarkCell(rect, cell, visible) { left, top, right, bottom ->
+        drawRect(Checkerboard.DARK, Offset(left, top), Size(right - left, bottom - top))
     }
 }
 
@@ -514,9 +581,20 @@ private fun ZoomableImage(
                 )
             },
     ) {
+        val transparent = remember(image) { Checkerboard.shows(image) }
+        val cellPx = with(LocalDensity.current) { Checkerboard.CELL_DP.dp.toPx() }
         Image(image, contentDescription = filename, contentScale = ContentScale.Fit,
             modifier = Modifier.fillMaxSize().graphicsLayer {
                 scaleX = scale; scaleY = scale; translationX = offset.x; translationY = offset.y
+            }.drawBehind {
+                // §15 (PREVIEWS.md): drawn in the photo's layer, so it is the photo's rectangle at any zoom and place;
+                // the squares are divided by the zoom to keep their size on the screen.
+                if (transparent) {
+                    drawCheckerboard(
+                        Checkerboard.fitted(image.width, image.height, size.width, size.height), cellPx / scale,
+                        Checkerboard.visible(size, scale, offset),
+                    )
+                }
             })
     }
 }

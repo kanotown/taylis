@@ -238,6 +238,7 @@ struct AlbumSlideshow: View {
             if let video { SlideshowVideoView(player: video) } else { ProgressView().tint(.white) }
         } else if let image = images[item.id] {
             Image(uiImage: image).resizable().scaledToFit()
+                .background { if Checkerboard.hasAlpha(image) { Color(uiColor: Checkerboard.pattern) } }
                 .accessibilityLabel(Text(tr("写真 \(item.name)")))
         } else {
             ProgressView().tint(.white)

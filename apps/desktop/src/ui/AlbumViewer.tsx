@@ -25,6 +25,7 @@ import { isTauri, isWeb } from "../platform/env";
 import { DriveIcon } from "./DriveBrowser";
 import { FileName } from "./FileName";
 import { cn } from "./primitives";
+import { useTransparentBackdrop } from "./transparency";
 import { useMediaSource } from "./useMediaSource";
 import { VIEWER_BUTTON, ViewerBody, ViewerCloseButton, ViewerFrame } from "./ViewerHeader";
 import { t } from "../i18n";
@@ -294,6 +295,7 @@ function Picture({ cache, item, original, fit, onClick }: { cache: BlobCache; it
   // While the original comes, the display size stays (no blank between the two).
   const display = usePicture(cache, item, false);
   const shown = url ?? (original ? display.url : null);
+  const backdrop = useTransparentBackdrop(shown, item.content_type);
   if (failed && !shown) return <p role="status" className="m-auto text-sm text-white/80">{t("attach.imageFailed")}</p>;
   if (!shown) return <span role="status" aria-label={t("attach.loadingImage")} className="m-auto h-8 w-8 animate-spin rounded-full border-2 border-white/30 border-t-white" />;
   return (
@@ -302,8 +304,11 @@ function Picture({ cache, item, original, fit, onClick }: { cache: BlobCache; it
       alt={item.name}
       data-album-picture={original && url ? "original" : "display"}
       data-viewer-content=""
+      data-viewer-transparent={backdrop.transparent ? "" : undefined}
       draggable={false}
       onClick={onClick}
+      onLoad={backdrop.onLoad}
+      style={backdrop.style}
       className={cn("m-auto block select-none rounded-md", fit ? "min-h-0 min-w-0 max-h-full max-w-full cursor-zoom-in object-contain" : "max-w-none cursor-zoom-out")}
     />
   );
@@ -485,7 +490,8 @@ export function Slideshow({ controller, items, startId, settings, onClose }: {
 
 function SlidePicture({ cache, item }: { cache: BlobCache; item: DriveItemOut }) {
   const { url, failed } = usePicture(cache, item, false);
+  const backdrop = useTransparentBackdrop(url, item.content_type);
   if (failed) return <p role="status" className="m-auto text-sm text-white/70">{t("attach.imageFailed")}</p>;
   if (!url) return <span role="status" aria-label={t("attach.loadingImage")} className="m-auto h-8 w-8 animate-spin rounded-full border-2 border-white/30 border-t-white" />;
-  return <img src={url} alt={item.name} data-slide={item.id} draggable={false} className="m-auto block max-h-full max-w-full select-none object-contain" />;
+  return <img src={url} alt={item.name} data-slide={item.id} draggable={false} onLoad={backdrop.onLoad} style={backdrop.style} className="m-auto block max-h-full max-w-full select-none object-contain" />;
 }

@@ -16,6 +16,7 @@ import { isTauri } from "../platform/env";
 import { driveFileOf } from "../drive/listing";
 import { AudioPlayer } from "./AudioPlayer";
 import { claimPlayback } from "./playbackFocus";
+import { useTransparentBackdrop } from "./transparency";
 import { useMediaSource } from "./useMediaSource";
 import { postedItemId, postedView } from "../drive/channelFiles";
 import { MovedPostedFile, PostedFileLine, RemovedPostedFile } from "./ChannelFiles";
@@ -435,6 +436,8 @@ export function Lightbox({ attachment, controller, onClose }: { attachment: Atta
     return original ? all.filter((kind) => kind !== "display") : all;
   }, [attachment, original]);
   const { url, kind, failed, retry, onError } = useViewerPicture(controller, attachment, pictures);
+  // The display size and a thumbnail are made from the original, so its type says whether there may be alpha (§15).
+  const backdrop = useTransparentBackdrop(url, attachment.content_type);
   const [fit, setFit] = useState(true);
   const shape = attachment.width && attachment.height ? { width: attachment.width, height: attachment.height } : null;
   const offersOriginal = !original && kind === "display" && !isHeif(attachment.content_type);
@@ -457,6 +460,9 @@ export function Lightbox({ attachment, controller, onClose }: { attachment: Atta
           src={url}
           alt={attachment.filename}
           onError={onError}
+          onLoad={backdrop.onLoad}
+          style={backdrop.style}
+          data-viewer-transparent={backdrop.transparent ? "" : undefined}
           data-viewer-content=""
           data-viewer-picture={kind ?? undefined}
           onClick={() => setFit((v) => !v)}
