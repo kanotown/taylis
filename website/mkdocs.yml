@@ -127,12 +127,14 @@ nav:
       - アクティビティと未読: guide/activity.md
       - ドキュメント: guide/docs.md
       - ドライブ: guide/drive.md
+      - 写真のアルバム: guide/albums.md
       - キャンバス: guide/canvas.md
       - タスクと締切: guide/tasks.md
       - カレンダーと日程調整: guide/calendar.md
       - Times: guide/times.md
       - ワークフローと定期投稿: guide/workflows.md
       - 予約: guide/reservations.md
+      - 備品の貸し出し: guide/lending.md
       - 在室状況と操作ボタン: guide/attendance.md
       - AI: guide/ai.md
       - ホーム画面のウィジェット: guide/widgets.md
@@ -147,6 +149,7 @@ nav:
       - カスタム絵文字とセット: admin/emoji.md
       - 報告とモデレーション: admin/moderation.md
       - 予約の枠: admin/reservations.md
+      - 備品の管理: admin/lending.md
       - 在室状況と操作ボタン: admin/attendance.md
       - ドキュメントの管理: admin/docs.md
       - ドライブの管理: admin/drive.md

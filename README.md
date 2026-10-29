@@ -5,7 +5,8 @@
 Taylis is a self-hosted workspace for university research labs: one server the lab runs itself, and native clients
 for Windows, macOS, iOS and Android plus a browser client. Next to channels, threads and direct messages it has the
 tools a lab uses every day: who is in the lab now, weekly reports and who has handed them in, students' work logs,
-announcements that ask for acknowledgement, deadlines, tasks and calendars.
+announcements that ask for acknowledgement, deadlines, tasks and calendars, a drive for the lab's files and photos,
+and equipment lending.
 
 **Documentation: <https://kanotown.github.io/taylis/>** (user guide, admin guide, self-hosting; mostly in Japanese,
 with an English top page and self-hosting quick start). Its source is in [website/](website/).
@@ -32,7 +33,9 @@ For research labs:
 - Acknowledgement requests: important announcements with a confirm button, and who has not read them yet
 - Deadlines with countdowns, tasks, and a calendar with recurring events and iCal; a new channel event is announced
   in the channel
-- A queue for shared equipment and software seats
+- Bookings by the hour and a queue for shared equipment and software seats
+- Equipment lending: members borrow and return the lab's laptops, cameras and books themselves, with due-date
+  reminders, a teacher's permission check, CSV import / export and printable QR labels
 - A roster with years and supervisors (mentions such as `@m1`)
 - Home Screen widgets (iOS and Android) for attendance, unread messages and today's events and deadlines
 
@@ -47,14 +50,25 @@ Chat and workspace:
 - Reliable delivery: server-side ordering, idempotent sends, catch-up after reconnects (WebSocket + REST,
   [docs/SYNC_PROTOCOL.md](docs/SYNC_PROTOCOL.md))
 - Push notifications through APNs (iOS) and FCM (Android), sent from a transactional outbox
-- Japanese and English full-text search (PostgreSQL + PGroonga)
-- File attachments in S3-compatible object storage (versitygw by default)
+- Japanese and English full-text search (PostgreSQL + PGroonga), a search tab on phones, people search for new DMs
+- File attachments in S3-compatible object storage (versitygw by default); videos (and, on desktop, audio) play in
+  place, animated GIFs move on phones too
+- Drive: lab, channel and personal drives with resumable uploads of large files, versions, share links for people
+  outside the lab and search inside PDF and Office files
+- Files posted in a channel are kept in its drive automatically; files over the attachment limit go there and are
+  posted as a link
+- Photo albums on drive folders: a grid by date taken, slideshows, HEIC support, and share links that give out only
+  reduced-size photos (no location) by default
 - Canvas documents, a wiki, workflows, custom emoji and stickers
 - Optional sign-in with Google (SSO), invitations, guest accounts
-- Several workspaces (servers) in one client
+- Several workspaces (servers) in one client, each with its own theme colour (six palettes, and a black dark mode on
+  phones)
 - Importers for Mattermost and Slack exports
 - Optional AI bot (answers mentions, private summaries, questions over past messages; [docs/AI.md](docs/AI.md))
 - Backup and restore scripts, automatic deployment from a release tag
+
+Every feature is described on the documentation site: [Features](https://kanotown.github.io/taylis/features/)
+(in Japanese).
 
 ## Architecture
 
