@@ -1,0 +1,10 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!-- CF5 (docs/CHANNEL_FILES.md §12.4, 「CF5 の Android」): files over the attachments' limit go to the drive and post a link. -->
+<resources>
+    <string name="large_file_uploading">正在上传到云盘 · %1$d%%</string>
+    <string name="large_file_done">已插入链接</string>
+    <string name="large_file_note">超过 %1$s 的文件将保存到云盘。上传完成后，链接会插入到输入框。</string>
+    <string name="large_file_note_mine">将保存到我的云盘。其他人无法打开此链接。</string>
+    <string name="large_file_row">上传到云盘：%1$s</string>
+    <string name="share_in_file_to_drive">“%1$s”超过 %2$s，将上传到云盘并发布链接。</string>
+</resources>

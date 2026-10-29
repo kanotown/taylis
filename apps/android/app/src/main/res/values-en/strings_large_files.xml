@@ -1,0 +1,10 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!-- CF5 (docs/CHANNEL_FILES.md §12.4, 「CF5 の Android」): files over the attachments' limit go to the drive and post a link. -->
+<resources>
+    <string name="large_file_uploading">Uploading to the drive · %1$d%%</string>
+    <string name="large_file_done">Link added</string>
+    <string name="large_file_note">Files over %1$s are saved to the drive. When the upload is done, its link goes into the message.</string>
+    <string name="large_file_note_mine">Saved to My Drive. Others can\'t open this link.</string>
+    <string name="large_file_row">Upload to the drive: %1$s</string>
+    <string name="share_in_file_to_drive">“%1$s” is over %2$s: it will be uploaded to the drive and its link posted.</string>
+</resources>

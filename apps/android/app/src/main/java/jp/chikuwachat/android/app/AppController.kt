@@ -716,6 +716,7 @@ class AppController(private val app: Application) {
         ssoPending.purgeExpired()
         // DRIVE.md §6: drive uploads left unfinished (the app closed, the process killed, a force-stop) go on.
         withContext(Dispatchers.IO) { jp.chikuwachat.android.platform.DriveUploadCenter.resume(app) }
+        deliverDriveLinks() // CF5: a large file finished while the app was closed
         push.refresh() // WORKSPACES.md §8: at startup the token goes to every signed-in workspace
         // The widget picker's previews (Android 15+), once per version and language.
         scope.launch { jp.chikuwachat.android.widget.WidgetPreviews.publish(app) }
@@ -1359,6 +1360,7 @@ class AppController(private val app: Application) {
         // so a burst reads once), and after every connect (below): nothing is read while no such widget is placed.
         engine.onPlanChanged = { if (this@AppController.engine === engine) requestTodayWidgetRead() }
         this.engine = engine
+        deliverDriveLinks() // CF5: this workspace's large files that finished while another was on screen
         scope.launch {
             engine.status.collect { status ->
                 if (status == EngineStatus.ONLINE && this@AppController.engine === engine) requestTodayWidgetRead()
@@ -2948,6 +2950,71 @@ class AppController(private val app: Application) {
     /** A job finished: the folder it went into reads again (drive.changed says so too). */
     fun driveUploadDone(job: jp.chikuwachat.android.sync.DriveUploadJob) {
         if (job.serverUrl == activeKey) engine?.drive?.applyChanged(listOf(job.parentId), null)
+        deliverDriveLinks()
+    }
+
+    // --- files over the attachments' limit (CF5, docs/CHANNEL_FILES.md §12.4, 「CF5 の Android」) -------------------------------
+
+    /** Where a large file added in [channelId] goes ([LargeFiles.place]); null: refused as before. */
+    fun largeFilePlace(channelId: String): String? =
+        jp.chikuwachat.android.sync.LargeFiles.place(store.channel(channelId)?.channel, store.workspaceSettings, drive?.available)
+
+    /**
+     * The picked files of the composer split in two: those for the message's attachments, and those over the
+     * attachments' limit that go to the drive instead (a conversation that has a place for them). Sizes a provider
+     * does not tell count as small (the server refuses them as before).
+     */
+    suspend fun splitLargeFiles(channelId: String, uris: List<Uri>): Pair<List<Uri>, List<Uri>> {
+        if (largeFilePlace(channelId) == null) return uris to emptyList()
+        val limits = store.limits
+        val resolver = app.contentResolver
+        val sizes = withContext(Dispatchers.IO) {
+            uris.map { uri ->
+                runCatching {
+                    resolver.query(uri, arrayOf(OpenableColumns.SIZE), null, null, null)?.use { c -> if (c.moveToFirst() && !c.isNull(0)) c.getLong(0) else null }
+                }.getOrNull()
+            }
+        }
+        val large = uris.filterIndexed { index, _ -> jp.chikuwachat.android.sync.LargeFiles.overLimit(sizes[index], limits) }
+        return uris.filterNot { it in large } to large
+    }
+
+    /**
+     * §12.4: the large files of the composer of [channelId] (a thread's: [parentId]) go up with the drive's background
+     * upload into the conversation's folder (found by the work); when one is there its `/d/` link goes into this draft
+     * ([deliverDriveLinks]). Same names are kept apart (「名前 (1).mp4」), never asked.
+     */
+    fun addLargeFiles(channelId: String, parentId: String?, uris: List<Uri>, onCopied: (() -> Unit)? = null) {
+        val place = largeFilePlace(channelId)
+        val server = activeKey
+        val account = server?.let { shareAccount(it) }
+        if (uris.isEmpty() || place == null || server == null || account == null) { onCopied?.invoke(); return }
+        val (userId, session) = account
+        val title = store.channel(channelId)?.channel?.let { ch -> ch.name?.takeIf { ch.type == "public" || ch.type == "private" }?.let { "#$it" } } ?: ""
+        val target = jp.chikuwachat.android.platform.DriveUploadCenter.Target(
+            server, userId, session, locationId = "", parentId = "", label = title, onConflict = jp.chikuwachat.android.sync.ConflictChoice.RENAME,
+        )
+        val post = jp.chikuwachat.android.sync.DrivePost(channelId = channelId, parentId = parentId, place = place, channelTitle = title)
+        jp.chikuwachat.android.platform.DriveUploadCenter.addUris(app, scope, uris, target, onCopied, post = post)
+    }
+
+    /**
+     * §12.4: finished large files of the account on screen whose link is not in their draft yet: the link goes in (on a
+     * line of its own after what is typed) and the job remembers it, so it never goes in twice. Runs when a job
+     * finishes, when a workspace comes on screen and at the start (a file finished while the app was closed).
+     */
+    fun deliverDriveLinks() {
+        val server = activeKey ?: return
+        val me = store.me?.id ?: return
+        val base = api?.baseUrl ?: server
+        jp.chikuwachat.android.platform.DriveUploadCenter.jobs.value
+            .filter { it.serverUrl == server && it.userId == me && jp.chikuwachat.android.sync.LargeFiles.linkPending(it, jp.chikuwachat.android.sync.LargeFiles.MODE_DRAFT) }
+            .forEach { job ->
+                val post = job.post ?: return@forEach
+                val marked = jp.chikuwachat.android.platform.DriveUploadCenter.markLinked(app, job.id) ?: return@forEach
+                val link = jp.chikuwachat.android.sync.LargeFiles.link(base, marked.itemId ?: return@forEach)
+                store.setDraft(post.channelId, post.parentId) { it.copy(text = jp.chikuwachat.android.sync.LargeFiles.withLink(it.text, link)) }
+            }
     }
 
     /**

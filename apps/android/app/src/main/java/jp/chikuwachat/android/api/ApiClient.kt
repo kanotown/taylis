@@ -74,7 +74,8 @@ class ApiClient(
     private val sleep: suspend (Long) -> Unit = { delay(it) },
 ) : SyncApi, DraftApi, ChannelLinksApi, ReservationsApi, AttendanceApi, ActionsApi, ActivityApi, CanvasApi, MyCanvasesApi, ChannelApi, CalendarApi, CalendarFeedApi, TaskApi, AiApi, WikiApi,
     jp.chikuwachat.android.sync.WikiDbApi, jp.chikuwachat.android.sync.WikiTemplatesApi, jp.chikuwachat.android.sync.DriveApi,
-    jp.chikuwachat.android.sync.DriveWriteApi, jp.chikuwachat.android.sync.LendingApi, jp.chikuwachat.android.sync.AlbumApi {
+    jp.chikuwachat.android.sync.DriveWriteApi, jp.chikuwachat.android.sync.LendingApi, jp.chikuwachat.android.sync.AlbumApi,
+    jp.chikuwachat.android.sync.DrivePostApi {
     @Volatile private var sessionVersion = 0
     @Volatile var accessToken: String? = null
     @Volatile var refreshToken: String? = null
@@ -1390,6 +1391,14 @@ class ApiClient(
         request("POST", "/api/v1/drive/folders", buildJsonObject {
             put("parent_id", parentId)
             put("name", name)
+            put("client_op_id", clientOpId)
+        })
+
+    /** CF5: POST /drive/folders {parent_id, path} — the folder there of that name, or a new one (mkdir -p). */
+    override suspend fun ensureDriveFolderPath(parentId: String, path: String, clientOpId: String): DriveItemOut =
+        request("POST", "/api/v1/drive/folders", buildJsonObject {
+            put("parent_id", parentId)
+            put("path", path)
             put("client_op_id", clientOpId)
         })
 

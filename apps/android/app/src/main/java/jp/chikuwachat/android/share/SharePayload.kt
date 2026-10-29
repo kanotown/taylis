@@ -111,14 +111,17 @@ object SharePayload {
      * `limits`); the server checks them again. Refused streams ([ShareRequest.refused]) are a separate note: the rest
      * can still be sent.
      */
-    fun problems(files: List<SharedFile>, text: String, limits: Limits?): List<String> = buildList {
+    fun problems(files: List<SharedFile>, text: String, limits: Limits?, toDrive: Boolean = false): List<String> = buildList {
         val maxFiles = limits?.maxAttachmentsPerMessage ?: 10
-        if (files.size > maxFiles) add(L10n.str(R.string.share_in_too_many_files, maxFiles))
+        // CF5: files over the limit going to the drive are not attachments (nor counted as such).
+        val large = if (toDrive) toDrive(files, limits).toSet() else emptySet()
+        if (files.size - large.size > maxFiles) add(L10n.str(R.string.share_in_too_many_files, maxFiles))
         val maxBytes = limits?.maxAttachmentBytes
         for (file in files) {
             when {
                 !file.readable -> add(L10n.str(R.string.share_in_file_unreadable, file.name))
                 file.size == 0L -> add(L10n.str(R.string.share_in_file_empty, file.name))
+                file in large -> Unit
                 maxBytes != null && file.size != null && file.size > maxBytes ->
                     add(L10n.str(R.string.share_in_file_too_large, file.name, formatSize(maxBytes)))
             }
@@ -126,6 +129,19 @@ object SharePayload {
         val maxLength = limits?.maxMessageLength
         if (maxLength != null && text.length > maxLength) add(L10n.str(R.string.share_in_text_too_long, maxLength))
         if (files.isEmpty() && text.isBlank()) add(L10n.str(R.string.share_in_nothing))
+    }
+
+    /**
+     * CF5 (docs/CHANNEL_FILES.md §12.4): the readable files over the attachments' limit, which a conversation with a
+     * place for them in the drive ([jp.chikuwachat.android.sync.LargeFiles.place]) takes as drive uploads and links.
+     */
+    fun toDrive(files: List<SharedFile>, limits: Limits?): List<SharedFile> =
+        files.filter { it.readable && jp.chikuwachat.android.sync.LargeFiles.overLimit(it.size, limits) }
+
+    /** CF5: the share screen's note for each of them (「「a.mp4」は 100 MB を超えるため、…」). */
+    fun driveNotes(files: List<SharedFile>, limits: Limits?): List<String> {
+        val maxBytes = limits?.maxAttachmentBytes ?: return emptyList()
+        return toDrive(files, limits).map { L10n.str(R.string.share_in_file_to_drive, it.name, formatSize(maxBytes)) }
     }
 
     /**

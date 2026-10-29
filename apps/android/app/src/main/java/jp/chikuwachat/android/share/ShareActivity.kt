@@ -264,6 +264,8 @@ private fun ShareScreen(controller: AppController, model: ShareModel, onClose: (
             }
             if (request != null) {
                 items(problems, key = { "p:$it" }) { Note(it, error = true) }
+                // CF5: files over the limit go to the drive and are posted as links.
+                items(model.driveNotes(limits), key = { "d:$it" }) { Note(it, error = false) }
             }
             // The drive saves the files only: no message there.
             if (drive == null) item("text") {

@@ -1,0 +1,10 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!-- CF5 (docs/CHANNEL_FILES.md §12.4, 「CF5 の Android」): files over the attachments' limit go to the drive and post a link. -->
+<resources>
+    <string name="large_file_uploading">ドライブにアップロード中 · %1$d%%</string>
+    <string name="large_file_done">リンクを入れました</string>
+    <string name="large_file_note">%1$s を超えるファイルはドライブに保存します。終わるとリンクを入力欄に入れます。</string>
+    <string name="large_file_note_mine">マイドライブに保存します。ほかの人はこのリンクを開けません。</string>
+    <string name="large_file_row">ドライブへのアップロード：%1$s</string>
+    <string name="share_in_file_to_drive">「%1$s」は %2$s を超えるため、ドライブにアップロードしてリンクを投稿します。</string>
+</resources>
