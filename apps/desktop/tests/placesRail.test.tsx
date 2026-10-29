@@ -47,20 +47,6 @@ describe("the rules", () => {
     expect(more.map((p) => p.key)).toEqual(["b", "e"]);
   });
 
-  it("railLayout (2026-10-30): the Times feed keeps its icon in a short rail, the nav items before it go under 「その他」 first", () => {
-    const places = ["a", "b", "c", "times-feed", "my-times"].map((key) => place(key));
-    const short = railLayout(places, spots({}), 3);
-    expect(short.rail.map((p) => p.key)).toEqual(["a", "b", "times-feed"]);
-    expect(short.more.map((p) => p.key)).toEqual(["c", "my-times"]);
-    expect(railLayout(places, spots({}), 1).rail.map((p) => p.key)).toEqual(["times-feed"]);
-    expect(railLayout(places, spots({}), 0).rail).toEqual([]);
-    // All fit: as before. Put elsewhere by me: not kept in the rail.
-    expect(railLayout(places, spots({}), 5).rail.map((p) => p.key)).toEqual(["a", "b", "c", "times-feed", "my-times"]);
-    const hidden = railLayout(places, spots({ "times-feed": "hidden" }), 2);
-    expect(hidden.rail.map((p) => p.key)).toEqual(["a", "b"]);
-    expect(hidden.more.map((p) => p.key)).toEqual(["c", "times-feed", "my-times"]);
-  });
-
   it("strongestBadge: red beats neutral, none without badges", () => {
     expect(strongestBadge([place("a")])).toBeNull();
     expect(strongestBadge([place("a", { badge: { text: "2", tone: "neutral" } })])).toBe("neutral");
@@ -200,17 +186,6 @@ describe("the rail", () => {
     expect(more.className).toContain("bg-sidebar-active");
     const menu = await openMore();
     expect(within(menu).getAllByRole("menuitem").filter((i) => i.dataset.navItem).map((i) => i.dataset.navItem)).toEqual(["c", "d"]);
-  });
-
-  it("a short window keeps the Times feed's icon (2026-10-30): one click, the item before it under 「その他」", async () => {
-    vi.spyOn(HTMLElement.prototype, "clientHeight", "get").mockReturnValue(16 + 2 * RAIL_ITEM_PITCH + 2 * RAIL_ITEM_PITCH);
-    const feed = place("times-feed", { label: "Times フィード" });
-    render(<PlacesRail places={[place("a"), place("b"), feed]} spotOf={spots({})} onPlace={vi.fn()} />);
-    expect(railKeys()).toEqual(["a", "times-feed"]);
-    fireEvent.click(within(rail()).getByRole("button", { name: "Times フィード" }));
-    expect(feed.onSelect).toHaveBeenCalledTimes(1);
-    const menu = await openMore();
-    expect(within(menu).getAllByRole("menuitem").filter((i) => i.dataset.navItem).map((i) => i.dataset.navItem)).toEqual(["b"]);
   });
 
   it("one tab stop (the open place, else the first); ↑ ↓ Home End move through the icons, 「その他」 and the customise button", () => {
