@@ -31,6 +31,7 @@ async def feed_channel_ids(db: AsyncSession, actor: User) -> list[uuid.UUID]:
             muted=notifications.is_muted(pref, now),
             unread=0,
             mentions=0,
+            times_all=actor.times_notification_default == "all",
         )
         if not unread_rules.is_muted(conversation):
             out.append(c.id)

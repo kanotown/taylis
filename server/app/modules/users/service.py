@@ -105,6 +105,8 @@ async def update_me(db: AsyncSession, user_id: uuid.UUID, data: UserUpdate) -> U
         user.presence_hidden = data.presence_hidden
     if data.notification_default is not None:
         user.notification_default = data.notification_default
+    if data.times_notification_default is not None:
+        user.times_notification_default = data.times_notification_default
     if data.notify_reactions is not None:
         user.notify_reactions = data.notify_reactions
     if data.notify_tasks is not None:

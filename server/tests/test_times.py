@@ -10,6 +10,9 @@ import pytest
 from httpx import AsyncClient
 from sqlalchemy.ext.asyncio import AsyncSession
 
+from app.core.settings import build_settings
+from app.modules.channels import service as channels
+from app.modules.notifications.planner import PushPlanner
 from app.modules.reads import rules
 from app.modules.users.models import User
 from tests.helpers import make_user
@@ -28,6 +31,7 @@ def test_unread_rules_follow_the_shared_vectors(case: dict[str, Any]) -> None:
         muted=case["muted"],
         unread=case["unread"],
         mentions=case["mentions"],
+        times_all=case.get("times_default", "mentions") == "all",
     )
     assert rules.has_unread(conversation) == case["expect"]["has_unread"]
     assert rules.badge(conversation) == case["expect"]["badge"]
@@ -174,3 +178,81 @@ async def test_someone_elses_times_is_quiet_unread_in_the_summary(
     await _post(client, times["id"], "がんばって")
     as_user(bob)
     assert (await client.get("/api/v1/sync/summary")).json()["has_unread"] is True
+
+
+async def test_one_setting_notifies_of_every_post_in_others_times(
+    client: AsyncClient, db: AsyncSession, as_user: Callable[[User], None]
+) -> None:
+    """2026-10-30: users.times_notification_default = "all" (PUSH_NOTIFICATIONS.md §4)."""
+    alice = await make_user(db, "alice")
+    bob = await make_user(db, "bob")
+    carol = await make_user(db, "carol")
+    as_user(bob)
+    bobs = (await client.post("/api/v1/times")).json()
+    as_user(carol)
+    carols = (await client.post("/api/v1/times")).json()
+    as_user(alice)
+    for times in (bobs, carols):
+        await client.post(f"/api/v1/channels/{times['id']}/join")
+    me = (await client.get("/api/v1/users/me")).json()
+    assert me["times_notification_default"] == "mentions"
+
+    planner = PushPlanner(build_settings(), is_active=lambda _uid: False)
+
+    async def notified(author: User, times: dict[str, Any], body: str) -> bool:
+        as_user(author)
+        response = await client.post(
+            f"/api/v1/channels/{times['id']}/messages",
+            json={"client_msg_id": str(uuid.uuid4()), "body": body},
+        )
+        assert response.status_code == 201, response.text
+        as_user(alice)
+        await db.refresh(alice)
+        record = await channels.require_channel(db, uuid.UUID(times["id"]))
+        targets = await planner.select_recipients(db, record, [alice.id], response.json())
+        return targets == [alice.id]
+
+    assert not await notified(bob, bobs, "実験の準備")
+    assert (await client.get("/api/v1/sync/summary")).json()["has_unread"] is False
+
+    changed = await client.patch("/api/v1/users/me", json={"times_notification_default": "all"})
+    assert changed.status_code == 200, changed.text
+    assert changed.json()["times_notification_default"] == "all"
+    # Every other person's times at once: a push for each post, and normal unread.
+    assert await notified(bob, bobs, "結果が出た")
+    assert await notified(carol, carols, "今日は読書")
+    assert (await client.get("/api/v1/sync/summary")).json() == {"badge": 0, "has_unread": True}
+    bootstrap = (await client.get("/api/v1/sync/bootstrap")).json()
+    by_id = {c["id"]: c["notification"] for c in bootstrap["channels"]}
+    assert by_id[bobs["id"]] == {
+        "channel_id": bobs["id"],
+        "level": "all",
+        "muted_until": None,
+        "follows_default": True,
+        "muted": False,
+    }
+
+    # A times with a level of its own keeps it: quiet again, mentions only.
+    own = await client.put(
+        f"/api/v1/channels/{carols['id']}/notification-preference", json={"level": "mentions"}
+    )
+    assert own.json()["level"] == "mentions"
+    await client.put(f"/api/v1/channels/{bobs['id']}/read", json={"last_read_seq": 100})
+    await client.put(f"/api/v1/channels/{carols['id']}/read", json={"last_read_seq": 100})
+    assert not await notified(carol, carols, "続き")
+    assert (await client.get("/api/v1/sync/summary")).json()["has_unread"] is False
+
+    # A times made later follows the setting too.
+    dave = await make_user(db, "dave")
+    as_user(dave)
+    daves = (await client.post("/api/v1/times")).json()
+    as_user(alice)
+    await client.post(f"/api/v1/channels/{daves['id']}/join")
+    assert await notified(dave, daves, "はじめまして")
+
+    # The overall "none" still silences everything; the value is checked.
+    await client.patch("/api/v1/users/me", json={"notification_default": "none"})
+    assert not await notified(bob, bobs, "静か")
+    assert (
+        await client.patch("/api/v1/users/me", json={"times_notification_default": "none"})
+    ).status_code == 422

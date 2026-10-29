@@ -94,9 +94,17 @@ NULL) 本人の全体設定 `users.notification_default` (`all` / `mentions` / `
 
 | 全体設定 | DM / グループ DM | 他の人の times (M24) | ほかのチャンネル |
 | --- | --- | --- | --- |
-| `all` | `all` | `mentions` | `all` |
-| `mentions` | `all` | `mentions` | `mentions` |
+| `all` | `all` | Times の設定 (既定 `mentions`) | `all` |
+| `mentions` | `all` | Times の設定 (既定 `mentions`) | `mentions` |
 | `none` | `none` | `none` | `none` |
+
+「Times の設定」は本人の `users.times_notification_default`（`mentions` / `all`、初期値 `mentions`。2026-10-30 の移行 0129 から）。
+全員の times を一つずつ「すべて」にしなくても、設定の「他の人の Times もすべて通知」をオンにすれば、自分の level を持たない他の人の
+times がまとめて `all` になる（あとから作られた times も同じ）。times ごとの level は今まで通りこれより優先される（`mentions`
+にした times はメンションだけ）。全体設定 `none` は今まで通りすべてを止める。`all` は静かな未読も外す（SYNC_PROTOCOL.md §10.5）。
+解決の検証ベクトルは `apps/shared/notify-rules.json` の `levels`（サーバの `push_level` と 3 端末が同じものを読む）。
+設定を変えると `user.updated` が出て、ほかの端末は `GET /users/me` で読み直す（新しいイベントは無い）。古いサーバの `UserMe` にはこの
+欄が無く、クライアントは `mentions` とみなして設定を出さない。
 
 全体設定はプッシュだけに効く (未読の規則には入らない。SYNC_PROTOCOL.md §10.5)。クライアントの画面は「既定 (全体設定)
 / すべて / メンションのみ / 通知しない」と「ミュート」(解除するまで) と「8 時間ミュート」(期限つき) を出す。

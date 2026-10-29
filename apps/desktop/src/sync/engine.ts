@@ -16,7 +16,7 @@ import type { AiRunUpdated } from "../api/ai";
 import type { CanvasSaverOptions } from "./canvasSave";
 import type { ActivitySummaryOut, BootstrapOut, CalendarEventOut, CanvasMeta, CanvasOut, CanvasSaveIn, CanvasSaveOut, ChannelOut, LabProfileOut, ChannelReadStateOut, CustomEmojiOut, DeltaOut, EmojiPackOut, HistoryOut, MessageOut, ReadAllScope, ReminderOut, ScheduledOut, TemplateOut, ThreadFilter, TimesFeedOut, ThreadListOut, ThreadState, ThreadsReadAllOut, ThreadUpdated, UserMe, UserPublic, ReactionAdded, CanvasMentioned, WorkspaceSettingsOut } from "../api/types";
 import type { ActionListOut, ActionStatusOut, AttendanceBoardOut, AttendanceEntryOut, LendingLoanOut, LendingNotice, LendingSettingsOut, LendingSummaryOut, NotificationTest, ReservationNotice } from "../api/types";
-import { effectiveNotificationLevel, isMutedChannel, notifies, overallLevel, type ReplyKind } from "./notifications";
+import { effectiveNotificationLevel, isMutedChannel, notifies, overallLevel, type ReplyKind, timesLevel } from "./notifications";
 import { CACHED_MESSAGES_PER_CHANNEL, type Store } from "./store";
 import type { ChannelState, EventFrame, GroupOut, MessageState, NotificationLevel, OutboxItem, ParentThread, ReadStateOut, ServerFrame, SidebarDefaultOut, SidebarSectionOut, DraftOut, DraftUpdated, SendOptions, ChannelLinkOut, PoolOut } from "./types";
 import { type CanvasCaret, LOCAL_PREFIX } from "./types";
@@ -1458,7 +1458,7 @@ export class SyncEngine {
     // that left me out of the followers means I did (keyword hits of others are private, so only mine can tell).
     const unfollowed = reply === "thread_only" && !!participants && (mentioned || keyword) && !participants.includes(me.id);
     const ok = notifies({
-      level: effectiveNotificationLevel(channel, me.id, overallLevel(me)),
+      level: effectiveNotificationLevel(channel, me.id, overallLevel(me), timesLevel(me)),
       muted: isMutedChannel(channel),
       reply,
       follower,
@@ -1495,7 +1495,7 @@ export class SyncEngine {
     if (!me || me.notify_reactions !== true || reaction.user_id === me.id) return;
     const channel = this.deps.store.getChannel(reaction.channel_id);
     if (!channel || !channel.isMember) return;
-    if (effectiveNotificationLevel(channel, me.id, overallLevel(me)) === "none" || isMutedChannel(channel)) return;
+    if (effectiveNotificationLevel(channel, me.id, overallLevel(me), timesLevel(me)) === "none" || isMutedChannel(channel)) return;
     if (this.deps.isActive?.() && this.currentChannelId === channel.id) return;
     this.deps.onReaction?.(reaction, channel);
   }
@@ -1509,7 +1509,7 @@ export class SyncEngine {
     if (!me || mention.by_user_id === me.id) return;
     const channel = this.deps.store.getChannel(mention.channel_id);
     if (!channel || !channel.isMember) return;
-    if (effectiveNotificationLevel(channel, me.id, overallLevel(me)) === "none" || isMutedChannel(channel)) return;
+    if (effectiveNotificationLevel(channel, me.id, overallLevel(me), timesLevel(me)) === "none" || isMutedChannel(channel)) return;
     this.deps.onCanvasMention?.(mention, channel);
   }
 

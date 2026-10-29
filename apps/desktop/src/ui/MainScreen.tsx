@@ -5,7 +5,7 @@ import type { AppController } from "../state/app";
 import type { ActivityItem, ChannelLinkOut, ChannelOut, MessageOut } from "../api/types";
 import { canEditLinks, ChannelLinkDialog, ChannelLinksBar } from "./ChannelLinks";
 import type { ChannelState, MessageState, NotificationLevel, ThreadEntry } from "../sync/types";
-import { badgeCount, canMakePublic, canPostTopLevel, conversationTitle, effectiveNotificationLevel, FOLLOW_DEFAULT, hasUnread, isDmChannel, isMutedChannel, myName, notificationChoices, overallLevel, sectionChannels, stepChannel } from "./channels";
+import { badgeCount, canMakePublic, canPostTopLevel, conversationTitle, effectiveNotificationLevel, FOLLOW_DEFAULT, hasUnread, isDmChannel, isMutedChannel, myName, notificationChoicesFor, overallLevel, sectionChannels, stepChannel } from "./channels";
 import { CallButton, canStartCall } from "./Calls";
 import { Composer } from "./Composer";
 import { AdminDialog, ArchiveConfirm } from "./AdminDialog";
@@ -1971,7 +1971,7 @@ export function MainScreen({ controller }: { controller: AppController }) {
                       value={ownLevel ?? FOLLOW_DEFAULT}
                       onValueChange={(value) => void controller.setNotification(current.id, value === FOLLOW_DEFAULT ? null : (value as NotificationLevel), current.mutedUntil)}
                     >
-                      {notificationChoices(overall).map((choice) => (
+                      {notificationChoicesFor(current, store.me?.id ?? null, overall).map((choice) => (
                         <MenuRadioItem key={choice.value} value={choice.value}>{choice.label}</MenuRadioItem>
                       ))}
                     </MenuRadioGroup>

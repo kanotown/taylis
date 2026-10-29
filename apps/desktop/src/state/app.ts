@@ -1762,6 +1762,14 @@ export class AppController {
     return this.updateProfile({ notification_default: level });
   }
 
+  /**
+   * 2026-10-30: 「他の人の Times もすべて通知」 (users.times_notification_default): every other person's times without a
+   * level of its own notifies of each new post and counts as normal unread. My other devices follow (user.updated).
+   */
+  setTimesNotificationDefault(level: "all" | "mentions"): Promise<boolean> {
+    return this.updateProfile({ times_notification_default: level });
+  }
+
   /** M39: 「リアクションのバナー」 (users.notify_reactions); the activity lists reactions either way. */
   setNotifyReactions(on: boolean): Promise<boolean> {
     return this.updateProfile({ notify_reactions: on });

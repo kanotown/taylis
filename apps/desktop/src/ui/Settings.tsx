@@ -1,4 +1,4 @@
-import { AppWindow, Bell, FolderDown, BellOff, Building2, ChevronDown, ChevronRight, ChevronUp, GripVertical, EyeOff, Flag, ImagePlus, Info, Keyboard, Laptop, ListTodo, Lock, LogOut, Monitor, Moon, Palette, Plus, Rows3, ShieldCheck, Smartphone, SmilePlus, UserRound } from "lucide-react";
+import { AppWindow, Bell, FolderDown, BellOff, Building2, ChevronDown, ChevronRight, ChevronUp, GripVertical, EyeOff, Flag, ImagePlus, Info, Keyboard, Laptop, ListTodo, Lock, LogOut, Monitor, Moon, Newspaper, Palette, Plus, Rows3, ShieldCheck, Smartphone, SmilePlus, UserRound } from "lucide-react";
 import { type FormEvent, type ReactNode, useEffect, useRef, useState } from "react";
 
 import type { SessionOut, TotpStatusOut } from "../api/types";
@@ -470,6 +470,23 @@ function NotificationsSection({ controller }: { controller: AppController }) {
         </div>
         <p className="text-xs text-muted">{overallLevelNote()}</p>
       </section>
+      {/* 2026-10-30: every other person's times at once (users.times_notification_default, PUSH_NOTIFICATIONS.md §4); a server before it sends no such field. */}
+      {(me?.times_notification_default === "all" || me?.times_notification_default === "mentions") && (
+        <label className={cn(CARD, "cursor-pointer")}>
+          <Newspaper size={18} className="text-muted" />
+          <span className="min-w-0 flex-1 text-sm">
+            {t("settings.notifications.times")} <span className="mt-0.5 block text-xs text-muted">{t("settings.notifications.timesNote")}</span>
+          </span>
+          <input
+            type="checkbox"
+            role="switch"
+            className="h-4 w-4 accent-[var(--accent)]"
+            checked={me.times_notification_default === "all"}
+            disabled={busy}
+            onChange={(e) => { const on = e.target.checked; setBusy(true); void controller.setTimesNotificationDefault(on ? "all" : "mentions").finally(() => setBusy(false)); }}
+          />
+        </label>
+      )}
       {/* M39: reactions to my messages as banners (and pushes); a server before M39 has no such setting. */}
       {typeof me?.notify_reactions === "boolean" && (
         <label className={cn(CARD, "cursor-pointer")}>

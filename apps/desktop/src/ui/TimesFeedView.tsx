@@ -1,4 +1,4 @@
-import { CheckCheck, Newspaper, PenLine, Plus, RotateCw } from "lucide-react";
+import { Bell, BellRing, CheckCheck, Newspaper, PenLine, Plus, RotateCw } from "lucide-react";
 import { type ReactNode, useCallback, useEffect, useRef, useSyncExternalStore } from "react";
 
 import type { AppController } from "../state/app";
@@ -6,7 +6,7 @@ import { feedRevealTarget, isFeedChannel, isNewFeedRow, type TimesFeedHub } from
 import type { MessageState } from "../sync/types";
 import { BackButton } from "./compact";
 import { channelTitle } from "./MainScreen";
-import { Button, IconButton } from "./primitives";
+import { Button, IconButton, Menu, MenuContent, MenuLabel, MenuRadioGroup, MenuRadioItem, MenuTrigger } from "./primitives";
 import { MessageRow } from "./Timeline";
 import { t } from "../i18n";
 
@@ -143,6 +143,10 @@ export function TimesFeedView({ controller, onReveal, onOpenThread, onOpenChanne
             <RotateCw size={16} />
           </IconButton>
         )}
+        {/* 2026-10-30: 「Times の通知：すべて／メンションのみ」, the same setting as in 設定 → 通知 (users.times_notification_default). */}
+        {(me?.times_notification_default === "all" || me?.times_notification_default === "mentions") && (
+          <TimesNotifyMenu controller={controller} level={me.times_notification_default} />
+        )}
         <Button variant="secondary" size="sm" className="shrink-0" title={t("timesFeed.markReadTitle")} aria-label={t("sidebar.markAllRead")} disabled={!anyNew} onClick={() => void controller.markAllRead("times")}>
           <CheckCheck size={14} />
           <span className="max-md:hidden">{t("sidebar.markAllRead")}</span>
@@ -165,6 +169,27 @@ export function TimesFeedView({ controller, onReveal, onOpenThread, onOpenChanne
         {body}
       </div>
     </div>
+  );
+}
+
+function TimesNotifyMenu({ controller, level }: { controller: AppController; level: "all" | "mentions" }) {
+  const label = t("timesFeed.notify", { level: level === "all" ? t("timesFeed.notifyAll") : t("timesFeed.notifyMentions") });
+  return (
+    <Menu>
+      <MenuTrigger asChild>
+        <IconButton label={label} className={level === "all" ? "shrink-0 text-accent" : "shrink-0 text-muted"}>
+          {level === "all" ? <BellRing size={16} /> : <Bell size={16} />}
+        </IconButton>
+      </MenuTrigger>
+      <MenuContent>
+        <MenuLabel>{t("timesFeed.notifyLabel")}</MenuLabel>
+        <MenuRadioGroup value={level} onValueChange={(value) => void controller.setTimesNotificationDefault(value === "all" ? "all" : "mentions")}>
+          <MenuRadioItem value="all">{t("timesFeed.notifyAll")}</MenuRadioItem>
+          <MenuRadioItem value="mentions">{t("timesFeed.notifyMentions")}</MenuRadioItem>
+        </MenuRadioGroup>
+        <p className="max-w-60 px-2.5 py-1.5 text-xs text-muted">{t("timesFeed.notifyNote")}</p>
+      </MenuContent>
+    </Menu>
   );
 }
 

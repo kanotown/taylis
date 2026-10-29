@@ -17252,6 +17252,12 @@ export interface components {
             status_expires_at?: string | null;
             /** Status Text */
             status_text?: string | null;
+            /**
+             * Times Notification Default
+             * @default mentions
+             * @enum {string}
+             */
+            times_notification_default: "all" | "mentions";
             /** Title */
             title?: string | null;
             /**
@@ -17339,6 +17345,8 @@ export interface components {
             status_expires_at?: string | null;
             /** Status Text */
             status_text?: string | null;
+            /** Times Notification Default */
+            times_notification_default?: ("all" | "mentions") | null;
             /** Title */
             title?: string | null;
             /** Username */

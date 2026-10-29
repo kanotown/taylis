@@ -71,6 +71,7 @@ async def bootstrap(
                     is_dm=c.type in ("dm", "group_dm"),
                     others_times=c.times_owner_id is not None and c.times_owner_id != actor.id,
                     overall=actor.notification_default,
+                    times_default=actor.times_notification_default,
                 ),
                 "read_state": read_states.get(c.id),
                 "canvas_tab_id": canvas_tabs.get(c.id),
@@ -140,6 +141,7 @@ async def unread_summary(db: AsyncSession, actor: User) -> UnreadSummaryOut:
             muted=notifications.is_muted(pref, now),
             unread=state.unread_count,
             mentions=state.mention_count,
+            times_all=actor.times_notification_default == "all",
         )
         badge += unread_rules.badge(conversation)
         has_unread = has_unread or unread_rules.has_unread(conversation)

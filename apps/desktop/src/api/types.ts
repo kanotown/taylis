@@ -2,8 +2,14 @@
 import type { components } from "./schema";
 
 export type UserPublic = components["schemas"]["UserPublic"];
-/** M142 (docs/ROLES.md §2.1): `capabilities` is missing from a server before M142 (ui/roles.ts capabilitiesOf). */
-export type UserMe = Omit<components["schemas"]["UserMe"], "capabilities"> & { capabilities?: string[] };
+/**
+ * M142 (docs/ROLES.md §2.1): `capabilities` is missing from a server before M142 (ui/roles.ts capabilitiesOf);
+ * `times_notification_default` from one before 2026-10-30 (sync/notifications.ts timesLevel: "mentions").
+ */
+export type UserMe = Omit<components["schemas"]["UserMe"], "capabilities" | "times_notification_default"> & {
+  capabilities?: string[];
+  times_notification_default?: components["schemas"]["UserMe"]["times_notification_default"] | null;
+};
 export type TokenResponse = Omit<components["schemas"]["TokenResponse"], "user"> & { user: UserMe };
 export type ChannelOut = components["schemas"]["ChannelOut"];
 /** M49: a member's conversation's newest message as one line (MOBILE_UI.md §7.1). */

@@ -8,7 +8,7 @@ import { type CanvasEditor, CanvasEditors } from "./canvasPresence";
 import type { CanvasPendingState } from "./canvasSave";
 import { ChannelMembers } from "./channelMembers";
 import { restoredDmPins } from "./dmCloses";
-import { ownNotification } from "./notifications";
+import { ownNotification, rememberTimesLevel } from "./notifications";
 import { isIndefiniteDnd } from "../ui/dnd";
 import { presenceLook } from "../ui/presence";
 import { type CanvasCaret, LOCAL_PREFIX } from "./types";
@@ -551,6 +551,7 @@ export class Store {
     try {
       const me = snapshot.meta["me"];
       this.me = me ? (JSON.parse(me) as UserMe) : null;
+      rememberTimesLevel(this.me);
     } catch {
       this.me = null; // corrupt: the next sign-in writes it again
     }
@@ -662,6 +663,7 @@ export class Store {
   }
   setMe(me: UserMe | null): void {
     this.me = me;
+    rememberTimesLevel(me); // the unread rules of this account (ui/channels.ts isQuietChannel)
     this.persist((p) => p.saveMeta("me", me ? JSON.stringify(me) : null));
     this.emitRows();
   }

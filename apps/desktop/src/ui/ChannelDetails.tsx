@@ -7,7 +7,7 @@ import { AiChannelNotice } from "./ai";
 import { channelCalendarLabel } from "./CalendarView";
 import { TopicText } from "./TopicText";
 import { canEditLinks } from "./ChannelLinks";
-import { canMakePublic, notificationChoices, overallLevel } from "./channels";
+import { canMakePublic, notificationChoicesFor, overallLevel } from "./channels";
 import { MemberList, useMembers } from "./Dialogs";
 import { FeedList } from "./ChannelFeeds";
 import { FilesToDriveSetting, offersFilesToDrive } from "./ChannelFiles";
@@ -85,7 +85,7 @@ export function ChannelDetails({ controller, channel, onClose, onDialog, members
           <section>
             <h3 className={HEADING}>{t("settings.section.notifications")}</h3>
             <div role="radiogroup" aria-label={t("settings.section.notifications")} className="mt-1">
-              {notificationChoices(overall).map((choice) => (
+              {notificationChoicesFor(channel, (controller.store.me ?? controller.me)?.id ?? null, overall).map((choice) => (
                 <label key={choice.value} className="flex cursor-pointer items-center gap-3 rounded-lg px-3 py-2 text-sm hover:bg-panel">
                   <input
                     type="radio"
