@@ -7,4 +7,11 @@
     <string name="large_file_note_mine">将保存到我的云盘。其他人无法打开此链接。</string>
     <string name="large_file_row">上传到云盘：%1$s</string>
     <string name="share_in_file_to_drive">“%1$s”超过 %2$s，将上传到云盘并发布链接。</string>
+    <string name="large_file_ask_title">超过附件上限的文件</string>
+    <string name="large_file_ask_one">“%1$s”（%2$s）</string>
+    <string name="large_file_ask_many">%1$d 个文件（共 %2$s）</string>
+    <string name="large_file_ask_posts">将上传到此频道云盘的「帖子中的文件」。上传期间也可以发送，完成后链接会插入到输入框。</string>
+    <string name="large_file_ask_channel">将上传到此频道的云盘。上传期间也可以发送，完成后链接会插入到输入框。</string>
+    <string name="large_file_ask_mine">将上传到我的云盘。上传期间也可以发送，完成后链接会插入到输入框。其他人无法打开链接中的文件（请在云盘中共享）。</string>
+    <string name="large_file_ask_upload">上传到云盘并发布链接</string>
 </resources>

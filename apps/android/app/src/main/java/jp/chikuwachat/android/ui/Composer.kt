@@ -200,6 +200,8 @@ fun ConversationComposer(controller: AppController, channelId: String, version: 
         controller.openWorkflow(workflow, channelId)
     }
     val maxAttachments = store.limits?.maxAttachmentsPerMessage ?: 10
+    // CF5 §26: large files waiting for the answer to 「ドライブにアップロードしてリンクを投稿」.
+    var largeAsk by remember(channelId, parentId) { mutableStateOf<LargeAsk?>(null) }
     /** Uploads into this draft's attachments; [cleanup] runs once each upload is over (the camera's file). */
     fun uploadAttachments(uris: List<android.net.Uri>, cleanup: () -> Unit) {
         if (store.draft(channelId, parentId).attachments.size + store.uploading(channelId, parentId) + uris.size > maxAttachments) {
@@ -219,16 +221,29 @@ fun ConversationComposer(controller: AppController, channelId: String, version: 
             }
         } }
     }
-    /** Picked files into this draft (those over the limit to the drive); [cleanup] runs once they are read. */
+    /** Picked files into this draft (those over the limit to the drive, once asked); [cleanup] runs once they are read. */
     fun uploadPicked(picked: List<android.net.Uri>, cleanup: () -> Unit = {}) {
         if (picked.isEmpty()) return
-        // CF5 (docs/CHANNEL_FILES.md §12.4): files over the attachments' limit go to the drive and come back as a link.
+        // CF5 (docs/CHANNEL_FILES.md §12.4, §26): files over the attachments' limit go to the drive (asked once first) and
+        // come back as a link; the rest are attached at once.
         controller.scope.launch {
             val (uris, large) = controller.splitLargeFiles(channelId, picked)
-            if (uris.isEmpty()) { controller.addLargeFiles(channelId, parentId, large, onCopied = cleanup); return@launch }
-            controller.addLargeFiles(channelId, parentId, large)
-            uploadAttachments(uris, cleanup)
+            if (large.isNotEmpty()) {
+                val facts = controller.fileFacts(large)
+                val place = controller.largeFilePlace(channelId) ?: jp.chikuwachat.android.sync.LargeFiles.PLACE_MINE
+                largeAsk = LargeAsk(large, facts.map { it.first }, facts.map { it.second }, place, if (uris.isEmpty()) cleanup else null)
+            }
+            if (uris.isNotEmpty()) uploadAttachments(uris, cleanup)
         }
+    }
+    largeAsk?.let { ask ->
+        LargeFileQuestion(ask, onUpload = {
+            largeAsk = null
+            controller.addLargeFiles(channelId, parentId, ask.uris, onCopied = ask.cleanup)
+        }, onCancel = {
+            largeAsk = null
+            ask.cleanup?.invoke()
+        })
     }
     val picker = rememberLauncherForActivityResult(ActivityResultContracts.GetMultipleContents()) { uploadPicked(it) }
     val mediaPicker = rememberLauncherForActivityResult(ActivityResultContracts.PickMultipleVisualMedia(10)) { uploadPicked(it) }

@@ -869,7 +869,7 @@ class SyncEngine(
         bootstrap.threads?.let { store.setThreadSummary(it) }
         // M39: every connect corrects the activity badge (the events alone may have been missed); none from an older server.
         store.setActivity(bootstrap.activity)
-        store.setLimits(bootstrap.limits)
+        store.setLimits(bootstrap.limits, bootstrap.channelFilesTimezone)
         store.replacePresence(bootstrap.presence)
         store.replaceBookmarks(bootstrap.bookmarks)
         store.replaceFavorites(bootstrap.favorites)

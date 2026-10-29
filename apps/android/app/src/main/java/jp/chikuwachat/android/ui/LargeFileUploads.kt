@@ -14,11 +14,13 @@ import androidx.compose.material.icons.outlined.Close
 import androidx.compose.material.icons.outlined.CloudUpload
 import androidx.compose.material.icons.outlined.ErrorOutline
 import androidx.compose.material.icons.outlined.Refresh
+import androidx.compose.material3.AlertDialog
 import androidx.compose.material3.Icon
 import androidx.compose.material3.IconButton
 import androidx.compose.material3.LinearProgressIndicator
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Text
+import androidx.compose.material3.TextButton
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.collectAsState
 import androidx.compose.runtime.getValue
@@ -106,4 +108,24 @@ fun LargeFileUploads(controller: AppController, channelId: String, parentId: Str
             maxLines = 3, overflow = TextOverflow.Ellipsis, modifier = Modifier.padding(horizontal = 4.dp),
         )
     }
+}
+
+/** CF5 §26: large files picked in a composer, waiting for the question's answer ([cleanup]: the camera's file). */
+class LargeAsk(val uris: List<android.net.Uri>, val names: List<String>, val sizes: List<Long?>, val place: String, val cleanup: (() -> Unit)?)
+
+/** CF5 §26 (as iOS and the desktop): asked once before large files go up — where they go, upload or cancel. */
+@Composable
+fun LargeFileQuestion(ask: LargeAsk, onUpload: () -> Unit, onCancel: () -> Unit) {
+    AlertDialog(
+        onDismissRequest = onCancel,
+        title = { Text(stringResource(R.string.large_file_ask_title)) },
+        text = {
+            Column(verticalArrangement = Arrangement.spacedBy(8.dp)) {
+                Text(LargeFiles.askFiles(ask.names, ask.sizes, ::formatSize))
+                Text(LargeFiles.askText(ask.place))
+            }
+        },
+        confirmButton = { TextButton(onClick = onUpload) { Text(stringResource(R.string.large_file_ask_upload)) } },
+        dismissButton = { TextButton(onClick = onCancel) { Text(stringResource(R.string.common_cancel)) } },
+    )
 }

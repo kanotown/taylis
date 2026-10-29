@@ -1394,6 +1394,10 @@ class ApiClient(
             put("client_op_id", clientOpId)
         })
 
+    /** CF5 (docs/CHANNEL_FILES.md §26): POST /drive/channel-posts — the channel's 「投稿のファイル › 2026-10」, made when missing. */
+    override suspend fun driveChannelPosts(channelId: String): DriveChannelPostsOut =
+        request("POST", "/api/v1/drive/channel-posts", buildJsonObject { put("channel_id", channelId) })
+
     /** CF5: POST /drive/folders {parent_id, path} — the folder there of that name, or a new one (mkdir -p). */
     override suspend fun ensureDriveFolderPath(parentId: String, path: String, clientOpId: String): DriveItemOut =
         request("POST", "/api/v1/drive/folders", buildJsonObject {

@@ -7,4 +7,11 @@
     <string name="large_file_note_mine">マイドライブに保存します。ほかの人はこのリンクを開けません。</string>
     <string name="large_file_row">ドライブへのアップロード：%1$s</string>
     <string name="share_in_file_to_drive">「%1$s」は %2$s を超えるため、ドライブにアップロードしてリンクを投稿します。</string>
+    <string name="large_file_ask_title">添付の上限を超えるファイルです</string>
+    <string name="large_file_ask_one">「%1$s」（%2$s）</string>
+    <string name="large_file_ask_many">%1$d 件のファイル（合わせて %2$s）</string>
+    <string name="large_file_ask_posts">このチャンネルのドライブの「投稿のファイル」にアップロードします。アップロード中も送信でき、終わるとリンクが入力欄に入ります。</string>
+    <string name="large_file_ask_channel">このチャンネルのドライブにアップロードします。アップロード中も送信でき、終わるとリンクが入力欄に入ります。</string>
+    <string name="large_file_ask_mine">マイドライブにアップロードします。アップロード中も送信でき、終わるとリンクが入力欄に入ります。ほかの人はリンクのファイルを開けません（ドライブで共有してください）。</string>
+    <string name="large_file_ask_upload">ドライブにアップロードしてリンクを投稿</string>
 </resources>

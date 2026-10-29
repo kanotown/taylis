@@ -7,4 +7,11 @@
     <string name="large_file_note_mine">Saved to My Drive. Others can\'t open this link.</string>
     <string name="large_file_row">Upload to the drive: %1$s</string>
     <string name="share_in_file_to_drive">“%1$s” is over %2$s: it will be uploaded to the drive and its link posted.</string>
+    <string name="large_file_ask_title">Over the attachment limit</string>
+    <string name="large_file_ask_one">“%1$s” (%2$s)</string>
+    <string name="large_file_ask_many">%1$d files (%2$s in all)</string>
+    <string name="large_file_ask_posts">It goes to this channel\'s drive (“Posted files”). You can send while it uploads; when it is done, its link goes into the message.</string>
+    <string name="large_file_ask_channel">It goes to this channel\'s drive. You can send while it uploads; when it is done, its link goes into the message.</string>
+    <string name="large_file_ask_mine">It goes to My Drive. You can send while it uploads; when it is done, its link goes into the message. Others can\'t open the linked file (share it in the drive).</string>
+    <string name="large_file_ask_upload">Upload to the drive and post a link</string>
 </resources>

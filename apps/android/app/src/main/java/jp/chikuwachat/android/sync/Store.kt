@@ -451,8 +451,12 @@ class Store(private val persistence: Persistence? = null) {
     /** bootstrap.limits (SYNC_PROTOCOL.md §4.1); null until the first bootstrap. */
     var limits: Limits? = null
         private set
-    fun setLimits(value: Limits) {
+    /** CF5: bootstrap's `channel_files_timezone` (the server's CHANNEL_FILES_TZ); null from an older server (Asia/Tokyo). */
+    var channelFilesTimezone: String? = null
+        private set
+    fun setLimits(value: Limits, channelFilesTimezone: String? = null) {
         limits = value
+        this.channelFilesTimezone = channelFilesTimezone
     }
     /** M88 (MEMBERSHIP.md §3): bootstrap's workspace_settings, replaced by workspace.settings_updated; not persisted. */
     var workspaceSettings = WorkspaceSettingsOut()

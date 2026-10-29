@@ -270,3 +270,18 @@ data class AlbumAddResult(
 
 @Serializable
 data class AlbumAddOut(val results: List<AlbumAddResult> = emptyList())
+
+/**
+ * CF5 (docs/CHANNEL_FILES.md §26): POST /drive/channel-posts — where a file too big to attach goes in a channel: its
+ * 「投稿のファイル」 and this month's folder (made when missing), both null while the channel's files stay out of its drive.
+ */
+@Serializable
+data class DriveChannelPostsOut(
+    val location: DriveLocationOut,
+    val filesToDrive: Boolean = false,
+    val postsFolder: DriveItemOut? = null,
+    val monthFolder: DriveItemOut? = null,
+    /** 「2026-10」 in [timezone] (CHANNEL_FILES_TZ). */
+    val month: String = "",
+    val timezone: String = "",
+)
