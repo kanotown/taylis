@@ -149,8 +149,8 @@ class DriveItemOut(BaseModel):
     # (docs/ALBUMS.md §23: clients name it in their language while its name is still 「アルバム」;
     # an ordinary folder otherwise, renamed, moved and trashed like any); else null.
     system_role: Literal["channel_posts", "albums"] | None = None
-    # CF1: a version of this file is attached to a message that is not deleted (the list's small
-    # speech-bubble mark).
+    # CF1: a version of this file is attached to a message that is not deleted and that the caller
+    # can read now (the list's small speech-bubble mark; REVIEW-v0.1.82 #6).
     posted: bool = False
     # CF1: those messages that the caller can read, newest first, at most 5. Only in
     # GET /drive/items/{id} (null in lists, search hits and other answers).
@@ -368,7 +368,8 @@ class DriveImpactChannelOut(BaseModel):
 
 
 class DriveImpactOut(BaseModel):
-    # Every message concerned (also in channels the caller cannot read, which are not listed).
+    # The messages concerned in the channels listed: those the caller can read (REVIEW-v0.1.82 #6;
+    # a message elsewhere is neither listed nor counted).
     posted_messages: int
     channels: list[DriveImpactChannelOut]
 

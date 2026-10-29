@@ -237,13 +237,15 @@ async def readable_item(
     return item, (await acl.access(db, actor, location)).require_read()
 
 
-async def items_out(db: AsyncSession, rows: list[DriveItem]) -> list[DriveItemOut]:
+async def items_out(db: AsyncSession, rows: list[DriveItem], *, viewer: User) -> list[DriveItemOut]:
+    """`viewer`: whom the answer is for (`posted` counts only the messages they can read now,
+    REVIEW-v0.1.82 #6)."""
     files = await repo.current_files(
         db, [r.current_version_id for r in rows if r.current_version_id is not None]
     )
     counts = await repo.version_counts(db, [r.id for r in rows if r.kind == "file"])
     links = await shares.link_counts(db, [r.id for r in rows])
-    in_posts = await posted.posted_items(db, [r.id for r in rows if r.kind == "file"])
+    in_posts = await posted.posted_items(db, viewer, [r.id for r in rows if r.kind == "file"])
     albums = await album_cards.for_folders(db, rows)
     out: list[DriveItemOut] = []
     for row in rows:
@@ -294,8 +296,8 @@ async def items_out(db: AsyncSession, rows: list[DriveItem]) -> list[DriveItemOu
     return out
 
 
-async def item_out(db: AsyncSession, row: DriveItem) -> DriveItemOut:
-    return (await items_out(db, [row]))[0]
+async def item_out(db: AsyncSession, row: DriveItem, *, viewer: User) -> DriveItemOut:
+    return (await items_out(db, [row], viewer=viewer))[0]
 
 
 async def crumbs(
@@ -319,7 +321,7 @@ async def get_item(db: AsyncSession, actor: User, item_id: uuid.UUID) -> DriveIt
     """An item and its path (an item in the trash too, for the trash view)."""
     item, rights = await readable_item(db, actor, item_id, trashed_ok=True)
     chain = await repo.ancestor_ids(db, item.id)
-    shown = await item_out(db, item)
+    shown = await item_out(db, item, viewer=actor)
     if item.kind == "file":
         # CF1 (docs/CHANNEL_FILES.md §12.2): the messages that show it (those I can read).
         shown.posts = await posted.posts_of(db, actor, item.id)
@@ -381,9 +383,11 @@ async def readable_location_ids(db: AsyncSession, actor: User) -> list[uuid.UUID
     return out
 
 
-async def search_hits(db: AsyncSession, rows: list[DriveItem]) -> list[DriveSearchHitOut]:
+async def search_hits(
+    db: AsyncSession, actor: User, rows: list[DriveItem]
+) -> list[DriveSearchHitOut]:
     """Found items with their paths (the location's name, then the folders above each)."""
-    shown = await items_out(db, rows)
+    shown = await items_out(db, rows, viewer=actor)
     locations: dict[uuid.UUID, DriveLocation] = {}
     out: list[DriveSearchHitOut] = []
     for row, item in zip(rows, shown, strict=True):
@@ -475,9 +479,9 @@ async def list_children(
     )
     chain = await repo.ancestor_ids(db, folder.id)
     return DriveChildrenOut(
-        folder=await item_out(db, folder),
+        folder=await item_out(db, folder, viewer=actor),
         path=await crumbs(db, chain, rights.location),
-        items=await items_out(db, rows),
+        items=await items_out(db, rows, viewer=actor),
         next_cursor=next_cursor,
         shared_above=await shares.shared_above(db, chain),
     )
@@ -664,7 +668,7 @@ async def create_folder(
             location.updated_at = utcnow()
             await events.emit_changed(db, parent.location_id, changed)
         await db.commit()
-        return await item_out(db, folder), bool(changed)
+        return await item_out(db, folder, viewer=actor), bool(changed)
     assert data.name is not None
     name = names.normalize(data.name)
     existing = await repo.child_by_key(db, parent.id, names.key(name))
@@ -675,7 +679,7 @@ async def create_folder(
             and existing.created_by == actor.id
         ):
             await db.commit()
-            return await item_out(db, existing), False
+            return await item_out(db, existing, viewer=actor), False
         raise name_taken(existing)
     if data.client_op_id is not None:
         # The same request again after the folder was renamed or moved: the same folder.
@@ -688,7 +692,7 @@ async def create_folder(
         ).scalar_one_or_none()
         if found is not None:
             await db.commit()
-            return await item_out(db, found), False
+            return await item_out(db, found, viewer=actor), False
     if await depth_of(db, parent.id) + 1 > names.MAX_DEPTH:
         raise depth_exceeded()
     folder = await new_folder_in_tx(db, actor, parent, name, client_op_id=data.client_op_id)
@@ -697,7 +701,7 @@ async def create_folder(
     location.updated_at = utcnow()
     await events.emit_changed(db, parent.location_id, [parent.id])
     await db.commit()
-    return await item_out(db, folder), True
+    return await item_out(db, folder, viewer=actor), True
 
 
 async def rename(db: AsyncSession, actor: User, item_id: uuid.UUID, raw: str) -> DriveItemOut:
@@ -714,7 +718,7 @@ async def rename(db: AsyncSession, actor: User, item_id: uuid.UUID, raw: str) ->
         raise item_not_found()
     if item.name == name:
         await db.commit()
-        return await item_out(db, item)
+        return await item_out(db, item, viewer=actor)
     existing = await repo.child_by_key(db, item.parent_id, names.key(name))  # type: ignore[arg-type]
     if existing is not None and existing.id != item.id:
         raise name_taken(existing)
@@ -733,7 +737,7 @@ async def rename(db: AsyncSession, actor: User, item_id: uuid.UUID, raw: str) ->
                     attachment.filename = name
     await events.emit_changed(db, item.location_id, [item.parent_id])
     await db.commit()
-    return await item_out(db, item)
+    return await item_out(db, item, viewer=actor)
 
 
 def root_immutable() -> AppError:
@@ -1199,7 +1203,7 @@ async def restore(
     await db.commit()
     if asked.id != item.id:
         await db.refresh(asked)
-    return await item_out(db, asked)
+    return await item_out(db, asked, viewer=actor)
 
 
 async def list_trash(
@@ -1229,7 +1233,7 @@ async def list_trash(
     more = len(roots) > limit
     roots = roots[:limit]
     entries: list[DriveTrashEntryOut] = []
-    for root, out in zip(roots, await items_out(db, roots), strict=True):
+    for root, out in zip(roots, await items_out(db, roots, viewer=actor), strict=True):
         members = list(
             (
                 await db.execute(select(DriveItem.id).where(DriveItem.trash_root_id == root.id))
@@ -1382,7 +1386,7 @@ async def takeover(
     await events.emit_changed(db, workspace.id, [*changed, holder.id])
     await events.emit_changed(db, source.id, [source.root_id])
     await db.commit()
-    return await item_out(db, folder)
+    return await item_out(db, folder, viewer=actor)
 
 
 # --- people who leave (§3.3) ----------------------------------------------------------------

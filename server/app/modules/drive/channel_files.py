@@ -331,8 +331,10 @@ async def posts_month(db: AsyncSession, actor: User, channel_id: uuid.UUID) -> D
     return DriveChannelPostsOut(
         location=await service.location_out(db, actor, location),
         files_to_drive=on,
-        posts_folder=await service.item_out(db, posts) if posts is not None else None,
-        month_folder=await service.item_out(db, folder) if folder is not None else None,
+        posts_folder=await service.item_out(db, posts, viewer=actor) if posts is not None else None,
+        month_folder=await service.item_out(db, folder, viewer=actor)
+        if folder is not None
+        else None,
         month=month,
         timezone=_zone.key,
     )
@@ -499,7 +501,6 @@ async def impact(db: AsyncSession, actor: User, data: DriveImpactIn) -> DriveImp
     audiences: dict[uuid.UUID, dict[uuid.UUID, bool]] = {}
     messages: dict[uuid.UUID, set[uuid.UUID]] = {}
     lost: dict[uuid.UUID, set[uuid.UUID]] = {}
-    every: set[uuid.UUID] = set()
     for found_item, found_message, found_channel in rows:
         if found_item is None or found_message is None or found_channel is None:
             continue
@@ -523,15 +524,13 @@ async def impact(db: AsyncSession, actor: User, data: DriveImpactIn) -> DriveImp
             then_state = "available" if target_location == home else "moved"
         if now_state == then_state and before <= after:
             continue
-        every.add(message_id)
         messages.setdefault(channel_id, set()).add(message_id)
         lost.setdefault(channel_id, set()).update(before - after)
+    # REVIEW-v0.1.82 #6: only the conversations the caller can read, in the list and in the
+    # total, so the answer tells nothing of a message the caller cannot see (§11.1).
+    readable = await posted.readable_channels(db, actor, messages)
     out: list[DriveImpactChannelOut] = []
-    for channel_id in sorted(messages):
-        try:
-            await channels.require_readable(db, actor, channel_id)
-        except AppError:
-            continue
+    for channel_id in sorted(readable):
         gone = lost.get(channel_id, set())
         out.append(
             DriveImpactChannelOut(
@@ -541,7 +540,7 @@ async def impact(db: AsyncSession, actor: User, data: DriveImpactIn) -> DriveImp
                 unreadable_guests=sum(1 for u in gone if audiences[channel_id].get(u)),
             )
         )
-    return DriveImpactOut(posted_messages=len(every), channels=out)
+    return DriveImpactOut(posted_messages=sum(c.messages for c in out), channels=out)
 
 
 # --- backfill (§10) -----------------------------------------------------------------------------

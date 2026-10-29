@@ -319,7 +319,7 @@ async def _place_restored(
     )
     await events.emit_changed(db, item.location_id, [item.parent_id])
     await db.commit()
-    return await service.item_out(db, item)
+    return await service.item_out(db, item, viewer=user)
 
 
 # --- deleting an older one ----------------------------------------------------------------------
@@ -344,13 +344,14 @@ async def delete_version(
         raise version_current()
     shown = (await posted.posted_versions(db, [version.id])).get(version.id)
     if shown is not None:
-        # CF1 (docs/CHANNEL_FILES.md §7.4): a message shows it; delete the message first. Its
-        # channel is named only to someone who can read it.
+        # CF1 (docs/CHANNEL_FILES.md §7.4): a message shows it; delete the message first. The
+        # message and its channel are named only to someone who can read it (REVIEW-v0.1.82 #5:
+        # the message's id leaked to a manager outside a private channel).
         message_id, channel_id = shown
         try:
             await channels.require_readable(db, actor, channel_id)
         except AppError:
-            raise posted.version_posted(message_id, None) from None
+            raise posted.version_posted(None, None) from None
         raise posted.version_posted(message_id, channel_id)
     location = await service.lock_location(db, item.location_id)
     await _remove_in_tx(db, [version], {location.id: location})

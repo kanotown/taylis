@@ -714,7 +714,7 @@ async def search_drive(
         )
         more = len(rows) > limit
         rows = rows[:limit]
-        hits = await drive.search_hits(db, [row.item for row in rows])
+        hits = await drive.search_hits(db, actor, [row.item for row in rows])
         keywords: list[str] = []
         if content:
             keywords = await repo.extract_keywords(db, words, escaped=True)

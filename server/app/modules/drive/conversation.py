@@ -134,7 +134,7 @@ async def save_attachment(
     if derived is not None:
         done = await _made_before(db, actor_id, derived)
         if done is not None:
-            return await service.item_out(db, done), False
+            return await service.item_out(db, done, viewer=actor), False
     # A first look at the quota (and the name, when it must be free) before copying any byte.
     location = await service.lock_location(db, folder.location_id)
     await service.check_quota_in_tx(
@@ -167,12 +167,12 @@ async def save_attachment(
         found = await _made_before(db, actor_id, derived) if derived is not None else None
         if found is None:
             raise
-        return await service.item_out(db, found), False
+        return await service.item_out(db, found, viewer=actor), False
     except BaseException:
         await db.rollback()
         await drop_objects(blobs, clone.keys)
         raise
-    return await service.item_out(db, item), True
+    return await service.item_out(db, item, viewer=actor), True
 
 
 async def _place(

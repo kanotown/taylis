@@ -62,10 +62,12 @@ def folder_system() -> AppError:
     )
 
 
-def version_posted(message_id: uuid.UUID, channel_id: uuid.UUID | None) -> AppError:
-    details: dict[str, Any] = {"message_id": str(message_id)}
-    if channel_id is not None:
-        details["channel_id"] = str(channel_id)
+def version_posted(message_id: uuid.UUID | None, channel_id: uuid.UUID | None) -> AppError:
+    """409 drive_version_posted: with the message and its channel for someone who can read them,
+    without any details for anyone else (REVIEW-v0.1.82 #5)."""
+    if message_id is None or channel_id is None:
+        return conflict("drive_version_posted", "A message shows this version")
+    details: dict[str, Any] = {"message_id": str(message_id), "channel_id": str(channel_id)}
     return conflict("drive_version_posted", "A message shows this version", details)
 
 
@@ -107,17 +109,41 @@ async def posted_readable(db: AsyncSession, actor: User, attachment: Attachment)
     return True
 
 
-async def posted_items(db: AsyncSession, item_ids: Sequence[uuid.UUID]) -> set[uuid.UUID]:
-    """The items among these with a version attached to a message (DriveItemOut.posted)."""
-    found: set[uuid.UUID] = set()
+async def readable_channels(
+    db: AsyncSession, actor: User, channel_ids: Iterable[uuid.UUID]
+) -> set[uuid.UUID]:
+    """The channels among these whose messages the actor can read now."""
+    out: set[uuid.UUID] = set()
+    for channel_id in set(channel_ids):
+        try:
+            await channels.require_readable(db, actor, channel_id)
+        except AppError:
+            continue
+        out.add(channel_id)
+    return out
+
+
+async def posted_items(
+    db: AsyncSession, viewer: User, item_ids: Sequence[uuid.UUID]
+) -> set[uuid.UUID]:
+    """The items among these with a version attached to a message (not deleted) that the viewer
+    can read now (DriveItemOut.posted). REVIEW-v0.1.82 #6: a message in a conversation the viewer
+    cannot read does not count, so the mark tells nothing of it."""
+    pairs: set[tuple[uuid.UUID, uuid.UUID]] = set()
     for chunk in _chunks(item_ids):
         rows = await db.execute(
-            select(Attachment.drive_item_id)
-            .where(Attachment.drive_item_id.in_(chunk), Attachment.drive_state.in_(LIVE_STATES))
+            select(Attachment.drive_item_id, Message.channel_id)
+            .join(Message, Message.id == Attachment.message_id)
+            .where(
+                Attachment.drive_item_id.in_(chunk),
+                Attachment.drive_state.in_(LIVE_STATES),
+                Message.deleted_at.is_(None),
+            )
             .distinct()
         )
-        found.update(i for i in rows.scalars().all() if i is not None)
-    return found
+        pairs.update((i, c) for i, c in rows.all() if i is not None)
+    readable = await readable_channels(db, viewer, {c for _, c in pairs})
+    return {i for i, c in pairs if c in readable}
 
 
 async def posted_versions(

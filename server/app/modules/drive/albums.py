@@ -191,7 +191,7 @@ async def create(db: AsyncSession, actor: User, data: AlbumCreate) -> tuple[Albu
                 raise album_invalid("This client_op_id made something else")
             await db.commit()
             return AlbumCreatedOut(
-                folder=await service.item_out(db, found), album=await out(db, album)
+                folder=await service.item_out(db, found, viewer=actor), album=await out(db, album)
             ), False
     made: list[uuid.UUID] = []
     adopted: list[uuid.UUID] = []
@@ -234,7 +234,7 @@ async def create(db: AsyncSession, actor: User, data: AlbumCreate) -> tuple[Albu
     await events.emit_changed(db, parent.location_id, [parent.id, *made, *adopted])
     await db.commit()
     return AlbumCreatedOut(
-        folder=await service.item_out(db, folder), album=await out(db, album)
+        folder=await service.item_out(db, folder, viewer=actor), album=await out(db, album)
     ), True
 
 
@@ -360,8 +360,8 @@ async def list_albums(
     more = len(rows) > limit
     rows = rows[:limit]
     folders = [row[1] for row in rows]
-    shown = await service.items_out(db, folders)
-    hits = await service.search_hits(db, folders)
+    shown = await service.items_out(db, folders, viewer=actor)
+    hits = await service.search_hits(db, actor, folders)
     items: list[AlbumListEntryOut] = []
     for folder_out, hit in zip(shown, hits, strict=True):
         assert folder_out.album is not None
@@ -412,7 +412,7 @@ async def detail(
         )
     ).one()
     chain = await repo.ancestor_ids(db, folder.id)
-    folder_out = await service.item_out(db, folder)
+    folder_out = await service.item_out(db, folder, viewer=actor)
     assert folder_out.album is not None
     return AlbumDetailOut(
         folder=folder_out,
@@ -420,7 +420,7 @@ async def detail(
         path=await service.crumbs(db, chain[:-1], rights.location),
         location_kind=rights.location.kind,  # type: ignore[arg-type]
         can_write=rights.can_write,
-        items=await service.items_out(db, rows),
+        items=await service.items_out(db, rows, viewer=actor),
         next_cursor=next_cursor,
         folder_count=int(counts[0]),
         other_count=int(counts[1]),
