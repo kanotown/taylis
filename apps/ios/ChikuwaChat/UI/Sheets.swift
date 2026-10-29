@@ -345,7 +345,7 @@ struct ChannelInfoView: View {
 
     private func notificationValue(_ channel: ChannelState) -> String {
         let pref = channel.channel.notification
-        return NotificationRules.rowValue(level: channel.pushLevel(overall: controller.store.me?.overallNotification ?? "mentions", meId: controller.store.me?.id),
+        return NotificationRules.rowValue(level: channel.pushLevel(me: controller.store.me),
                                           muted: pref?.muted ?? false, timedMute: Timeline.muteLabel(pref?.mutedUntil))
     }
 
@@ -654,7 +654,7 @@ struct ChannelNotificationsView: View {
     var body: some View {
         Form {
             if let channel = controller.store.channel(channelId) {
-                let level = channel.pushLevel(overall: controller.store.me?.overallNotification ?? "mentions", meId: controller.store.me?.id)
+                let level = channel.pushLevel(me: controller.store.me)
                 Section("通知するメッセージ") {
                     NotificationLevelPicker(controller: controller, channel: channel)
                         .pickerStyle(.inline)

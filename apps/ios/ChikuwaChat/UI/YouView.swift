@@ -371,6 +371,17 @@ struct NotificationSettingsView: View {
             } footer: {
                 Text("チャンネルごとの設定が優先されます。DM は「なし」以外なら常に通知されます。")
             }
+            // 2026-10-30 (PUSH_NOTIFICATIONS.md §4): someone else's times without a level of its own notifies of every
+            // post, and counts as unread (SYNC_PROTOCOL.md §10.5); a server without the setting leaves it out.
+            if let timesDefault = me?.timesNotificationDefault {
+                Section {
+                    Toggle("他の人の Times もすべて通知", isOn: Binding(get: { timesDefault == "all" }, set: { on in
+                        Task { _ = await controller.updateProfile(timesNotificationDefault: on ? "all" : "mentions") }
+                    }))
+                } footer: {
+                    Text("他の人の Times も、新しい投稿ごとに通知する（オフのときはメンションだけ）。未読も太字で数える。Times ごとに決めた通知が優先される。")
+                }
+            }
             // M39: reactions to my messages as banners; a server before M39 has no such setting.
             if let notifyReactions = me?.notifyReactions {
                 Section {

@@ -816,7 +816,7 @@ struct NotificationMenu: View {
     @Bindable var controller: AppController
     let channel: ChannelState
 
-    private var level: String { channel.pushLevel(overall: controller.store.me?.overallNotification ?? "mentions", meId: controller.store.me?.id) }
+    private var level: String { channel.pushLevel(me: controller.store.me) }
 
     var body: some View {
         Menu {
@@ -840,11 +840,18 @@ struct NotificationLevelPicker: View {
     static let followDefaultTag = "default"
 
     var body: some View {
-        let overall = controller.store.me?.overallNotification ?? "mentions"
+        let me = controller.store.me
+        let overall = me?.overallNotification ?? "mentions"
+        // 2026-10-30: someone else's times follows my times setting, so its 「既定（…）」 names what that gives.
+        let othersTimes = channel.channel.timesOwnerId.map { $0 != me?.id } ?? false
+        let inherited = othersTimes
+            ? NotificationRules.levelLabel(NotificationRules.pushLevel(own: nil, isDm: false, othersTimes: true, overall: overall,
+                                                                       timesDefault: me?.timesDefault ?? "mentions"))
+            : NotificationRules.overallLabel(overall)
         Picker("通知", selection: Binding(get: { channel.ownNotificationLevel ?? Self.followDefaultTag }, set: { value in
             Task { _ = await controller.setNotificationLevel(channel, own: value == Self.followDefaultTag ? nil : value) }
         })) {
-            Text("既定（\(NotificationRules.overallLabel(overall))）").tag(Self.followDefaultTag)
+            Text("既定（\(inherited)）").tag(Self.followDefaultTag)
             Text("すべてのメッセージ").tag("all")
             Text("メンションのみ").tag("mentions")
             Text("通知しない").tag("none")

@@ -81,8 +81,8 @@ enum JumpMatch {
 
     /// A conversation as the jump view matches it: a channel by its name; a DM by the other members' display names
     /// and usernames; my DM with myself by my own.
-    static func item(_ channel: ChannelState, users: [String: UserPublic], me: UserPublic?, meId: String?) -> Item {
-        let unread = channel.hasUnread(meId: meId)
+    static func item(_ channel: ChannelState, users: [String: UserPublic], me: UserPublic?, meId: String?, timesDefault: String) -> Item {
+        let unread = channel.hasUnread(meId: meId, timesDefault: timesDefault)
         guard channel.channel.isDm else {
             let name = channel.channel.name ?? ""
             return Item(id: channel.id, title: name, names: [name], unread: unread)
@@ -93,11 +93,13 @@ enum JumpMatch {
         return Item(id: channel.id, title: title, names: people.flatMap { [$0.displayName, $0.username] }, unread: unread)
     }
 
-    /// 「会話」: the conversations I am in, less the archived ones, ranked; at most `limit`.
+    /// 「会話」: the conversations I am in, less the archived ones, ranked; at most `limit`. `timesDefault`: my
+    /// UserMe.timesDefault (whether someone else's times counts as unread without a mention).
     static func conversations(_ query: String, channels: [ChannelState], users: [String: UserPublic], me: UserPublic?,
-                              limit: Int = 20) -> [String] {
+                              timesDefault: String = "mentions", limit: Int = 20) -> [String] {
         let meId = me?.id
-        let items = channels.filter { $0.isMember && !$0.channel.archived }.map { item($0, users: users, me: me, meId: meId) }
+        let items = channels.filter { $0.isMember && !$0.channel.archived }
+            .map { item($0, users: users, me: me, meId: meId, timesDefault: timesDefault) }
         return Array(rank(query, items).prefix(limit).map(\.id))
     }
 

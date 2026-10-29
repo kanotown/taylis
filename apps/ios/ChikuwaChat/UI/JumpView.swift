@@ -47,7 +47,7 @@ struct ConversationLabel: View {
     var body: some View {
         let store = controller.store
         let meId = store.me?.id
-        let unread = channel.hasUnread(meId: meId)
+        let unread = channel.hasUnread(me: store.me)
         let badge = channel.badgeContribution
         let title = channelTitle(channel, store: store)
         HStack(spacing: 10) {
@@ -240,7 +240,8 @@ struct JumpView: View {
     @ViewBuilder
     private var matchRows: some View {
         let users = everyone(store)
-        let conversations = JumpMatch.conversations(query, channels: Array(store.channels.values), users: users, me: store.me?.asPublic)
+        let conversations = JumpMatch.conversations(query, channels: Array(store.channels.values), users: users, me: store.me?.asPublic,
+                                                    timesDefault: store.me?.timesDefault ?? "mentions")
             .compactMap { store.channel($0) }
         let people = JumpMatch.people(query, users: Array(users.values)).compactMap { users[$0] }
         let bots = JumpMatch.bots(query, users: Array(users.values), aiBotIds: controller.aiHub?.botUserIds ?? [], limit: 10)
