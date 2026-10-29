@@ -20,9 +20,10 @@ hide:
 
 </div>
 
-Taylis is a workspace for university research labs. Next to channels, threads, direct messages, search and file
-sharing, it has the tools a lab uses every day: who is in the lab now, weekly reports and who has handed them in,
-students' work logs, announcements that ask for acknowledgement, deadlines, tasks and calendars.
+Taylis is a workspace for university research labs. Next to channels, threads, direct messages and search, it has
+the tools a lab uses every day: who is in the lab now, weekly reports and who has handed them in, students' work logs,
+announcements that ask for acknowledgement, deadlines, tasks and calendars, a drive for the lab's files with photo
+albums, and equipment lending.
 
 You run the server yourself. Messages and files are stored on that server, and your organisation manages the
 conversation history. There are apps for Windows, macOS, iOS and Android, and a browser client.
@@ -76,6 +77,20 @@ conversation history. There are apps for Windows, macOS, iOS and Android, and a 
 
     Docs (a wiki with databases), polls and scheduling, calendars, tasks and boards, deadlines, canvases, personal
     "times" channels, workflows, bookings for shared equipment, and an attendance board.
+
+-   :material-harddisk:{ .lg } **Drive and photo albums**
+
+    ---
+
+    Lab, channel and personal drives for large files, with versions, share links for people outside the lab and
+    search inside PDF and Office files. Files posted in a channel land in its drive; event photos become albums.
+
+-   :material-package-variant-closed:{ .lg } **Equipment lending**
+
+    ---
+
+    A ledger of laptops, cameras and books that members borrow and return themselves, with due-date reminders,
+    a teacher's permission check, CSV import and QR labels.
 
 -   :material-shield-account-outline:{ .lg } **Administration and import**
 

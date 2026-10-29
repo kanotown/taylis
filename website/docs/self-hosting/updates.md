@@ -21,6 +21,31 @@ docker compose -f docker-compose.yml -f docker-compose.prod.yml --profile proxy 
 - 切り替えの間、数秒だけ API が止まります。アプリは自動で再接続し、足りない分を取り寄せます。
 - 後方互換のない変更があるときは、リリースノートに書きます。
 
+## 更新の後に流すコマンド { #after-upgrade }
+
+ほとんどの更新は、上の手順だけで済みます。前からあるデータに新しい機能を当てるときだけ、サーバの `infra` のフォルダでコマンドを
+流します（どれも何度流してもよく、止めても続きから流せます）。
+
+| 上げたバージョン | 流すもの | 内容 |
+| --- | --- | --- |
+| v0.1.74 から | `drive-index --limit 500` | ドライブの Word / Excel / PowerPoint の中身を検索に入れる（[ドライブの管理](../admin/drive.md#drive-index-office)） |
+| v0.1.79 から | 任意：`channel-files-backfill` | 前からのチャンネルの添付をチャンネルのドライブの「投稿のファイル」に入れる（[ドライブの管理](../admin/drive.md#channel-files-backfill)） |
+| v0.1.80 から | `drive-photos --dry-run` → `drive-photos --limit 500` | 前からドライブにある写真の撮影日時と縮小版を作り、HEIC にもサムネイルを付ける（[ドライブの管理](../admin/drive.md#drive-photos)） |
+
+```sh
+docker compose -f docker-compose.yml -f docker-compose.prod.yml exec app python -m app.cli drive-photos --dry-run
+```
+
+!!! note "v0.1.80 から、サーバのイメージは Debian 13（trixie）です"
+    app のイメージの土台を Debian 12（bookworm）から Debian 13（trixie）に上げました。中の ffmpeg が 5.1 から 7.1 になり、
+    Mac や Android から来た HEIC の写真にもサムネイルが付きます。Python は同じ 3.13 で、データベースの移行もありません。
+
+    - **サーバの OS は変えなくてかまいません**（Debian 12 の VPS のままで動きます。変わるのはコンテナの中だけです）。
+      データベース・オブジェクトストレージ・文書の変換・Web のイメージも変わりません。
+    - 土台が変わるので、上げた最初の更新では app のイメージを丸ごと（約 350 MB）取り直します。古いイメージを消すまで、ディスクを
+      その分だけ多く使います（`docker image prune` で消せます）。
+    - 戻すときは、前のリリースのイメージに戻すだけです（データの形は変わりません）。
+
 ## タグから自動でデプロイする（GitHub Actions）
 
 自分のリポジトリ（フォーク）で `v1.2.3` の形のタグを push すると、GitHub Actions がテスト → イメージの作成 →
