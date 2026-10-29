@@ -1,4 +1,4 @@
-import { ATTACHMENT_MAX_BYTES, ATTACHMENT_MAX_COUNT, forEachPicked, isPickBusy, refusePicked, takePicked } from "../platform/pickedFiles";
+import { ATTACHMENT_MAX_BYTES, ATTACHMENT_MAX_COUNT, forEachPicked, formatMegabytes, isPickBusy, refusePicked, takePicked } from "../platform/pickedFiles";
 import { AtSign, Bold, CalendarDays, CaseSensitive, Check, CheckCheck, ChevronDown, Code, Ellipsis, Eye, EyeOff, Flag, HardDrive, Heading, Image, Info, Italic, LayoutTemplate, Link as LinkIcon, List, ListOrdered, Loader2, Paperclip, Plus, SendHorizontal, Smile, SquareCode, Strikethrough, TextQuote, Vote, X, Zap } from "lucide-react";
 import { type KeyboardEvent, type ReactNode, type RefObject, Suspense, useCallback, useEffect, useLayoutEffect, useRef, useState } from "react";
 
@@ -37,6 +37,10 @@ import { Button, cn, IconButton, Kbd, Menu, MenuContent, MenuItem, MenuTrigger, 
 import { t } from "../i18n";
 import { OverflowToolbar } from "./OverflowToolbar";
 import { composerKey, registerComposerFiles } from "./FileDropZone";
+import { appendLink, bigFileWhere, isBigFile, splitRelease } from "../drive/bigFiles";
+import { canRestorePosted } from "../drive/channelFiles";
+import { BigFileOffer, type BigFileOfferState, BigUploadChips, startBigUploads, useBigUploads } from "./ComposerBigFiles";
+import { isTauri } from "../platform/env";
 
 const MAX_LENGTH = 20_000;
 
@@ -166,6 +170,18 @@ export function Composer({
   const [pollForm, setPollForm] = useState<{ question?: string; options?: string[]; multiple?: boolean } | null>(null);
   // M165 (docs/DRIVE.md §13.1): 「ドライブから」.
   const [drivePicker, setDrivePicker] = useState(false);
+  // CF5: big files waiting for 「ドライブにアップロードしてリンクを投稿」, and the ones going up (sending waits for them).
+  const [bigOffer, setBigOffer] = useState<BigFileOfferState | null>(null);
+  const bigKey = composerKey(channel.id, parentId);
+  const { items: bigItems, holding: bigHolding } = useBigUploads(controller, bigKey, (itemId) => appendDriveLink(itemId));
+  // An offer belongs to its conversation: another one opened here (or the composer gone) lets its files go.
+  const bigOfferNow = useRef(bigOffer);
+  bigOfferNow.current = bigOffer;
+  useEffect(() => () => {
+    bigOfferNow.current?.releases.forEach((done) => done());
+    bigOfferNow.current = null;
+    setBigOffer(null);
+  }, [bigKey]);
   const [scheduleForm, setScheduleForm] = useState<ScheduleFormInitial | null>(null);
   const [templatesOpen, setTemplatesOpen] = useState(false);
   const send = () => {
@@ -218,6 +234,7 @@ export function Composer({
     }
     const body = encodeMentions(text.trim(), store.users.values(), store.groups.values());
     if ((!body && pending.length === 0) || !controller.engine || uploading > 0) return;
+    if (bigHolding) { controller.setNotice(t("composer.bigFile.waitToSend")); return; }
     if (pending.length > 10 || body.length > MAX_LENGTH) { controller.setError(t("composer.tooLong")); return; }
     const ids = pending.map((a) => a.id);
     setText("");
@@ -243,6 +260,7 @@ export function Composer({
   const schedule = async (sendAt: Date) => {
     const body = encodeMentions(text.trim(), store.users.values(), store.groups.values());
     if ((!body && pending.length === 0) || uploading > 0 || scheduling) return;
+    if (bigHolding) { controller.setNotice(t("composer.bigFile.waitToSend")); return; }
     if (Number.isNaN(sendAt.getTime()) || sendAt.getTime() < Date.now() + 60_000) { controller.setError(t("composer.pickLater")); return; }
     const ids = pending.map((a) => a.id);
     const what = JSON.stringify([channel.id, parentId, body, ids]);
@@ -263,10 +281,25 @@ export function Composer({
    *  v0.1.30 #5); a picker's files (`picked`) are then copied into memory one at a time, each uploaded before the
    *  next is read, and the input is cleared after the last (platform/pickedFiles.ts). The upload counter (which holds
    *  back sending) rises at once. */
-  const pickFiles = async (files: File[], picked?: { release: () => void }) => {
+  const pickFiles = async (all: File[], picked?: { release: () => void }) => {
     const api = controller.api;
-    const release = picked?.release ?? (() => {});
-    if (!api || files.length === 0) { release(); return; }
+    const whole = picked?.release ?? (() => {});
+    if (!api || all.length === 0) { whole(); return; }
+    // CF5 (docs/CHANNEL_FILES.md §12.4): files over the attachment limit are offered to the drive instead of refused
+    // (not where there is no drive queue: no account). The rest are attached as before.
+    const bigs = controller.accountKey ? all.filter((file) => isBigFile(file.size)) : [];
+    const files = bigs.length > 0 ? all.filter((file) => !bigs.includes(file)) : all;
+    let release = whole;
+    if (bigs.length > 0) {
+      const [small, big] = splitRelease(whole, 2) as [() => void, () => void];
+      release = small;
+      // The macOS app reads a picked File only while its input keeps its value (platform/pickedFiles.ts): held until
+      // the big files are up. A browser's File stays readable, and a dropped or pasted one has no input.
+      const hold = !!picked && isTauri();
+      setBigOffer((offer) => ({ files: [...(offer?.files ?? []), ...bigs], releases: [...(offer?.releases ?? []), ...(hold ? [big] : [])] }));
+      if (!hold) big();
+    }
+    if (files.length === 0) { release(); return; }
     const refusal = refusePicked(files, { maxFiles: ATTACHMENT_MAX_COUNT - pending.length - uploading, maxBytes: ATTACHMENT_MAX_BYTES });
     if (refusal) { release(); controller.setError(refusal); return; }
     const channelId = channel.id;
@@ -380,6 +413,33 @@ export function Composer({
       const piece = `${before}${url} `;
       return { text: s.text.slice(0, s.start) + piece + s.text.slice(s.end), start: s.start + piece.length, end: s.start + piece.length };
     });
+  };
+
+  /** CF5: a big file's link at the end of the draft once its upload is done (the composer may have been elsewhere). */
+  const appendDriveLink = (itemId: string): boolean => {
+    const base = controller.api?.baseUrl;
+    if (!base) return false;
+    const current = store.draft(channel.id, parentId).text;
+    const next = appendLink(current, driveLink(base, itemId));
+    if (next === current) return true;
+    const rich = editor();
+    setText(rich ? rich.setMarkdown(next) : next);
+    return true;
+  };
+
+  /** CF5: the offer taken — the files go up to the drive; with no folder to write, they are too large as before. */
+  const uploadBigOffer = async () => {
+    const offer = bigOffer;
+    if (!offer) return;
+    setBigOffer(null);
+    const release = () => offer.releases.forEach((done) => done());
+    const started = await startBigUploads(controller, channel, bigKey, offer.files, release);
+    const first = offer.files[0];
+    if (!started && first) controller.setError(t("attach.tooLarge", { name: first.name, max: formatMegabytes(ATTACHMENT_MAX_BYTES) }));
+  };
+  const dismissBigOffer = () => {
+    bigOffer?.releases.forEach((done) => done());
+    setBigOffer(null);
   };
 
   /** M165: a drive file's copy as an attachment (the picker's 「コピーを添付」, the draft warning's 「コピーとして送る」). */
@@ -830,11 +890,13 @@ export function Composer({
           </div>
         )}
         <DriveLinkWarning controller={controller} channel={channel} text={text} onSendCopy={sendDriveCopy} />
-        <div className={cn((pending.length > 0 || uploading > 0) && "px-2 pt-2")}>
+        <div className={cn((pending.length > 0 || uploading > 0 || bigItems.length > 0) && "px-2 pt-2")}>
           <PendingAttachments items={pending} uploading={uploading} controller={controller} onRemove={(item) => setPending((items) => items.filter((a) => a.id !== item.id))} />
           {/* CF2 (docs/CHANNEL_FILES.md §12.3): where the files go besides the message. */}
           <ComposerDriveHint controller={controller} channel={channel} shown={pending.length > 0 || uploading > 0} />
+          <BigUploadChips controller={controller} items={bigItems} />
         </div>
+        {bigOffer && <BigFileOffer offer={bigOffer} where={bigFileWhere(channel, store.workspaceSettings, canRestorePosted(channel, controller.can?.("channels.moderate") ?? false))} onUpload={() => void uploadBigOffer()} onDismiss={dismissBigOffer} />}
         <input
           ref={fileInput}
           type="file"
@@ -1029,12 +1091,12 @@ export function Composer({
             </span>
             {/* 「送信」 and its ▾ with 「後で送信」, as Slack's schedule dropdown. */}
             <div className="flex items-center">
-              <Button size="sm" className="rounded-r-none" onClick={send} disabled={uploading > 0 || (!text.trim() && pending.length === 0)}>
+              <Button size="sm" className="rounded-r-none" onClick={send} disabled={uploading > 0 || bigHolding || (!text.trim() && pending.length === 0)}>
                 <SendHorizontal size={14} /> {t("composer.send")}
               </Button>
               <PopoverRoot open={scheduleOpen} onOpenChange={setScheduleOpen}>
                 <PopoverTrigger asChild>
-                  <button type="button" aria-label={t("composer.sendLater")} title={t("composer.sendLater")} disabled={uploading > 0 || scheduling || (!text.trim() && pending.length === 0)} className="inline-flex h-7 w-6 items-center justify-center rounded-r-md border-l border-white/30 bg-accent-solid text-white shadow-sm transition-colors hover:bg-accent-solid/90 disabled:pointer-events-none disabled:opacity-50">
+                  <button type="button" aria-label={t("composer.sendLater")} title={t("composer.sendLater")} disabled={uploading > 0 || bigHolding || scheduling || (!text.trim() && pending.length === 0)} className="inline-flex h-7 w-6 items-center justify-center rounded-r-md border-l border-white/30 bg-accent-solid text-white shadow-sm transition-colors hover:bg-accent-solid/90 disabled:pointer-events-none disabled:opacity-50">
                     <ChevronDown size={14} />
                   </button>
                 </PopoverTrigger>
