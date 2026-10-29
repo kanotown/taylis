@@ -2,8 +2,9 @@
 
 The export (`GET /lending/items/export.csv`, keepers) writes the ledger as UTF-8 with a byte order
 mark (Excel opens Japanese right). Every text cell that a spreadsheet would read as a formula
-(`=`, `+`, `-`, `@`, a tab or a carriage return first) gets a `'` in front (CSV injection); the
-import takes that `'` off again, so an exported file imports unchanged.
+(`=`, `+`, `-`, `@`, a tab or a carriage return first) gets a `'` in front (CSV injection), and so
+does a cell that starts with a `'` itself (REVIEW-v0.1.82 #8); the import takes one `'` off a cell
+whose rest starts with one of those or with `'`, so an exported file imports unchanged.
 
 The import (`POST /lending/items/import`, keepers) reads the same columns (by their header, in any
 order; English names too), UTF-8 (with or without the mark) or Shift_JIS (what Japanese Excel
@@ -114,6 +115,8 @@ _NO = {"要らない", "いいえ", "no", "false", "0", "\u00d7", "n", "not_requ
 _DEFAULT = {"", "既定", "分類の既定", "default"}
 _RETIRED = {"廃棄", "除籍", "retired"}
 _FORMULA_FIRST = ("=", "+", "-", "@", "\t", "\r")
+# What `cell` puts a `'` in front of: a formula's first character, or the `'` itself.
+_GUARDED = (*_FORMULA_FIRST, "'")
 
 
 def _norm(value: str) -> str:
@@ -123,15 +126,18 @@ def _norm(value: str) -> str:
 
 
 def cell(value: str | None) -> str:
-    """A text cell a spreadsheet must not read as a formula (CSV injection, SECURITY §11)."""
+    """A text cell a spreadsheet must not read as a formula (CSV injection, SECURITY §11). A value
+    that starts with `'` gets one more in front too, so `_uncell` gives it back as it was
+    (REVIEW-v0.1.82 #8: `'=x` came back as `=x`)."""
     if not value:
         return ""
-    return "'" + value if value.startswith(_FORMULA_FIRST) else value
+    return "'" + value if value.startswith(_GUARDED) else value
 
 
 def _uncell(value: str) -> str:
-    """The import's side of `cell`: the `'` the export put in front comes off."""
-    return value[1:] if value.startswith("'") and value[1:].startswith(_FORMULA_FIRST) else value
+    """The import's side of `cell`: the `'` the export put in front comes off (only before a
+    formula's first character or another `'`; a hand-written `'abc` stays as it is)."""
+    return value[1:] if value.startswith("'") and value[1:].startswith(_GUARDED) else value
 
 
 # --- the export ------------------------------------------------------------------------------

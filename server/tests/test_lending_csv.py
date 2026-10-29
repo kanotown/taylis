@@ -259,6 +259,44 @@ async def test_round_trip_keeps_formula_like_values_and_loans_alone(
     assert after["status"] == "on_loan"  # the status and the loan are never imported
 
 
+async def test_round_trip_keeps_leading_apostrophes(
+    db: AsyncSession,
+    client: AsyncClient,
+    as_user: Callable[[User], None],
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """REVIEW-v0.1.82 #8: a value that starts with `'` (before a formula's first character, before
+    another `'`, or before anything) comes back as it was; a formula-like value stays defused."""
+    lab = await _lab(db, client, as_user, monkeypatch)
+    lab.as_user(lab.keeper)
+    category = await _ok(
+        await client.post(f"{API}/lending/categories", json={"name": "'+分類"}), 201
+    )
+    values = {"name": "''二重", "code": "'=CAM-1", "location": "'棚", "notes": "'=original"}
+    item = await lab.item(category_id=category["id"], **values)
+    plain = await lab.item(name="=SUM(A1)", code="-2", notes="'@x")
+    first = (await _export(lab)).content
+    rows = {r[1]: r for r in _rows(await _export(lab))[1:]}
+    # Every cell that starts with `'` or a formula's first character gets one more `'`: a
+    # spreadsheet shows text, never a formula.
+    assert rows["'''二重"][:4] == ["''=CAM-1", "'''二重", "''+分類", "''棚"]
+    assert rows["'''二重"][7] == "''=original"
+    assert (rows["'=SUM(A1)"][0], rows["'=SUM(A1)"][7]) == ("'-2", "''@x")
+    out = await _ok(await _import(lab, first, dry_run=False))
+    assert (out["created"], out["updated"], out["unchanged"]) == (0, 0, 2)
+    as_user(lab.member)
+    after = await _ok(await client.get(f"{API}/lending/items/{item['id']}"))
+    assert {k: after[k] for k in values} == values
+    assert after["category_id"] == category["id"]
+    again = await _ok(await client.get(f"{API}/lending/items/{plain['id']}"))
+    assert (again["name"], again["code"], again["notes"]) == ("=SUM(A1)", "-2", "'@x")
+    assert (await _export(lab)).content == first  # export → import → export: the same file
+    # A hand-written `'abc` (no formula after the `'`) is not the export's guard: it stays.
+    out = await _ok(await _import(lab, _csv(",'手書き,,,,,,,,"), dry_run=False))
+    assert out["created"] == 1
+    assert "''手書き" in {r[1] for r in _rows(await _export(lab))[1:]}
+
+
 async def test_row_errors_keep_the_whole_file_out(
     db: AsyncSession,
     client: AsyncClient,
