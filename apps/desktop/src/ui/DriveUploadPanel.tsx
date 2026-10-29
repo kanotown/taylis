@@ -20,7 +20,7 @@ import { FileName } from "./FileName";
 import { cn, IconButton } from "./primitives";
 import { t } from "../i18n";
 
-function stateLine(job: UploadJob): string {
+export function stateLine(job: UploadJob): string {
   const percent = job.size > 0 ? Math.floor((job.sent / job.size) * 100) : 0;
   switch (job.state) {
     case "queued":
