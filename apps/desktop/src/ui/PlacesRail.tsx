@@ -71,24 +71,11 @@ export function railFit(count: number, height: number, controls = 2): number {
 }
 
 /**
- * 2026-10-30 (MOBILE_UI.md §18.2): the rail places that keep their icon when the rail is too short. The Times feed stands
- * after every nav item, so it used to be the first to go under 「その他」 (two clicks); now the nav items before it go there
- * first and the feed stays one click away.
+ * The places standing in the rail (put there, the first `fit`, in my order) and the ones under 「その他」 (the hidden ones
+ * and the rail's that do not fit, in order). Sidebar rows are in neither: they are in view already.
  */
-export const RAIL_KEPT: readonly string[] = ["times-feed"];
-
-/**
- * The places standing in the rail (put there, in my order: the `kept` ones, then the first that fit `fit`) and the ones
- * under 「その他」 (the hidden ones and the rail's that do not fit, in order). Sidebar rows are in neither: they are in view
- * already.
- */
-export function railLayout(places: readonly Place[], spotOf: (key: string) => PlaceSpot, fit: number, kept: readonly string[] = RAIL_KEPT): { rail: Place[]; more: Place[] } {
-  const inRailSpot = places.filter((place) => spotOf(place.key) === "rail");
-  const room = Math.max(0, fit);
-  const keptPlaces = inRailSpot.filter((place) => kept.includes(place.key)).slice(0, room);
-  const others = inRailSpot.filter((place) => !kept.includes(place.key)).slice(0, room - keptPlaces.length);
-  const chosen = new Set([...keptPlaces, ...others].map((place) => place.key));
-  const rail = inRailSpot.filter((place) => chosen.has(place.key));
+export function railLayout(places: readonly Place[], spotOf: (key: string) => PlaceSpot, fit: number): { rail: Place[]; more: Place[] } {
+  const rail = places.filter((place) => spotOf(place.key) === "rail").slice(0, Math.max(0, fit));
   const inRail = new Set(rail.map((place) => place.key));
   return { rail, more: places.filter((place) => !inRail.has(place.key) && spotOf(place.key) !== "sidebar") };
 }
