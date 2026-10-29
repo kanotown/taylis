@@ -129,7 +129,8 @@ describe("the round trip through the editor's schema", () => {
       const { markdown } = open(body);
       expect(markdown() === body).toBe(true);
     }
-  });
+    // The corpus grows with docs/ (45 files, ~7 s on a CI runner in 2026-10): not the 5 s default.
+  }, 60_000);
 });
 
 const BODY = [
