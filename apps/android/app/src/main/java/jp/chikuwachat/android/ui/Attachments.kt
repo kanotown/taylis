@@ -45,6 +45,16 @@ import jp.chikuwachat.android.sync.DriveLinkState
 import jp.chikuwachat.android.sync.DriveNames
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
+import androidx.compose.runtime.DisposableEffect
+import androidx.compose.runtime.snapshotFlow
+import androidx.compose.ui.layout.boundsInWindow
+import androidx.compose.ui.layout.onGloballyPositioned
+import androidx.compose.ui.platform.LocalDensity
+import androidx.compose.ui.unit.IntSize
+import androidx.compose.ui.draw.alpha
+import android.graphics.drawable.Drawable
+import jp.chikuwachat.android.sync.AlbumRules
+import kotlinx.coroutines.flow.first
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
@@ -282,10 +292,49 @@ private fun ThumbnailImage(attachment: AttachmentOut, controller: AppController,
     LaunchedEffect(attachment.id) { bitmap = fetchThumbnail(controller, attachment.id) }
     val image = bitmap
     val shape = RoundedCornerShape(8.dp)
+    // §22.10 (MOBILE_UI.md): a GIF moves while it is on the screen, in one of the few slots, unless a setting keeps it still.
+    val gif = AnimatedImageRules.isGif(attachment.contentType, attachment.filename)
+    var onScreen by remember(attachment.id) { mutableStateOf(false) }
+    val context = LocalContext.current
+    val moves = gif && image != null && onScreen && !viewing &&
+        AnimatedImageRules.tileAnimates(attachment.contentType, attachment.filename, attachment.sizeBytes, remember(onScreen) { motionConditions(context) })
+    var animation by remember(attachment.id) { mutableStateOf<Drawable?>(null) }
+    var still by remember(attachment.id) { mutableStateOf(false) }
+    val density = LocalDensity.current
+    if (moves && !still) {
+        val slot = remember { Any() }
+        val slots = AnimatedTileSlots.shared
+        DisposableEffect(slot) { onDispose { slots.release(slot); animation = null } }
+        LaunchedEffect(attachment.id) {
+            snapshotFlow { slots.count }.first { slots.claim(slot) }
+            val bytes = try {
+                DisplayBytes.load(controller, AlbumRules.originalPath(attachment.id))
+            } catch (e: kotlinx.coroutines.CancellationException) {
+                throw e
+            } catch (e: Exception) {
+                return@LaunchedEffect // the still stays; tried again when the tile comes back
+            }
+            val box = with(density) {
+                if (square != null) IntSize(square.roundToPx(), square.roundToPx()) else IntSize(280.dp.roundToPx(), 240.dp.roundToPx())
+            }
+            val decoded = withContext(Dispatchers.Default) { decodeAnimation(bytes) { w, h -> AnimatedImageRules.decodeSize(w, h, fill = box) } }
+            if (decoded == null) still = true else animation = decoded
+        }
+    }
+    val painter = rememberAnimationPainter(animation, playing = moves)
     val modifier = (if (square != null) Modifier.size(square) else Modifier.widthIn(max = 280.dp).heightIn(max = 240.dp))
         .clip(shape).clickable { viewing = true }
+        .onGloballyPositioned { onScreen = it.boundsInWindow().let { bounds -> bounds.width > 0f && bounds.height > 0f } }
     if (image != null) {
-        Image(image, contentDescription = attachment.filename, contentScale = if (square != null) ContentScale.Crop else ContentScale.Fit, modifier = modifier)
+        val scale = if (square != null) ContentScale.Crop else ContentScale.Fit
+        Box {
+            // The still keeps the tile's size and its tap; while the frames play over it, it is not drawn (a transparent
+            // GIF would show the thumbnail's first frame through).
+            Image(image, contentDescription = attachment.filename, contentScale = scale,
+                modifier = modifier.then(if (painter != null) Modifier.alpha(0f) else Modifier))
+            if (painter != null) Image(painter, contentDescription = null, contentScale = scale, modifier = Modifier.matchParentSize().clip(shape))
+            else if (gif && !still) GifBadge(Modifier.align(Alignment.BottomStart))
+        }
     } else if (square != null) {
         Box(modifier.background(MaterialTheme.colorScheme.surfaceVariant))
     } else {

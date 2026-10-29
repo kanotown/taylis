@@ -155,7 +155,7 @@ enum CustomEmoji {
         for index in 0..<count {
             guard let image = CGImageSourceCreateImageAtIndex(source, index, nil) else { continue }
             frames.append(draw(UIImage(cgImage: image), height: pack ? packStoredHeight : animatedHeight))
-            elapsed += delay(source, index)
+            elapsed += frameDelay(source, index)
             ends.append(elapsed)
         }
         return (still, frames.count > 1 ? EmojiAnimation(frames: frames, ends: ends) : nil)
@@ -249,7 +249,8 @@ enum CustomEmoji {
         }
     }
 
-    private static func delay(_ source: CGImageSource, _ index: Int) -> TimeInterval {
+    /// How long frame `index` shows (GIF, APNG, WebP): no delay or one under 0.02 s is 0.1 s, as browsers do.
+    static func frameDelay(_ source: CGImageSource, _ index: Int) -> TimeInterval {
         let properties = CGImageSourceCopyPropertiesAtIndex(source, index, nil) as? [CFString: Any] ?? [:]
         let gif = properties[kCGImagePropertyGIFDictionary] as? [CFString: Any]
         let png = properties[kCGImagePropertyPNGDictionary] as? [CFString: Any]

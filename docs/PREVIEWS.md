@@ -417,6 +417,14 @@ trixie の ffmpeg 7.1 に上げた）。会話とドライブの格子・一覧�
   `test_albums.py::test_display_keeps_transparency_for_the_viewers_checkerboard` で確かめる。HEIC の表示サイズ（ffmpeg の
   `rgb24`、§14）は不透明（ffmpeg は HEIF の補助のアルファ画像を合わせない）なので、透明な HEIC には模様が出ない（写真では
   まず無い）。アニメーションの GIF は表示サイズを作らず元のファイルを見せる。
+- 動く GIF：スマホのビューアは元のファイルのコマを流し、市松模様はコマの後ろにそのまま敷く（§16）。
+
+## 16. 動く GIF（iOS / Android、2026-10-29）
+
+サムネイル（`/thumbnail`）は 1 コマ目の JPEG、表示サイズ（`/display`）は動く画像には作らない（`attachments/photos.py`）。サーバは
+変えていない。スマホは動かすときに元のファイル（`/content`）を読む：全画面のビューア（会話・アルバム・ドライブ）は常に、会話の
+タイルは GIF で 8 MB 以下・画面に出ている間・同時に 3 枚まで・省電力などの設定がオフのとき。ドライブの一覧のサムネイルは
+動かさず「GIF」の印だけ。決まり・メモリの上限・試験は MOBILE_UI.md §22.10。
 - 会話・一覧のサムネイル（JPEG）は透明を持たないので変えていない。
 - 試験：Desktop `tests/transparency.test.tsx`（種類・画素の判定、読む大きさ、読み込み後だけ・次の写真では消える、JPEG は
   読まない）、iOS `CheckerboardTests`（`alphaInfo` の判定・PNG と JPEG を通した判定・合わせた矩形・ページで画像の後ろに

@@ -634,6 +634,10 @@ struct DriveThumbnail: View {
                 if item.contentType?.hasPrefix("video/") == true {
                     Image(systemName: "play.circle.fill").font(.system(size: side * 0.4)).foregroundStyle(.white.opacity(0.9))
                 }
+                // MOBILE_UI.md §22.10: the server's thumbnail is the first frame; the viewer plays it.
+                if AnimatedImageRules.isGIF(contentType: item.contentType ?? "", filename: item.name) {
+                    GIFBadge(compact: true).frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .bottomLeading)
+                }
             } else {
                 Image(systemName: DriveRules.icon(item)).font(.system(size: side * 0.45)).foregroundStyle(item.isFolder ? Color.accentColor : .secondary)
                     .overlay(alignment: .bottomTrailing) {
