@@ -121,6 +121,7 @@ import jp.chikuwachat.android.api.FileItem
 import jp.chikuwachat.android.api.MessageOut
 import jp.chikuwachat.android.api.SearchHit
 import jp.chikuwachat.android.app.AppController
+import jp.chikuwachat.android.sync.NotificationLevels
 import jp.chikuwachat.android.sync.ChannelState
 import jp.chikuwachat.android.sync.Store
 import kotlinx.coroutines.flow.distinctUntilChanged
@@ -513,7 +514,7 @@ private fun ColumnScope.JumpList(
         listOfNotNull(user?.displayName ?: me?.displayName, user?.username ?: me?.username)
     }
     val conversations = remember(query, version) {
-        if (query.isEmpty()) emptyList() else Jump.conversations(query, store.channels.values, meId, { channelTitle(it, store) }, userNames)
+        if (query.isEmpty()) emptyList() else Jump.conversations(query, store.channels.values, meId, { channelTitle(it, store) }, userNames, timesDefault = NotificationLevels.timesDefault(store.me))
     }
     val people = remember(query, version) { if (query.isEmpty()) emptyList() else Jump.people(query, store.users.values) }
     val bots = remember(query, version) { if (query.isEmpty()) emptyList() else Jump.bots(query, store.users.values, jump.aiBotIds, Jump.MAX_PEOPLE) }
@@ -589,7 +590,7 @@ private fun ColumnScope.JumpList(
 @Composable
 private fun JumpConversationRow(store: Store, channel: ChannelState, onClick: () -> Unit) {
     val meId = store.me?.id
-    val unread = Channels.hasUnread(channel, meId)
+    val unread = Channels.hasUnread(channel, meId, NotificationLevels.timesDefault(store.me))
     val others = (channel.channel.dmUserIds ?: emptyList()).filter { it != meId }
     val title = channelTitle(channel, store).removePrefix("#")
     ListItem(

@@ -3,6 +3,7 @@ package jp.chikuwachat.android.ui
 import jp.chikuwachat.android.api.UserPublic
 import jp.chikuwachat.android.platform.KeyValueStore
 import jp.chikuwachat.android.sync.ChannelState
+import jp.chikuwachat.android.sync.NotificationLevels
 import java.text.Normalizer
 import java.time.Instant
 import java.util.Locale
@@ -91,9 +92,11 @@ object Jump {
         title: (ChannelState) -> String,
         userNames: (String) -> List<String>,
         now: Instant = Instant.now(),
+        /** My times setting ([NotificationLevels.timesDefault]), for bold. */
+        timesDefault: String = NotificationLevels.MENTIONS,
     ): List<ChannelState> =
         JumpMatch.rank(query, channels.filter { it.isMember && !it.channel.archived }) {
-            JumpMatch.Item(it.id, title(it), names(it, meId, userNames), unread = Channels.hasUnread(it, meId, now))
+            JumpMatch.Item(it.id, title(it), names(it, meId, userNames), unread = Channels.hasUnread(it, meId, timesDefault, now))
         }.take(MAX_CONVERSATIONS)
 
     /**
@@ -153,6 +156,8 @@ object Jump {
         meId: String?,
         now: Instant = Instant.now(),
         aiBotIds: Set<String> = emptySet(),
+        /** My times setting ([NotificationLevels.timesDefault]), for bold. */
+        timesDefault: String = NotificationLevels.MENTIONS,
     ): Destinations {
         val bots = bots(query, users, aiBotIds)
         val mine = channels.filter { it.isMember && !it.channel.isDm && !it.channel.archived }
@@ -168,7 +173,7 @@ object Jump {
             )
         }
         fun rankChannels(list: List<ChannelState>) = JumpMatch.rank(query, list) {
-            JumpMatch.Item(it.id, it.channel.name ?: "", listOfNotNull(it.channel.name), unread = Channels.hasUnread(it, meId, now))
+            JumpMatch.Item(it.id, it.channel.name ?: "", listOfNotNull(it.channel.name), unread = Channels.hasUnread(it, meId, timesDefault, now))
         }
         return Destinations(rankChannels(mine), rankChannels(joinable), rankPeople(query, users), bots)
     }

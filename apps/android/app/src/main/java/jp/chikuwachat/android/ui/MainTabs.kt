@@ -5,6 +5,7 @@ import jp.chikuwachat.android.api.ActivitySummaryOut
 import jp.chikuwachat.android.api.Codec
 import jp.chikuwachat.android.api.ThreadSummary
 import jp.chikuwachat.android.sync.ChannelState
+import jp.chikuwachat.android.sync.NotificationLevels
 import jp.chikuwachat.android.sync.DmCloses
 import java.time.DayOfWeek
 import java.time.Instant
@@ -265,7 +266,8 @@ object MainTabs {
 
     /** DM tab: my DMs and group DMs unread by the list's rule (a muted one only with a mention). */
     fun dmBadge(channels: Collection<ChannelState>, meId: String?, now: Instant = Instant.now()): Int =
-        channels.count { it.isMember && it.channel.isDm && Channels.hasUnread(it, meId, now) }
+        // A DM is never a times: the times setting does not matter here.
+        channels.count { it.isMember && it.channel.isDm && Channels.hasUnread(it, meId, NotificationLevels.MENTIONS, now) }
 
     /** The activity tab's badge: a number, red when it holds a mention. */
     data class ActivityBadge(val count: Int, val mention: Boolean)
@@ -282,9 +284,9 @@ object MainTabs {
     }
 
     /** Home tab: a dot while any channel (not a DM) of mine is unread by the list's rule. */
-    fun homeDot(channels: Collection<ChannelState>, meId: String?, now: Instant = Instant.now()): Boolean =
+    fun homeDot(channels: Collection<ChannelState>, meId: String?, timesDefault: String, now: Instant = Instant.now()): Boolean =
         // Not an archived channel: the home list does not show it, so its dot would point at nothing.
-        channels.any { it.isMember && !it.channel.archived && !it.channel.isDm && Channels.hasUnread(it, meId, now) }
+        channels.any { it.isMember && !it.channel.archived && !it.channel.isDm && Channels.hasUnread(it, meId, timesDefault, now) }
 
     // --- the DM list (§6.3) ---
 

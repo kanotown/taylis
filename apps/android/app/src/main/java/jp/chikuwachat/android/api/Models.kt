@@ -78,6 +78,12 @@ data class UserMe(
      */
     val notificationDefault: String = "mentions",
     /**
+     * 2026-10-30: what someone else's times without a level of its own notifies me of ("mentions" / "all";
+     * PUSH_NOTIFICATIONS.md §4) and whether it counts as unread (SYNC_PROTOCOL.md §10.5). Null from a server before it
+     * (no key): "mentions", and 自分 → 通知 hides the switch. Read it through [jp.chikuwachat.android.sync.NotificationLevels.timesDefault].
+     */
+    val timesNotificationDefault: String? = null,
+    /**
      * M39: a banner (push) when someone reacts to my message (PUSH_NOTIFICATIONS.md §4); off unless turned on. The
      * activity tab lists the reactions either way. Absent from servers before M39 (off).
      */

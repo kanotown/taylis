@@ -3449,6 +3449,14 @@ class AppController(private val app: Application) {
      */
     suspend fun setNotificationDefault(overall: String): Boolean = updateProfileJson(buildJsonObject { put("notification_default", overall) })
 
+    /**
+     * 2026-10-30: 「他の人の Times もすべて通知」 ("all" / "mentions"): what someone else's times without a level of its
+     * own notifies me of, and whether it counts as unread. The Store's UserMe takes the answer; my other devices learn it
+     * from user.updated.
+     */
+    suspend fun setTimesNotificationDefault(level: String): Boolean =
+        updateProfileJson(buildJsonObject { put("times_notification_default", level) })
+
     /** M56: 「タスク (割り当て・期限)」, the pushes (and the open app's notices) of task.assigned / task.due. */
     suspend fun setNotifyTasks(on: Boolean): Boolean = updateProfileJson(buildJsonObject { put("notify_tasks", on) })
 

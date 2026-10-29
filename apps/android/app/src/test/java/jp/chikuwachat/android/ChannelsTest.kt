@@ -46,14 +46,14 @@ class ChannelsTest {
     @Test fun mutedChannelsCountOnlyMentions() {
         val muted = channel("a", unread = 5, level = "none")
         assertTrue(Channels.isMuted(muted, now))
-        assertFalse(Channels.hasUnread(muted, null, now))
+        assertFalse(Channels.hasUnread(muted, null, "mentions", now))
         assertEquals(0, Channels.badgeCount(muted, now))
         val mentioned = channel("b", unread = 5, mentions = 2, level = "mentions", mutedUntil = "2026-09-26T20:00:00Z")
-        assertTrue(Channels.hasUnread(mentioned, null, now))
+        assertTrue(Channels.hasUnread(mentioned, null, "mentions", now))
         assertEquals(2, Channels.badgeCount(mentioned, now))
         val expired = channel("c", unread = 1, level = "mentions", mutedUntil = "2026-09-26T01:00:00Z")
         assertFalse(Channels.isMuted(expired, now))
-        assertTrue(Channels.hasUnread(expired, null, now))
+        assertTrue(Channels.hasUnread(expired, null, "mentions", now))
         assertEquals(3, Channels.badgeCount(channel("d", type = "dm", unread = 3), now))
     }
 
@@ -120,6 +120,8 @@ class ChannelsTest {
     private data class UnreadCase(
         val name: String, val type: String, val times: String?, val level: String?, val muted: Boolean,
         val unread: Int, val mentions: Int, val expect: Expected,
+        /** 2026-10-30: users.times_notification_default (absent = "mentions"). */
+        val timesDefault: String = "mentions",
     )
 
     @Serializable
@@ -148,11 +150,11 @@ class ChannelsTest {
                     timesOwner = when (case.times) { "mine" -> "me"; "others" -> "someone"; else -> null },
                 )
                 val name = "${case.name} $variant".trim()
-                assertEquals(name, case.expect.hasUnread, Channels.hasUnread(row, "me", now))
+                assertEquals(name, case.expect.hasUnread, Channels.hasUnread(row, "me", case.timesDefault, now))
                 assertEquals(name, case.expect.badge, Channels.badgeCount(row, now))
-                assertEquals(name, case.expect.quiet, Channels.isQuiet(row, "me", now))
+                assertEquals(name, case.expect.quiet, Channels.isQuiet(row, "me", case.timesDefault, now))
                 // The faint dot: quiet, something new, and not already shown as unread.
-                assertEquals(name, case.expect.quiet && case.unread > 0 && !case.expect.hasUnread, Channels.showsQuietDot(row, "me", now))
+                assertEquals(name, case.expect.quiet && case.unread > 0 && !case.expect.hasUnread, Channels.showsQuietDot(row, "me", case.timesDefault, now))
             }
         }
     }

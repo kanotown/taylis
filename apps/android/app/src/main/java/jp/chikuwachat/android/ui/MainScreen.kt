@@ -996,8 +996,8 @@ fun MainScreen(controller: AppController) {
                                     )
                                 }
                                 BarMenuItem.NOTIFICATIONS -> selectedChannel?.let { open ->
-                                    // M35: the level resolved with my overall setting as it is now (a change shows at once).
-                                    val level = NotificationLevels.resolved(open, store.me?.notificationDefault ?: NotificationLevels.MENTIONS, store.me?.id)
+                                    // M35: the level resolved with my overall (and times) setting as it is now (a change shows at once).
+                                    val level = NotificationLevels.resolved(open, store.me)
                                     val mute = Timeline.muteLabel(open.channel.notification?.mutedUntil)
                                     val mutedOn = NotificationLevels.mutedUntilUnmuted(open)
                                     DropdownMenuItem(

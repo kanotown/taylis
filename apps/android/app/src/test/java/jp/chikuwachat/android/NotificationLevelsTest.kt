@@ -42,30 +42,81 @@ class NotificationLevelsTest {
             "none" to listOf("none", "none", "none"),
         )
         for ((overall, row) in table) {
-            assertEquals(overall, row[0], NotificationLevels.resolve(null, overall, isDm = true, othersTimes = false))
-            assertEquals(overall, row[1], NotificationLevels.resolve(null, overall, isDm = false, othersTimes = true))
-            assertEquals(overall, row[2], NotificationLevels.resolve(null, overall, isDm = false, othersTimes = false))
+            assertEquals(overall, row[0], NotificationLevels.resolve(null, overall, "mentions", isDm = true, othersTimes = false))
+            assertEquals(overall, row[1], NotificationLevels.resolve(null, overall, "mentions", isDm = false, othersTimes = true))
+            assertEquals(overall, row[2], NotificationLevels.resolve(null, overall, "mentions", isDm = false, othersTimes = false))
         }
         // A level of its own wins over everything.
         for (own in NotificationLevels.levels) for (overall in NotificationLevels.levels) {
-            assertEquals(own, NotificationLevels.resolve(own, overall, isDm = true, othersTimes = false))
-            assertEquals(own, NotificationLevels.resolve(own, overall, isDm = false, othersTimes = true))
+            assertEquals(own, NotificationLevels.resolve(own, overall, "mentions", isDm = true, othersTimes = false))
+            assertEquals(own, NotificationLevels.resolve(own, overall, "mentions", isDm = false, othersTimes = true))
         }
     }
 
     @Test fun channelsFollowingTheDefaultShowTheNewOverallSettingAtOnce() {
         // The server resolved "mentions" when it answered; the overall setting has changed since.
         val following = channel(own = null, resolved = "mentions")
-        assertEquals("all", NotificationLevels.resolved(following, "all", "me"))
-        assertEquals("none", NotificationLevels.resolved(following, "none", "me"))
+        assertEquals("all", NotificationLevels.resolved(following, "all", "mentions", "me"))
+        assertEquals("none", NotificationLevels.resolved(following, "none", "mentions", "me"))
         val pinned = channel(own = "mentions")
-        assertEquals("mentions", NotificationLevels.resolved(pinned, "all", "me"))
+        assertEquals("mentions", NotificationLevels.resolved(pinned, "all", "mentions", "me"))
         // No preference row at all behaves like following the default.
-        assertEquals("all", NotificationLevels.resolved(channel(pref = false), "all", "me"))
-        assertEquals("all", NotificationLevels.resolved(channel(type = "group_dm", pref = false), "mentions", "me"))
+        assertEquals("all", NotificationLevels.resolved(channel(pref = false), "all", "mentions", "me"))
+        assertEquals("all", NotificationLevels.resolved(channel(type = "group_dm", pref = false), "mentions", "mentions", "me"))
         // Times: someone else's is mentions, my own is an ordinary channel.
-        assertEquals("mentions", NotificationLevels.resolved(channel(timesOwner = "amy", pref = false), "all", "me"))
-        assertEquals("all", NotificationLevels.resolved(channel(timesOwner = "me", pref = false), "all", "me"))
+        assertEquals("mentions", NotificationLevels.resolved(channel(timesOwner = "amy", pref = false), "all", "mentions", "me"))
+        assertEquals("all", NotificationLevels.resolved(channel(timesOwner = "me", pref = false), "all", "mentions", "me"))
+    }
+
+    @Test fun theTimesSettingDecidesOthersTimesWithoutALevel() { // 2026-10-30
+        val others = channel(timesOwner = "amy", pref = false)
+        assertEquals("all", NotificationLevels.resolved(others, "mentions", "all", "me"))
+        assertEquals("none", NotificationLevels.resolved(others, "none", "all", "me"))
+        assertEquals("mentions", NotificationLevels.resolved(channel(timesOwner = "amy", own = "mentions"), "all", "all", "me"))
+        // My own times and other channels never read it.
+        assertEquals("mentions", NotificationLevels.resolved(channel(timesOwner = "me", pref = false), "mentions", "all", "me"))
+        assertEquals("mentions", NotificationLevels.resolved(channel(pref = false), "mentions", "all", "me"))
+        assertTrue(NotificationLevels.notifies(others, "mentions", "all", "me", involved = false, now = now))
+        assertFalse(NotificationLevels.notifies(others, "mentions", "mentions", "me", involved = false, now = now))
+        // From UserMe: absent (an older server) and anything unknown read as "mentions".
+        fun me(times: String?) = UserMe("me", "me", "Me", "member", null, "", "", null, false, timesNotificationDefault = times)
+        assertEquals("mentions", NotificationLevels.timesDefault(null))
+        assertEquals("mentions", NotificationLevels.timesDefault(me(null)))
+        assertEquals("mentions", NotificationLevels.timesDefault(me("later")))
+        assertEquals("all", NotificationLevels.timesDefault(me("all")))
+        assertEquals("all", NotificationLevels.resolved(others, me("all")))
+        assertEquals("mentions", NotificationLevels.resolved(others, me(null)))
+    }
+
+    @Serializable
+    private data class LevelCase(
+        val name: String, val own: String?, val dm: Boolean, val othersTimes: Boolean, val overall: String, val timesDefault: String,
+        val expect: LevelExpect,
+    )
+
+    @Serializable
+    private data class LevelExpect(val level: String)
+
+    @Serializable
+    private data class LevelSection(val cases: List<LevelCase>)
+
+    @Serializable
+    private data class LevelVectors(val levels: LevelSection)
+
+    @Test fun sharedLevelVectors() { // notify-rules.json `levels` (PUSH_NOTIFICATIONS.md §4)
+        val file = File("../../shared/notify-rules.json")
+        check(file.isFile) { "apps/shared/notify-rules.json not found from ${File("").absolutePath}" }
+        val cases = Codec.snake.decodeFromString(LevelVectors.serializer(), file.readText()).levels.cases
+        assertTrue(cases.isNotEmpty())
+        for (case in cases) {
+            assertEquals(case.name, case.expect.level, NotificationLevels.resolve(case.own, case.overall, case.timesDefault, case.dm, case.othersTimes))
+            // The same through a conversation held in the Store.
+            val row = channel(
+                type = if (case.dm) "dm" else "public", own = case.own, pref = case.own != null,
+                timesOwner = if (case.othersTimes) "amy" else null,
+            )
+            assertEquals(case.name, case.expect.level, NotificationLevels.resolved(row, case.overall, case.timesDefault, "me"))
+        }
     }
 
     @Test fun theOwnLevelIgnoresTheResolvedOne() {
@@ -83,8 +134,8 @@ class NotificationLevelsTest {
         // The list's rules follow: a muted channel is unread only with a mention.
         val muted = channel(muted = true)
         assertTrue(Channels.isMuted(muted, now))
-        assertFalse(Channels.hasUnread(muted, "me", now))
-        assertTrue(Channels.hasUnread(channel(own = null, resolved = "none"), "me", now))
+        assertFalse(Channels.hasUnread(muted, "me", "mentions", now))
+        assertTrue(Channels.hasUnread(channel(own = null, resolved = "none"), "me", "mentions", now))
     }
 
     @Test fun keptTimedMute() {
@@ -95,16 +146,16 @@ class NotificationLevelsTest {
 
     @Test fun whatNotifies() {
         val plain = channel(pref = false)
-        assertFalse(NotificationLevels.notifies(plain, "mentions", "me", involved = false, now = now))
-        assertTrue(NotificationLevels.notifies(plain, "mentions", "me", involved = true, now = now))
-        assertTrue(NotificationLevels.notifies(plain, "all", "me", involved = false, now = now))
-        assertFalse(NotificationLevels.notifies(plain, "none", "me", involved = true, now = now))
-        assertTrue(NotificationLevels.notifies(channel(type = "dm", pref = false), "mentions", "me", involved = false, now = now))
-        assertFalse(NotificationLevels.notifies(channel(type = "dm", pref = false), "none", "me", involved = false, now = now))
+        assertFalse(NotificationLevels.notifies(plain, "mentions", "mentions", "me", involved = false, now = now))
+        assertTrue(NotificationLevels.notifies(plain, "mentions", "mentions", "me", involved = true, now = now))
+        assertTrue(NotificationLevels.notifies(plain, "all", "mentions", "me", involved = false, now = now))
+        assertFalse(NotificationLevels.notifies(plain, "none", "mentions", "me", involved = true, now = now))
+        assertTrue(NotificationLevels.notifies(channel(type = "dm", pref = false), "mentions", "mentions", "me", involved = false, now = now))
+        assertFalse(NotificationLevels.notifies(channel(type = "dm", pref = false), "none", "mentions", "me", involved = false, now = now))
         // A level of its own beats overall 「なし」; a mute beats everything.
-        assertTrue(NotificationLevels.notifies(channel(own = "all"), "none", "me", involved = false, now = now))
-        assertFalse(NotificationLevels.notifies(channel(own = "all", muted = true), "all", "me", involved = true, now = now))
-        assertFalse(NotificationLevels.notifies(channel(own = "all", mutedUntil = "2026-09-30T05:00:00Z"), "all", "me", involved = true, now = now))
+        assertTrue(NotificationLevels.notifies(channel(own = "all"), "none", "mentions", "me", involved = false, now = now))
+        assertFalse(NotificationLevels.notifies(channel(own = "all", muted = true), "all", "mentions", "me", involved = true, now = now))
+        assertFalse(NotificationLevels.notifies(channel(own = "all", mutedUntil = "2026-09-30T05:00:00Z"), "all", "mentions", "me", involved = true, now = now))
     }
 
     @Test fun decodingOlderAndNewerPayloads() {
@@ -127,6 +178,12 @@ class NotificationLevelsTest {
             """{"id":"u","username":"u","display_name":"U","role":"member","created_at":"","updated_at":"","must_change_password":false,"notification_default":"all"}""",
         )
         assertEquals("all", all.notificationDefault)
+        assertNull(me.timesNotificationDefault) // a server before 2026-10-30: the switch is hidden
+        val times = Codec.snake.decodeFromString(
+            UserMe.serializer(),
+            """{"id":"u","username":"u","display_name":"U","role":"member","created_at":"","updated_at":"","must_change_password":false,"times_notification_default":"all"}""",
+        )
+        assertEquals("all", times.timesNotificationDefault)
     }
 
     @Test fun labels() {
@@ -181,7 +238,7 @@ class NotificationLevelsTest {
                 mentioned = case.mentioned, mentionAll = case.mentionAll, keyword = case.keyword, system = case.type != "user",
             )
             assertEquals(case.name, case.expect.notify, NotificationLevels.messageNotifies(case.level, facts))
-            assertEquals(case.name, case.expect.notify, NotificationLevels.notifies(channel(own = case.level), "mentions", "me", facts, now))
+            assertEquals(case.name, case.expect.notify, NotificationLevels.notifies(channel(own = case.level), "mentions", "mentions", "me", facts, now))
             val message = MessageOut(
                 id = "m", channelId = "c", senderId = "alice", seq = 5, updatedSeq = 5, parentId = null,
                 body = "Alice が参加しました" + if (case.keyword) " deploy" else "", type = case.type,
@@ -211,7 +268,7 @@ class NotificationLevelsTest {
             )
             assertEquals(case.name, case.expect.notify, NotificationLevels.messageNotifies(case.level, facts))
             // The same level as a channel's own one, not muted: the channel entry point gives the same answer.
-            assertEquals(case.name, case.expect.notify, NotificationLevels.notifies(channel(own = case.level), "mentions", "me", facts, now))
+            assertEquals(case.name, case.expect.notify, NotificationLevels.notifies(channel(own = case.level), "mentions", "mentions", "me", facts, now))
         }
     }
 

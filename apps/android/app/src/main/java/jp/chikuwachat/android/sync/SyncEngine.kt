@@ -1490,7 +1490,7 @@ class SyncEngine(
         if (mention.byUserId == me.id || store.isBlocked(mention.byUserId)) return  // M104: not from someone I blocked
         val channel = store.channel(mention.channelId) ?: return
         if (!channel.isMember) return
-        if (!NotificationLevels.notifies(channel, me.notificationDefault, me.id, involved = true)) return
+        if (!NotificationLevels.notifies(channel, me.notificationDefault, NotificationLevels.timesDefault(me), me.id, involved = true)) return
         if (pausedNow()) return
         onCanvasMention?.invoke(mention, channel)
     }
@@ -1507,7 +1507,7 @@ class SyncEngine(
         // The level resolved with my overall setting (M35), and a mute.
         val followingHeld = message.parentId?.let { store.threads[it]?.state?.following } == true
         val facts = NotificationLevels.facts(message, me.id, me.notifyKeywords, thread, followingHeld)
-        if (!NotificationLevels.notifies(channel, me.notificationDefault, me.id, facts)) return
+        if (!NotificationLevels.notifies(channel, me.notificationDefault, NotificationLevels.timesDefault(me), me.id, facts)) return
         if (isActive() && currentChannelId == channel.id) return
         if (pausedNow()) return
         onNotify?.invoke(message, channel)

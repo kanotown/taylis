@@ -2,6 +2,7 @@ package jp.chikuwachat.android.sync
 
 import jp.chikuwachat.android.api.MessageOut
 import jp.chikuwachat.android.api.ParentThread
+import jp.chikuwachat.android.api.UserMe
 import jp.chikuwachat.android.api.hitsKeyword
 import java.time.Instant
 
@@ -21,25 +22,33 @@ object NotificationLevels {
 
     /**
      * What a conversation notifies me of (the table of §4): its own level if it has one; else nothing when my overall
-     * setting is "none", every message of a DM or group DM, mentions in someone else's times (M24), my overall setting
-     * in any other channel.
+     * setting is "none", every message of a DM or group DM, my times setting `timesDefault` in someone else's times
+     * (M24: "mentions"; 2026-10-30: or "all"), my overall setting in any other channel. The vectors are the `levels`
+     * section of apps/shared/notify-rules.json.
      */
-    fun resolve(own: String?, overall: String, isDm: Boolean, othersTimes: Boolean): String = when {
+    fun resolve(own: String?, overall: String, timesDefault: String, isDm: Boolean, othersTimes: Boolean): String = when {
         own != null -> own
         overall == NONE -> NONE
         isDm -> ALL
-        othersTimes -> MENTIONS
+        othersTimes -> if (timesDefault == ALL) ALL else MENTIONS
         else -> overall
     }
+
+    /** My times setting (`times_notification_default`): "mentions" when not set or from a server without it. */
+    fun timesDefault(me: UserMe?): String = if (me?.timesNotificationDefault == ALL) ALL else MENTIONS
 
     /** The channel's own level (null: it follows the overall setting). */
     fun own(channel: ChannelState): String? = channel.channel.notification?.ownLevel
 
-    /** [resolve] for a conversation seen by `meId` with the overall setting `overall`. */
-    fun resolved(channel: ChannelState, overall: String, meId: String?): String {
+    /** [resolve] for a conversation seen by `meId` with the overall setting `overall` and the times setting `timesDefault`. */
+    fun resolved(channel: ChannelState, overall: String, timesDefault: String, meId: String?): String {
         val owner = channel.channel.timesOwnerId
-        return resolve(own(channel), overall, channel.channel.isDm, othersTimes = owner != null && owner != meId)
+        return resolve(own(channel), overall, timesDefault, channel.channel.isDm, othersTimes = owner != null && owner != meId)
     }
+
+    /** [resolved] with my settings as `me` has them (null: the defaults). */
+    fun resolved(channel: ChannelState, me: UserMe?): String =
+        resolved(channel, me?.notificationDefault ?: MENTIONS, timesDefault(me), me?.id)
 
     /** Muted until unmuted (the 「ミュート」 switch), apart from a timed mute. */
     fun mutedUntilUnmuted(channel: ChannelState): Boolean = channel.channel.notification?.muted == true
@@ -65,9 +74,9 @@ object NotificationLevels {
      * Whether a new message would notify me (the server's PushPlanner, for the app's own notifications): nothing while
      * muted or at level "none"; at "mentions" only when `involved` (mentioned, a keyword, a thread I follow).
      */
-    fun notifies(channel: ChannelState, overall: String, meId: String?, involved: Boolean, now: Instant = Instant.now()): Boolean {
+    fun notifies(channel: ChannelState, overall: String, timesDefault: String, meId: String?, involved: Boolean, now: Instant = Instant.now()): Boolean {
         if (isMuted(channel, now)) return false
-        return when (resolved(channel, overall, meId)) {
+        return when (resolved(channel, overall, timesDefault, meId)) {
             NONE -> false
             MENTIONS -> involved
             else -> true
@@ -75,8 +84,8 @@ object NotificationLevels {
     }
 
     /** [messageNotifies] for a conversation: nothing while it is muted, else by its level resolved for me. */
-    fun notifies(channel: ChannelState, overall: String, meId: String?, facts: Facts, now: Instant = Instant.now()): Boolean =
-        !isMuted(channel, now) && messageNotifies(resolved(channel, overall, meId), facts)
+    fun notifies(channel: ChannelState, overall: String, timesDefault: String, meId: String?, facts: Facts, now: Instant = Instant.now()): Boolean =
+        !isMuted(channel, now) && messageNotifies(resolved(channel, overall, timesDefault, meId), facts)
 
     /** Where a message sits for the notification rule: top level, a reply only in its thread, a reply also in the channel. */
     enum class Reply { NONE, THREAD_ONLY, ALSO_IN_CHANNEL }

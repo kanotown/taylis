@@ -90,11 +90,15 @@ fun ChannelNotificationMenu(controller: AppController, channel: ChannelState, ex
     val scope = rememberCoroutineScope()
     val store = controller.store
     val ownLevel = NotificationLevels.own(channel)
-    val overall = (store.me ?: controller.me)?.notificationDefault ?: NotificationLevels.MENTIONS
+    val me = store.me ?: controller.me
+    val overall = me?.notificationDefault ?: NotificationLevels.MENTIONS
+    // 2026-10-30: someone else's times follows my times setting, so its 「既定（…）」 names what that gives.
+    val owner = channel.channel.timesOwnerId
+    val inherited = if (owner != null && owner != me?.id) NotificationLevels.resolve(null, overall, NotificationLevels.timesDefault(me), isDm = false, othersTimes = true) else overall
     val mutedOn = NotificationLevels.mutedUntilUnmuted(channel)
     val mute = Timeline.muteLabel(channel.channel.notification?.mutedUntil)
     DropdownMenu(expanded = expanded, onDismissRequest = onDismiss) {
-        (listOf<Pair<String?, String>>(null to NotificationLabels.defaultChoice(overall)) + NotificationLevels.levels.map { it to NotificationLabels.label(it) })
+        (listOf<Pair<String?, String>>(null to NotificationLabels.defaultChoice(inherited)) + NotificationLevels.levels.map { it to NotificationLabels.label(it) })
             .forEach { (value, label) ->
                 DropdownMenuItem(
                     text = { Text((if (ownLevel == value) "✓ " else "    ") + label) },
@@ -183,7 +187,7 @@ fun ChannelDetailsHeader(
                     }
                     DetailsButton.NOTIFICATIONS -> {
                         var open by remember { mutableStateOf(false) }
-                        val level = NotificationLevels.resolved(channel, store.me?.notificationDefault ?: NotificationLevels.MENTIONS, meId)
+                        val level = NotificationLevels.resolved(channel, store.me)
                         val quiet = level == NotificationLevels.NONE || NotificationLevels.mutedUntilUnmuted(channel) || Timeline.muteLabel(channel.channel.notification?.mutedUntil) != null
                         Box {
                             RoundButton(if (quiet) Icons.Filled.NotificationsOff else Icons.Filled.Notifications, stringResource(R.string.common_notifications)) { open = true }
@@ -219,7 +223,7 @@ private fun RoundButton(icon: ImageVector, label: String, selected: Boolean = fa
 fun ChannelNotificationRow(controller: AppController, channel: ChannelState) {
     val store = controller.store
     var open by remember { mutableStateOf(false) }
-    val level = NotificationLevels.resolved(channel, (store.me ?: controller.me)?.notificationDefault ?: NotificationLevels.MENTIONS, store.me?.id)
+    val level = NotificationLevels.resolved(channel, store.me ?: controller.me)
     val mutedOn = NotificationLevels.mutedUntilUnmuted(channel)
     val mute = Timeline.muteLabel(channel.channel.notification?.mutedUntil)
     Box {

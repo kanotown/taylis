@@ -84,16 +84,18 @@ class MainTabsTest {
 
     @Test
     fun theHomeDotShowsForAnUnreadChannelNotADm() {
-        assertTrue(MainTabs.homeDot(listOf(channel("general", unread = 1)), me, now))
-        assertFalse(MainTabs.homeDot(listOf(dm("a", unread = 3), channel("general")), me, now))
+        assertTrue(MainTabs.homeDot(listOf(channel("general", unread = 1)), me, "mentions", now))
+        assertFalse(MainTabs.homeDot(listOf(dm("a", unread = 3), channel("general")), me, "mentions", now))
         // The list's rules: a muted channel without a mention, someone else's quiet times, a channel I left.
-        assertFalse(MainTabs.homeDot(listOf(channel("m", unread = 2, level = "none")), me, now))
-        assertFalse(MainTabs.homeDot(listOf(channel("times-x", unread = 2, timesOwner = "x")), me, now))
-        assertTrue(MainTabs.homeDot(listOf(channel("times-x", unread = 2, mentions = 1, timesOwner = "x")), me, now))
-        assertFalse(MainTabs.homeDot(listOf(channel("left", unread = 2, member = false)), me, now))
+        assertFalse(MainTabs.homeDot(listOf(channel("m", unread = 2, level = "none")), me, "mentions", now))
+        assertFalse(MainTabs.homeDot(listOf(channel("times-x", unread = 2, timesOwner = "x")), me, "mentions", now))
+        assertTrue(MainTabs.homeDot(listOf(channel("times-x", unread = 2, mentions = 1, timesOwner = "x")), me, "mentions", now))
+        // 2026-10-30: with 「他の人の Times もすべて通知」 someone else's times is unread like any channel.
+        assertTrue(MainTabs.homeDot(listOf(channel("times-x", unread = 2, timesOwner = "x")), me, "all", now))
+        assertFalse(MainTabs.homeDot(listOf(channel("left", unread = 2, member = false)), me, "mentions", now))
         // An archived channel is not on the home list, so it lights nothing (M37).
         val archived = channel("old", unread = 2)
-        assertFalse(MainTabs.homeDot(listOf(archived.copy(channel = archived.channel.copy(archived = true))), me, now))
+        assertFalse(MainTabs.homeDot(listOf(archived.copy(channel = archived.channel.copy(archived = true))), me, "mentions", now))
     }
 
     // --- the DM list ---
