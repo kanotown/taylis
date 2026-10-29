@@ -57,6 +57,11 @@ class User(Base):
     notification_default: Mapped[str] = mapped_column(
         String(16), default="all", server_default="all"
     )
+    # 2026-10-30: what someone else's times without a level of its own notifies of: mentions | all.
+    # "all" also makes it count as normal unread instead of quiet (SYNC_PROTOCOL.md §10.5).
+    times_notification_default: Mapped[str] = mapped_column(
+        String(16), default="mentions", server_default="mentions"
+    )
     # M50: my long-press quick reactions, in order (1-6 plain emoji); NULL = the clients' rule
     # (the ones I used last, then the defaults).
     quick_reactions: Mapped[list[str] | None] = mapped_column(ARRAY(Text))

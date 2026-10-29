@@ -102,6 +102,9 @@ ALTER TABLE user_groups ADD COLUMN managed_key text UNIQUE;
   - 太字にせず、「未読のみ」の絞り込みや未読の合計にも入れない。新着は行の小さな点だけで示す。
   - メンションされたときだけ、バッジとプッシュを出す。
   - その times の通知を「すべて」にしたときだけ、通常のチャンネルと同じ扱いにする (教員が特定の学生を密に追う用途)。
+  - 2026-10-30：設定の「他の人の Times もすべて通知」（`users.times_notification_default = all`）で、自分の通知を決めていない
+    他の人の times をまとめて「すべて」と同じ扱いにできる（あとから作られた times も同じ。times ごとの設定が優先）。
+    PUSH_NOTIFICATIONS.md §4、SYNC_PROTOCOL.md §10.5。
   - 既存のミュートを使わない理由: ミュートと level=none はメンションでもプッシュしない (planner.py:181-183)。
 - 自分の times は通常のチャンネルと同じ (他人のコメントは未読になり、通知も届く)。
 - 学生が times を作ったら、指導教員は自動でフォローする (静かな未読なのでうるさくならない)。
@@ -124,7 +127,7 @@ ALTER TABLE channels ADD CONSTRAINT times_is_named_channel
   - `POST /admin/users/{id}/times`: 受け入れ時に admin が作る。
 - `ChannelOut.times_owner_id` を足す。
 - 一覧は既存の `GET /channels` (公開 + 参加中) を `times_owner_id` で絞れば足りる。フォローは既存の join / leave を使う。
-- **静かな未読の規則**: `times_owner_id != null && times_owner_id != 自分 && level != 'all'` のとき、「メンションがあるときだけ未読」とする。
+- **静かな未読の規則**: `times_owner_id != null && times_owner_id != 自分 && level != 'all'` のとき、「メンションがあるときだけ未読」とする（2026-10-30 から、level が無く本人の `times_notification_default` が `all` のときも除く）。
   - SYNC_PROTOCOL.md に 3 端末共通の規則として書き、同じテストケースで確かめる。
   - サーバの `/sync/summary` の `has_unread` も同じ規則にする。
   - アプリのバッジは、チャンネルでは元々メンション数だけなので変更しない。

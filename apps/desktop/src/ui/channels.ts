@@ -1,5 +1,5 @@
 /** Sidebar rules shared by the list, the quick switcher and keyboard navigation. */
-import { isMutedChannel, type NotifyLevel } from "../sync/notifications";
+import { isMutedChannel, type NotifyLevel, resolveNotificationLevel, timesLevelOf, type TimesLevel } from "../sync/notifications";
 import type { ChannelState, SidebarDefaultOut, SidebarSectionOut, UserPublic } from "../sync/types";
 import { t } from "../i18n";
 import { JIS_KANJI } from "./jisKanji";
@@ -84,7 +84,7 @@ export function canMakePublic(channel: ChannelState, isAdmin: boolean): boolean 
 
 // --- notification level and mute (M35; the rules live in sync/notifications.ts, which the engine uses too) --------
 
-export { DEFAULT_OVERALL_LEVEL, effectiveNotificationLevel, isMutedChannel, isTimedMuted, overallLevel, ownNotification, resolveNotificationLevel } from "../sync/notifications";
+export { DEFAULT_OVERALL_LEVEL, effectiveNotificationLevel, isMutedChannel, isTimedMuted, overallLevel, ownNotification, rememberTimesLevel, resolveNotificationLevel, timesLevel, timesLevelOf, type TimesLevel } from "../sync/notifications";
 export type { NotifyLevel } from "../sync/notifications";
 
 /** The overall setting's choices, as the settings and a conversation's 「既定 (…)」 name them. */
@@ -115,23 +115,34 @@ export function notificationChoices(overall: NotifyLevel): Array<{ value: typeof
   ];
 }
 
+/**
+ * notificationChoices for one conversation: in someone else's times 「既定（…）」 names what the default gives there (my
+ * times setting, 2026-10-30: 「すべての新着メッセージ」 when it is "all"), not the overall setting.
+ */
+export function notificationChoicesFor(channel: Pick<ChannelState, "times_owner_id">, meId: string | null, overall: NotifyLevel, times: TimesLevel = timesLevelOf(meId)) {
+  const othersTimes = !!channel.times_owner_id && channel.times_owner_id !== meId;
+  return notificationChoices(othersTimes ? resolveNotificationLevel(null, overall, { dm: false, othersTimes: true }, times) : overall);
+}
+
 /** The footnote under the overall setting. */
 export function overallLevelNote(): string {
   return t("notify.overall.note");
 }
 
 /**
- * M24: someone else's times that I have not set to level "all" is quiet unread: unread only with a mention, a faint dot
- * otherwise (SYNC_PROTOCOL.md §10.5; the vectors in apps/shared/unread-rules.json).
+ * M24: someone else's times that is not at level "all" is quiet unread: unread only with a mention, a faint dot
+ * otherwise (SYNC_PROTOCOL.md §10.5; the vectors in apps/shared/unread-rules.json). At level "all" means its own level,
+ * or none of its own while my times setting is "all" (2026-10-30; `times` defaults to the account's, timesLevelOf).
  */
-export function isQuietChannel(channel: ChannelState, meId: string | null, now?: Date): boolean {
-  return !!channel.times_owner_id && channel.times_owner_id !== meId && channel.notificationLevel !== "all" && !isMutedChannel(channel, now);
+export function isQuietChannel(channel: ChannelState, meId: string | null, now?: Date, times: TimesLevel = timesLevelOf(meId)): boolean {
+  if (!channel.times_owner_id || channel.times_owner_id === meId || channel.notificationLevel === "all" || isMutedChannel(channel, now)) return false;
+  return !(channel.notificationLevel == null && times === "all");
 }
 
 /** Slack / Mattermost rule: a muted channel only counts as unread when I am mentioned; so does a quiet one (M24). */
-export function hasUnread(channel: ChannelState, meId: string | null, now?: Date): boolean {
+export function hasUnread(channel: ChannelState, meId: string | null, now?: Date, times: TimesLevel = timesLevelOf(meId)): boolean {
   if (!channel.isMember) return false;
-  return isMutedChannel(channel, now) || isQuietChannel(channel, meId, now) ? channel.mentionCount > 0 : channel.unreadCount > 0;
+  return isMutedChannel(channel, now) || isQuietChannel(channel, meId, now, times) ? channel.mentionCount > 0 : channel.unreadCount > 0;
 }
 
 /** Badge number: mentions for channels and muted conversations, every message for DMs. */

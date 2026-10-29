@@ -26120,6 +26120,15 @@
             ],
             "title": "Status Text"
           },
+          "times_notification_default": {
+            "default": "mentions",
+            "enum": [
+              "all",
+              "mentions"
+            ],
+            "title": "Times Notification Default",
+            "type": "string"
+          },
           "title": {
             "anyOf": [
               {
@@ -26536,6 +26545,21 @@
               }
             ],
             "title": "Status Text"
+          },
+          "times_notification_default": {
+            "anyOf": [
+              {
+                "enum": [
+                  "all",
+                  "mentions"
+                ],
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Times Notification Default"
           },
           "title": {
             "anyOf": [

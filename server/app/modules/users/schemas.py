@@ -177,6 +177,9 @@ class UserMe(UserPublic):
     presence_manual: Literal["away"] | None = None
     # M35: what channels without a level of their own notify me of (PUSH_NOTIFICATIONS.md §4).
     notification_default: Literal["all", "mentions", "none"] = "all"
+    # 2026-10-30: what others' times without a level of their own notify me of; "all" also lifts
+    # their quiet unread (PUSH_NOTIFICATIONS.md §4, SYNC_PROTOCOL.md §10.5).
+    times_notification_default: Literal["all", "mentions"] = "mentions"
     # M39: a push when someone reacts to my message (banner); the activity lists reactions either
     # way.
     notify_reactions: bool = False
@@ -229,6 +232,8 @@ class UserUpdate(BaseModel):
     presence_hidden: bool | None = None
     # M35: my overall notification setting.
     notification_default: Literal["all", "mentions", "none"] | None = None
+    # 2026-10-30: every other person's times at once ("all" = every new post, "mentions").
+    times_notification_default: Literal["all", "mentions"] | None = None
     # M39: reaction banners on or off.
     notify_reactions: bool | None = None
     # M55: task pushes (assignments, due dates) on or off.
@@ -340,6 +345,7 @@ def to_user_me(user: User) -> UserMe:
         presence_hidden=user.presence_hidden,
         presence_manual="away" if user.presence_manual == "away" else None,
         notification_default=user.notification_default,  # type: ignore[arg-type]
+        times_notification_default=user.times_notification_default,  # type: ignore[arg-type]
         notify_reactions=user.notify_reactions,
         notify_tasks=user.notify_tasks,
         has_password=user.password_hash is not None,

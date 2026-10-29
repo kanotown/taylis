@@ -95,6 +95,7 @@ CREATE TABLE users (
   presence_hidden       boolean NOT NULL DEFAULT false,  -- L4 (M31) 在席を隠す: 他の人には常に offline に見える。ステータスのメニューの「オフライン表示」(PRESENCE.md §11)
   presence_manual       varchar(16) CHECK (presence_manual IN ('away')),  -- 移行 0111、PRESENCE.md §11: 'away' = 自分で選んだ「離席中」(つながっている間 hub が away と配る)。NULL = 自動。UserMe だけに載る
   notification_default  text NOT NULL DEFAULT 'mentions', -- M35 通知の全体設定 'all' | 'mentions' | 'none' (UserMe と PATCH /users/me)
+  times_notification_default text NOT NULL DEFAULT 'mentions', -- 2026-10-30 (0129) 他の人の times の既定 'mentions' | 'all'。'all' は静かな未読も外す (PUSH_NOTIFICATIONS.md §4、SYNC_PROTOCOL.md §10.5)
   activity_read_at      timestamptz NOT NULL DEFAULT now(), -- M39 アクティビティの既読位置 (「すべて既読にする」。進むだけ)。メンション・スレッドの返信は read_states / thread_follows の last_read_seq で読んだものも既読 (2026-10-06)。開いた項目は activity_item_reads (2026-10-07、MOBILE_UI.md §6.4)
   notify_reactions      boolean NOT NULL DEFAULT false,   -- M39 自分の投稿へのリアクションをプッシュする (アクティビティには常に出る)
   notify_tasks          boolean NOT NULL DEFAULT true,    -- M55 タスクの割り当てと期限をプッシュする (TASKS.md §5)

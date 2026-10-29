@@ -348,6 +348,7 @@ class PushPlanner:
                 others_times=channel.times_owner_id is not None
                 and channel.times_owner_id != user_id,
                 overall=user.notification_default,
+                times_default=user.times_notification_default,
             )
             if level == "none" or is_muted(pref, now):
                 return
@@ -440,6 +441,7 @@ class PushPlanner:
             is_dm=channel.is_dm,
             others_times=channel.times_owner_id is not None and channel.times_owner_id != user_id,
             overall=user.notification_default,
+            times_default=user.times_notification_default,
         )
         if level == "none" or is_muted(pref, now):
             return
@@ -703,6 +705,7 @@ class PushPlanner:
             is_dm=channel.is_dm,
             others_times=channel.times_owner_id is not None and channel.times_owner_id != user_id,
             overall=user.notification_default,
+            times_default=user.times_notification_default,
         )
         if level == "none" or is_muted(pref, now):
             return
@@ -797,6 +800,7 @@ class PushPlanner:
                 others_times=channel.times_owner_id is not None
                 and channel.times_owner_id != user_id,
                 overall=user.notification_default if user is not None else "mentions",
+                times_default=user.times_notification_default if user is not None else "mentions",
             )
             if level == "none" or is_muted(pref, now):
                 continue
@@ -842,6 +846,7 @@ class PushPlanner:
                     muted=is_muted(pref, now),
                     unread=state.unread_count,
                     mentions=state.mention_count,
+                    times_all=user.times_notification_default == "all",
                 )
             )
         return badge + await reminders.fired_count(db, user_id)  # M12e: nudges not yet done

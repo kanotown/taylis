@@ -1,10 +1,13 @@
 """M35: an overall notification setting per person, a channel's own level over it, and channels
 muted until unmuted (PUSH_NOTIFICATIONS.md §4)."""
 
+import json
 import uuid
 from collections.abc import Callable
+from pathlib import Path
 from typing import Any
 
+import pytest
 from httpx import AsyncClient
 from sqlalchemy.ext.asyncio import AsyncSession
 
@@ -15,6 +18,8 @@ from app.modules.notifications.service import push_level
 from app.modules.users.models import User
 from tests.helpers import make_user
 
+NOTIFY_VECTORS = Path(__file__).resolve().parents[2] / "apps" / "shared" / "notify-rules.json"
+
 
 async def _post(client: AsyncClient, channel_id: str, body: str) -> Any:
     payload = {"client_msg_id": str(uuid.uuid4()), "body": body}
@@ -24,8 +29,17 @@ async def _post(client: AsyncClient, channel_id: str, body: str) -> Any:
 
 
 def test_push_level() -> None:
-    def level(own: str | None, overall: str, *, dm: bool = False, times: bool = False) -> str:
-        return push_level(own, is_dm=dm, others_times=times, overall=overall)
+    def level(
+        own: str | None,
+        overall: str,
+        *,
+        dm: bool = False,
+        times: bool = False,
+        times_default: str = "mentions",
+    ) -> str:
+        return push_level(
+            own, is_dm=dm, others_times=times, overall=overall, times_default=times_default
+        )
 
     # A channel's own level wins, whatever the overall setting.
     assert level("all", "none") == "all"
@@ -38,6 +52,25 @@ def test_push_level() -> None:
     assert level(None, "all", times=True) == "mentions"
     assert level(None, "none", dm=True) == "none"
     assert level(None, "none", times=True) == "none"
+    # 2026-10-30: my times setting decides others' times; their own level and "none" still win.
+    assert level(None, "mentions", times=True, times_default="all") == "all"
+    assert level(None, "none", times=True, times_default="all") == "none"
+    assert level("mentions", "all", times=True, times_default="all") == "mentions"
+    assert level(None, "mentions", times_default="all") == "mentions"
+
+
+@pytest.mark.parametrize(
+    "case", json.loads(NOTIFY_VECTORS.read_text())["levels"]["cases"], ids=lambda c: c["name"]
+)
+def test_push_level_follows_the_shared_vectors(case: dict[str, Any]) -> None:
+    resolved = push_level(
+        case["own"],
+        is_dm=case["dm"],
+        others_times=case["others_times"],
+        overall=case["overall"],
+        times_default=case["times_default"],
+    )
+    assert resolved == case["expect"]["level"]
 
 
 async def test_overall_setting_own_levels_and_mute(

@@ -3,8 +3,8 @@ import { describe, expect, it } from "vitest";
 
 import type { ChannelState } from "../src/sync/types";
 import {
-  badgeCount, canPostTopLevel, conversationTitle, effectiveNotificationLevel, hasUnread, isMutedChannel, isQuietChannel, isTimedMuted, myName, notificationChoices, overallLevel,
-  ownNotification, resolveNotificationLevel, sectionChannels, showsSelfNotesInDmSection, stepChannel, unreadBadgeTotal,
+  badgeCount, canPostTopLevel, conversationTitle, effectiveNotificationLevel, hasUnread, isMutedChannel, isQuietChannel, isTimedMuted, myName, notificationChoices, notificationChoicesFor, overallLevel,
+  ownNotification, rememberTimesLevel, resolveNotificationLevel, sectionChannels, timesLevel, timesLevelOf, showsSelfNotesInDmSection, stepChannel, unreadBadgeTotal,
 } from "../src/ui/channels";
 
 const now = new Date("2026-09-26T12:00:00Z");
@@ -188,6 +188,8 @@ interface UnreadCase {
   muted: boolean;
   unread: number;
   mentions: number;
+  /** 2026-10-30: users.times_notification_default; absent = "mentions". */
+  times_default?: "all" | "mentions";
   expect: { has_unread: boolean; badge: number; quiet: boolean };
 }
 const vectors = JSON.parse(readFileSync(new URL("../../shared/unread-rules.json", import.meta.url), "utf8")) as { cases: UnreadCase[] };
@@ -204,9 +206,26 @@ describe("unread rules (§10.5, M24 quiet unread)", () => {
       unreadCount: c.unread,
       mentionCount: c.mentions,
     });
-    expect(hasUnread(row, "me", now)).toBe(c.expect.has_unread);
+    const times = c.times_default ?? "mentions";
+    expect(hasUnread(row, "me", now, times)).toBe(c.expect.has_unread);
     expect(badgeCount(row, now)).toBe(c.expect.badge);
-    expect(isQuietChannel(row, "me", now)).toBe(c.expect.quiet);
+    expect(isQuietChannel(row, "me", now, times)).toBe(c.expect.quiet);
+  });
+
+  it("finds each account's times setting by its user id (the SyncStore remembers it with `me`)", () => {
+    const row = channel("t", { times_owner_id: "someone", unreadCount: 3 });
+    expect(timesLevel(null)).toBe("mentions");
+    expect(timesLevel({ times_notification_default: "all" })).toBe("all");
+    expect(timesLevelOf("acct-a")).toBe("mentions");
+    rememberTimesLevel({ id: "acct-a", times_notification_default: "all" });
+    rememberTimesLevel({ id: "acct-b" }); // a `me` from an older server
+    expect([timesLevelOf("acct-a"), timesLevelOf("acct-b"), timesLevelOf(null)]).toEqual(["all", "mentions", "mentions"]);
+    expect([hasUnread(row, "acct-a", now), isQuietChannel(row, "acct-a", now)]).toEqual([true, false]);
+    expect([hasUnread(row, "acct-b", now), isQuietChannel(row, "acct-b", now)]).toEqual([false, true]);
+    expect(effectiveNotificationLevel(row, "acct-a", "mentions")).toBe("all");
+    expect(effectiveNotificationLevel(row, "acct-b", "all")).toBe("mentions");
+    rememberTimesLevel({ id: "acct-a", times_notification_default: "mentions" });
+    expect(isQuietChannel(row, "acct-a", now)).toBe(true);
   });
 
   it("puts times channels in their own section, mine first", () => {
@@ -236,6 +255,30 @@ describe("notification level (M35, PUSH_NOTIFICATIONS.md §4)", () => {
     expect(resolveNotificationLevel(null, overall, kinds.channel)).toBe(forChannel);
     expect(resolveNotificationLevel(null, overall, kinds.dm)).toBe(forDm);
     expect(resolveNotificationLevel(null, overall, kinds.othersTimes)).toBe(forTimes);
+  });
+
+  interface LevelCase {
+    name: string;
+    own: "all" | "mentions" | "none" | null;
+    dm: boolean;
+    others_times: boolean;
+    overall: "all" | "mentions" | "none";
+    times_default: "all" | "mentions";
+    expect: { level: "all" | "mentions" | "none" };
+  }
+  const levels = (JSON.parse(readFileSync(new URL("../../shared/notify-rules.json", import.meta.url), "utf8")) as { levels: { cases: LevelCase[] } }).levels.cases;
+  it.each(levels.map((c) => [c.name, c] as const))("shared vector: %s", (_name, c) => {
+    expect(resolveNotificationLevel(c.own, c.overall, { dm: c.dm, othersTimes: c.others_times }, c.times_default)).toBe(c.expect.level);
+  });
+
+  it("names what the default gives in someone else's times (the times setting), the overall setting elsewhere", () => {
+    const label = (c: ChannelState, overall: "all" | "mentions" | "none", times: "all" | "mentions") => notificationChoicesFor(c, "me", overall, times)[0]!.label;
+    const others = channel("t", { times_owner_id: "amy" });
+    expect(label(others, "all", "all")).toBe(notificationChoices("all")[0]!.label);
+    expect(label(others, "all", "mentions")).toBe(notificationChoices("mentions")[0]!.label);
+    expect(label(others, "none", "all")).toBe(notificationChoices("none")[0]!.label);
+    expect(label(channel("c"), "mentions", "all")).toBe(notificationChoices("mentions")[0]!.label);
+    expect(label(channel("m", { times_owner_id: "me" }), "all", "mentions")).toBe(notificationChoices("all")[0]!.label);
   });
 
   it("a level of its own wins over the overall setting, whatever the conversation", () => {

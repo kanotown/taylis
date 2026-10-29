@@ -14,6 +14,33 @@ export function overallLevel(me: { notification_default?: NotifyLevel | null } |
   return me?.notification_default ?? DEFAULT_OVERALL_LEVEL;
 }
 
+/**
+ * My setting for every other person's times (「他の人の Times もすべて通知」, users.times_notification_default, 2026-10-30):
+ * "all" notifies of each new post in a times without a level of its own and counts it as normal unread instead of quiet.
+ */
+export type TimesLevel = "all" | "mentions";
+
+/** My times setting, from `me`; a `me` from an older server has none: "mentions" (the rule since M24). */
+export function timesLevel(me: { times_notification_default?: TimesLevel | null } | null | undefined): TimesLevel {
+  return me?.times_notification_default ?? "mentions";
+}
+
+/**
+ * The times setting of each signed-in account by user id, written by each workspace's SyncStore whenever its `me`
+ * changes. The unread rules take `meId` at every call site (lists, the rail's workspace dots), so they find the right
+ * account's setting here without each caller threading it through; tests pass the value explicitly.
+ */
+const timesLevels = new Map<string, TimesLevel>();
+
+export function rememberTimesLevel(me: { id: string; times_notification_default?: TimesLevel | null } | null | undefined): void {
+  if (me) timesLevels.set(me.id, timesLevel(me));
+}
+
+/** The times setting of the account `meId` (rememberTimesLevel); "mentions" when unknown. */
+export function timesLevelOf(meId: string | null | undefined): TimesLevel {
+  return (meId ? timesLevels.get(meId) : undefined) ?? "mentions";
+}
+
 /** Only the timed mute (「8 時間ミュート」, /mute) is running. */
 export function isTimedMuted(channel: Pick<ChannelState, "mutedUntil">, now: Date = new Date()): boolean {
   if (!channel.mutedUntil) return false;
@@ -31,15 +58,21 @@ export function isMutedChannel(channel: Pick<ChannelState, "notificationLevel" |
 }
 
 /**
- * What a conversation notifies me of (the table in PUSH_NOTIFICATIONS.md §4): its own level if it has one; else nothing
- * when the overall setting is "none", every message of a DM or group DM, mentions in someone else's times (M24), and
+ * What a conversation notifies me of (the table in PUSH_NOTIFICATIONS.md §4, the `levels` vectors in
+ * apps/shared/notify-rules.json): its own level if it has one; else nothing when the overall setting is "none", every
+ * message of a DM or group DM, my times setting in someone else's times (M24: mentions; 2026-10-30: or every post), and
  * the overall setting in any other channel. Muting is separate (isMutedChannel).
  */
-export function resolveNotificationLevel(own: NotifyLevel | null, overall: NotifyLevel, kind: { dm: boolean; othersTimes: boolean }): NotifyLevel {
+export function resolveNotificationLevel(
+  own: NotifyLevel | null,
+  overall: NotifyLevel,
+  kind: { dm: boolean; othersTimes: boolean },
+  times: TimesLevel = "mentions",
+): NotifyLevel {
   if (own) return own;
   if (overall === "none") return "none";
   if (kind.dm) return "all";
-  if (kind.othersTimes) return "mentions";
+  if (kind.othersTimes) return times;
   return overall;
 }
 
@@ -48,11 +81,17 @@ export function effectiveNotificationLevel(
   channel: Pick<ChannelState, "type" | "times_owner_id" | "notificationLevel">,
   meId: string | null,
   overall: NotifyLevel,
+  times: TimesLevel = timesLevelOf(meId),
 ): NotifyLevel {
-  return resolveNotificationLevel(channel.notificationLevel, overall, {
-    dm: channel.type === "dm" || channel.type === "group_dm",
-    othersTimes: !!channel.times_owner_id && channel.times_owner_id !== meId,
-  });
+  return resolveNotificationLevel(
+    channel.notificationLevel,
+    overall,
+    {
+      dm: channel.type === "dm" || channel.type === "group_dm",
+      othersTimes: !!channel.times_owner_id && channel.times_owner_id !== meId,
+    },
+    times,
+  );
 }
 
 /**

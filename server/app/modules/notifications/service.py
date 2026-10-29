@@ -17,10 +17,13 @@ from app.modules.notifications.schemas import NotificationPreferenceIn, Notifica
 from app.modules.users.models import User
 
 
-def push_level(own: str | None, *, is_dm: bool, others_times: bool, overall: str) -> str:
+def push_level(
+    own: str | None, *, is_dm: bool, others_times: bool, overall: str, times_default: str
+) -> str:
     """PUSH_NOTIFICATIONS.md §4 (M35): what a conversation notifies me of. Its own level if it has
-    one; else nothing when my overall setting is "none", every message of a DM, mentions in someone
-    else's times (M24: work logs stay quiet), and my overall setting in any other channel."""
+    one; else nothing when my overall setting is "none", every message of a DM, my times setting
+    in someone else's times (M24: mentions, work logs stay quiet; 2026-10-30: or every post), and
+    my overall setting in any other channel. The vectors: `levels` in notify-rules.json."""
     if own is not None:
         return own
     if overall == "none":
@@ -28,7 +31,7 @@ def push_level(own: str | None, *, is_dm: bool, others_times: bool, overall: str
     if is_dm:
         return "all"
     if others_times:
-        return "mentions"
+        return times_default
     return overall
 
 
@@ -46,11 +49,18 @@ def to_out(
     is_dm: bool,
     others_times: bool,
     overall: str,
+    times_default: str,
 ) -> NotificationPreferenceOut:
     own = pref.level if pref else None
     return NotificationPreferenceOut(
         channel_id=channel_id,
-        level=push_level(own, is_dm=is_dm, others_times=others_times, overall=overall),  # type: ignore[arg-type]
+        level=push_level(  # type: ignore[arg-type]
+            own,
+            is_dm=is_dm,
+            others_times=others_times,
+            overall=overall,
+            times_default=times_default,
+        ),
         muted_until=pref.muted_until if pref else None,
         follows_default=own is None,
         muted=pref.muted if pref else False,
@@ -82,6 +92,7 @@ async def set_preference(
         is_dm=channel.is_dm,
         others_times=channel.times_owner_id is not None and channel.times_owner_id != actor.id,
         overall=actor.notification_default,
+        times_default=actor.times_notification_default,
     )
     await write_outbox(
         db,
