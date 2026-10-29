@@ -934,3 +934,57 @@ AL5 の後、HEIC の投稿とドライブのファイルは写真の格子に�
 - 出荷版はそのままでも壊れない（`albums` はふつうのフォルダとして「アルバム」と出る）。デコーダの試験に `system_role: "albums"` の
   実物の JSON を足すとよい。
 - ビューアはもう `has_display` なら `/display`（AL3・AL4）。会話だけの HEIC は表示サイズが無いが、iOS・Android は元のファイルを描ける。
+
+## 24. REVIEW-v0.1.82 の対応（2026-10-30）
+
+### 24.1 0127 の downgrade（#2）
+
+- 0127 より前のサーバには `drive_share_links.originals` が無く、元のファイルを禁じたリンク（アルバムの既定）でも元のファイル
+  （EXIF の撮影地ごと）を渡していた。
+- downgrade は、取り消されていない `originals = false` のリンクがあれば**断る**（`RuntimeError`。何も変わらない）。
+  `alembic -x album_links=revoke downgrade <rev>` のときはそれらを取り消す（`revoked_at`。0119 からのサーバはどれも取り消しを
+  見る）。期限切れのリンクも数える。作った人は downgrade の後に、渡す範囲を分かった上で作り直す。`originals = true` のリンクは
+  触らない。
+- 0125 まで戻すときは CHANNEL_FILES.md §27.1 の `channel_files=detach` も要ることがある（`-x` は何度でも書ける）。
+- 試験：`test_review_v082_migrations.py::test_0127_downgrade_revokes_links_without_originals`（既定・パスワード付き・期限付き・
+  写真 1 枚の `originals = false` のリンクと、`originals = true` のアルバムのリンク・ふつうのフォルダのリンク）。断る → 何も
+  変わらない、`revoke` で前者だけが取り消され、上げ直した後は元のファイル・Range・ZIP のどれも答えないこと。
+
+### 24.2 作成の送り直し（#3・#7）
+
+- `POST /drive/albums` を同じ `client_op_id` で送り直したとき、作ったフォルダを今の GET と同じ規則で読めるときだけ返す
+  （`service.made_before`）。ほかの人のマイドライブへ移された・チャンネルを抜けた・ゴミ箱に入ったときは
+  `404 drive_item_not_found` で、移された後の名前・説明・写真の数を返さない。読める間は今の名前で 200（同じキーで別の名前を
+  送っても、作ったアルバムを返す）。
+- 同じ扱いを `POST /drive/folders` と「ドライブに保存」の送り直しにも入れた（DRIVE.md §31）。
+- 同時に 2 つ届いたとき：フォルダのロックを取った後にもう一度キーを探す（同じフォルダなら、先の要求が作ったアルバムを 200 で
+  返す）。別のフォルダへの同じキーは `drive_items_client_op_uniq` の衝突になるので、ロールバックして探し直し、作られたアルバムを
+  200 で返す（今までは `409 drive_name_taken` か 500）。アルバムは 1 つだけ。
+- 試験：`test_album_create_again_checks_whoever_reads_it_now`、`test_album_create_twice_at_once_makes_one`（同じフォルダ・別の
+  フォルダ。2 つの要求が両方ともキーを探し終えてから進むよう待ち合わせる）。
+
+### 24.3 元のファイルを渡さないリンクの GIF（#4）
+
+- 表示サイズの無い GIF（動く GIF。静止の GIF には WebP がある）は、`/display` と表示サイズの ZIP で元のファイルをそのまま
+  渡していた。GIF に EXIF は無いが、コメント・テキスト・アプリケーションの拡張には何でも入る（XMP の撮影地など）。
+- `originals = false` のリンクでは `attachments/gifclean.py` の `scrub` を通す。絵を描くもの（ヘッダ・色の表・画像の記述と LZW
+  のデータ・フレームの遅れと透明（GCE）・繰り返しの回数（NETSCAPE2.0 / ANIMEXTS1.0））は残し、ほかの拡張は**同じ長さ**の、0 で
+  埋めたコメントに替える（XMP の生の形はバイト列が区切りの長さとして読まれるので、区切りの長さも元から作らない）。終わり（`;`）の
+  後ろも 0。読めない所（違う署名・知らない区切り・途中で切れた）からは 0。長さが変わらないので、ZIP の前もって決めた長さと
+  Content-Length がそのまま使える。動きは壊れない（フレーム・遅れ・繰り返しが同じことを試験で見る）。
+- 元のファイルを許したリンクは今までどおりそのまま渡す。会話・ドライブの中の表示も今までどおり。
+- 試験：`test_gif_scrub_keeps_the_frames_and_drops_the_metadata`（コメント・XMP の生の形と magic trailer・テキストの拡張・知らない
+  アプリケーションの拡張・終わりの後ろのデータ、静止と 3 フレーム、1・7・300 バイトずつ流す）、`test_gif_scrub_zeroes_what_it_cannot_read`、
+  `test_link_without_originals_hands_out_gifs_without_metadata`（`/display`・表示サイズの ZIP・元のファイルを許した後）。
+
+### 24.4 残したこと
+
+- 動画のメタデータ（#4 の「動画を含むほかの例外」）：`originals = false` でも動画はそのまま渡す（再生できるように。§7）ので、
+  撮影地のタグなどは残る。ffmpeg の `-map_metadata -1` で写しを作れば落とせるが、動画の写しを新しく持つことになるので今回は
+  入れていない。共有の設定画面の説明（「動画はそのまま」）と合わせて後で決める。
+- 0127 の downgrade の後の表示サイズの画像（レビューの未確認の候補）：0127 より前の GC は `display_key` を知らないので、downgrade
+  の後に消された添付の `attachments/{id}.display.webp` はどこからも指されずにストアに残る。量は downgrade の前に
+  `SELECT count(*), sum(display_bytes) FROM attachments WHERE display_key IS NOT NULL` で分かる。上げ直すと、残っている添付の分は
+  `drive-photos` が同じキーに作り直すので再び GC が消せるようになる。孤児のオブジェクトを探す道具は無い（verify-attachments は
+  足りない方だけを見る）ので、直していない。
+- HEIC のタイルの資源（レビューの未確認の候補）：悪意ある HEIC と ffmpeg 7.1 での確かめはまだ。

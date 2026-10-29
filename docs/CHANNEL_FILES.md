@@ -389,7 +389,7 @@ message.created（attachments に drive が入った形）
 | `DELETE /messages/{id}` | クエリ `drive_files=auto\|keep\|trash`（既定 auto）。応答は今のまま（200 と墓石の `MessageOut`）。ゴミ箱に入れた項目は `drive.changed` で分かる |
 | `GET /messages/{id}/drive-files`（CF1 で足した） | `{files: [{attachment_id, item_id, state, trash, reason}]}`：削除の確認の印のため（§7.3） |
 | `DriveItemOut` | `system_role`（null か `channel_posts`）、`posted`（CF1 で足した：一覧の吹き出しの印）、`posts: [{message_id, channel_id, parent_id, sender_id, version_number, posted_at}]`（その項目のバージョンを添付に持つメッセージのうち、見る人が読めるもの。5 件まで。`sender_id` は CF1 で足した）。`posts` は `GET /drive/items/{id}` だけ（ほかは null） |
-| `POST /drive/items/impact`（新） | `{item_ids, target_folder_id?}` → `{posted_messages, channels: [{channel_id, messages, unreadable_after, unreadable_guests}]}`。移動・ゴミ箱の前の確かめ（§6.4）。`target_folder_id` が無ければゴミ箱。読める項目だけ（読めなければ 404）。`channels` は見る人が読めるチャンネルだけ（`posted_messages` はすべて） |
+| `POST /drive/items/impact`（新） | `{item_ids, target_folder_id?}` → `{posted_messages, channels: [{channel_id, messages, unreadable_after, unreadable_guests}]}`。移動・ゴミ箱の前の確かめ（§6.4）。`target_folder_id` が無ければゴミ箱。読める項目だけ（読めなければ 404）。`channels` は見る人が読めるチャンネルだけ（`posted_messages` もそのチャンネルの分だけ。REVIEW-v0.1.82 #6、§27.2） |
 | `DriveLocationUsageOut`（CF1 で足した） | `posted_bytes`（§8 の「うち投稿のファイル」） |
 | `ChannelOut` / `PATCH /channels/{id}` | `files_to_drive`・`files_to_drive_effective`（§9。`effective` は `GET /channels/{id}` と PATCH の応答だけ。ほかは null で、端末は `files_to_drive ?? WorkspaceSettingsOut.channel_files_to_drive`） |
 | `GET/PATCH /admin/workspace-settings` | `channel_files_to_drive`（`WorkspaceSettingsOut` にも：bootstrap と `workspace.settings_updated`） |
@@ -1116,3 +1116,44 @@ CF5 の 3 つの端末（§23〜§25）で違っていた決まりを 1 つに�
 ### 26.4 確かめていないこと
 
 - 実機・エミュレータでの通し（Android の確認のダイアログ → 進み具合 → 先に送る → リンク）はまだ。各端末の単体の試験とビルドまで。
+
+## 27. REVIEW-v0.1.82 の対応（2026-10-30）
+
+### 27.1 0126 の downgrade（#1）
+
+- 0126 より前のサーバは、メッセージを消すとその添付を `deleted` にし、GC がバイト列を消してから行を消す。投稿のファイルは
+  メッセージの添付とドライブのバージョンを 1 つの行で兼ねる（§3.1）ので、downgrade の後に投稿を消すと、ドライブのバージョンの
+  本体が消えていた（外部キーで行の削除が失敗しても、オブジェクトの削除は戻らない）。
+- downgrade は、メッセージの添付とドライブのバージョンを兼ねる行（`drive_state` が `available`・`moved`・`trashed` で、
+  バージョンが指している行）が残っていれば**断る**（`RuntimeError`。移行は 1 つのトランザクションなので何も変わらない）。
+- `alembic -x channel_files=detach downgrade <rev>` のときは、その行をメッセージから外す（`message_id`・`channel_id`・
+  `drive_state` を NULL。今のサーバでメッセージを消したときと同じ形）。ファイルはドライブに残り、メッセージは本文だけになる
+  （そのファイルを出さなくなる）。オブジェクトには触らない。メッセージの添付としても残したいときは、0126 の前に取った
+  バックアップから戻す。
+- 墓石（`purged`）は今までどおり `deleted` に戻す（バイト列はもう無い）。
+- テストのデータベースを初めに `base` まで戻すとき（conftest）は `channel_files=detach` と `album_links=revoke`（ALBUMS.md §24.1）
+  を渡す（途中で止まった実行の行が残っていても進むように）。
+- 試験：`test_review_v082_migrations.py`。そのまま・研究室ドライブへ移した・2 つ目のバージョンがある・ゴミ箱・完全削除（墓石）の
+  5 つの投稿で、断る → 版も何も変わらない。`detach` で戻した後に、0126 より前のサーバのメッセージの削除と GC（9b376db2 の
+  `mark_deleted_in_tx` と `gc` をなぞる SQL）を走らせても、バージョンの行・オブジェクトの大きさ・場所の `used_bytes` が
+  変わらないこと。投稿の無いデータベースは何も渡さずに戻せること。
+
+### 27.2 読めない投稿を明かさない（#5・#6）
+
+- `409 drive_version_posted`：投稿の会話を読める人にだけ `details.message_id`・`channel_id` を付ける。読めない人（研究室
+  ドライブを管理できるが非公開チャンネルに入っていない管理者、チャンネルを抜けた人）には `details` を付けない（今までは
+  `message_id` を返していた）。端末は `details` を使っていないので変えていない。
+- `DriveItemOut.posted`：見る人が今読めるメッセージ（消されていない）に付いているときだけ true。`service.items_out`・`item_out`
+  は見る人（`viewer`）を取る。一覧・詳細・検索・アルバムのどの答えも同じ。
+- `POST /drive/items/impact` の `posted_messages`：見る人が読めるチャンネル（`channels` に出るもの）のメッセージだけを数える
+  （§11.1 の表を改めた）。読めない会話のメッセージは数にも出ないので、Desktop の「見えない会話の N 件」
+  （`channelFiles.impact.hidden`）は今のサーバでは出ない（古いサーバのために残す）。
+- 移動・ゴミ箱は今までどおり読めない会話の投稿にも効く（`drive_state` は変わる）。確かめのダイアログでそれを知らせないのは、
+  読めない会話を明かさないことを優先したため。
+- 試験：`test_review_v082.py::test_unreadable_posts_are_neither_named_nor_counted`（非公開チャンネルの投稿を研究室ドライブへ移して
+  新しいバージョンを足し、チャンネルの外の管理者・抜けた人・入ったままの人・ほかの人で、詳細・一覧・impact・版の削除）。
+
+### 27.3 残したこと
+
+- メッセージの削除の `reason = "changed"`（§7.3）は「新しいバージョンがある」と「ほかのメッセージにも付いている」をまとめた値で、
+  ほかのメッセージが読めない会話にあっても同じ値になる。どちらかも分からない 1 ビットなので変えていない。
