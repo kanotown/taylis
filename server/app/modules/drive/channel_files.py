@@ -42,6 +42,7 @@ from app.modules.drive import repository as repo
 from app.modules.drive.models import DriveFileVersion, DriveItem, DriveLocation
 from app.modules.drive.posted import LIVE_STATES, SYSTEM_ROLE
 from app.modules.drive.schemas import (
+    DriveChannelPostsOut,
     DriveImpactChannelOut,
     DriveImpactIn,
     DriveImpactOut,
@@ -183,28 +184,35 @@ def file_name(raw: str) -> str:
             return FALLBACK_NAME
 
 
-async def _file(
-    db: AsyncSession, plan: Plan, sender: User, rows: list[Attachment], *, media: bool = True
-) -> dict[uuid.UUID, AttachmentDriveOut]:
-    """`media`: a posted photo or video goes to the drive's media loop for its capture time and
-    display size (AL1, docs/ALBUMS.md §4.2); the backfill leaves that to `app.cli drive-photos`."""
+async def _folders_in_tx(
+    db: AsyncSession, plan: Plan, actor: User
+) -> tuple[DriveItem, DriveItem, list[uuid.UUID]]:
+    """「投稿のファイル」 and the month's folder of a locked plan, made when missing: (them, the
+    folders that got a new child, one per folder made)."""
     changed: list[uuid.UUID] = []
-    made = 0
     posts = plan.posts
     if posts is None:
         name = await service.free_name(db, plan.root.id, POSTS_FOLDER_NAME, is_file=False)
-        posts = await service.new_folder_in_tx(db, sender, plan.root, name)
+        posts = await service.new_folder_in_tx(db, actor, plan.root, name)
         posts.system_role = SYSTEM_ROLE
-        made += 1
         changed.append(plan.root.id)
     month = plan.month
     if month is None:
         existing = await repo.child_by_key(db, posts.id, names.key(plan.month_name))
         if existing is not None:
             raise conflict("drive_name_taken", "A file holds the month folder's name")
-        month = await service.new_folder_in_tx(db, sender, posts, plan.month_name)
-        made += 1
+        month = await service.new_folder_in_tx(db, actor, posts, plan.month_name)
         changed.append(posts.id)
+    return posts, month, changed
+
+
+async def _file(
+    db: AsyncSession, plan: Plan, sender: User, rows: list[Attachment], *, media: bool = True
+) -> dict[uuid.UUID, AttachmentDriveOut]:
+    """`media`: a posted photo or video goes to the drive's media loop for its capture time and
+    display size (AL1, docs/ALBUMS.md §4.2); the backfill leaves that to `app.cli drive-photos`."""
+    _, month, changed = await _folders_in_tx(db, plan, sender)
+    made = len(changed)
     await service.require_room(db, month.id, len(rows))
     out: dict[uuid.UUID, AttachmentDriveOut] = {}
     total = 0
@@ -289,6 +297,45 @@ async def file_in_tx(
         for attachment in rows:
             await db.refresh(attachment)
         return {}
+
+
+# --- a file too big to attach (CF5, §26) -------------------------------------------------------
+
+
+async def posts_month(db: AsyncSession, actor: User, channel_id: uuid.UUID) -> DriveChannelPostsOut:
+    """POST /drive/channel-posts: the channel's drive with its 「投稿のファイル」 and this month's
+    folder, made when missing under the same locks as a send (`_lock_plan`), for whoever can write
+    in the drive. 404 drive_item_not_found (no such channel, not a member), 422
+    drive_not_available (a DM or group DM), 403 drive_read_only (archived, only owners post).
+    With the switch off nothing is made and both folders are null."""
+    channel = await channels.find_channel(db, channel_id)
+    if channel is None or await channels.membership_of(db, actor.id, channel.id) is None:
+        raise acl.item_not_found()
+    if channel.is_dm:
+        raise AppError(422, "drive_not_available", "Direct messages have no drive")
+    location = await service.ensure_location(db, "channel", channel_id=channel.id)
+    (await acl.access(db, actor, location)).require_write()
+    month = month_name(utcnow())
+    on = await enabled_for(db, channel)
+    posts: DriveItem | None = None
+    folder: DriveItem | None = None
+    if on:
+        plan = await _lock_plan(db, channel.id, month)
+        posts, folder, changed = await _folders_in_tx(db, plan, actor)
+        if changed:
+            locked = await service.lock_location(db, plan.location_id)
+            locked.item_count += len(changed)
+            locked.updated_at = utcnow()
+            await events.emit_changed(db, plan.location_id, changed)
+    await db.commit()
+    return DriveChannelPostsOut(
+        location=await service.location_out(db, actor, location),
+        files_to_drive=on,
+        posts_folder=await service.item_out(db, posts) if posts is not None else None,
+        month_folder=await service.item_out(db, folder) if folder is not None else None,
+        month=month,
+        timezone=_zone.key,
+    )
 
 
 # --- a message deleted (§7) ---------------------------------------------------------------------
