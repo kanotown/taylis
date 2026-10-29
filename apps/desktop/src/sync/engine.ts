@@ -818,6 +818,7 @@ export class SyncEngine {
     store.replaceSidebarDefaults(bootstrap.sidebar_defaults ?? []);
     this.drafts.applyBootstrap(bootstrap.drafts ?? []);
     this.applyWorkspaceSettings(bootstrap.workspace_settings);
+    store.setServerLimits(bootstrap.limits?.max_attachment_bytes, bootstrap.channel_files_timezone);
     store.setAttendance(bootstrap.attendance ?? null); // M140: null for guests, while off, before M140
     store.setActions(bootstrap.actions ?? null); // M143: null for guests, while off, before M143
     // M170: null for guests, while off, before M167; an open 「備品」 page reads again (changes while away, §9).

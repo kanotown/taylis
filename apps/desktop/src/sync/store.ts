@@ -116,6 +116,10 @@ export class Store {
    * offline start reads the defaults (today's behaviour), and the next bootstrap says what they are.
    */
   workspaceSettings: WorkspaceSettingsOut = { ...DEFAULT_WORKSPACE_SETTINGS };
+  /** CF5: bootstrap's `limits.max_attachment_bytes` (null before the first bootstrap: the client's default). */
+  attachmentMaxBytes: number | null = null;
+  /** CF5: bootstrap's `channel_files_timezone` (the server's CHANNEL_FILES_TZ; null: Asia/Tokyo, as older servers). */
+  channelFilesTimeZone: string | null = null;
   threadsFilter: ThreadFilter = "all";
   threadsLoaded = false;
   threadsCursor: string | null = null;
@@ -920,6 +924,12 @@ export class Store {
     this.activity = summary;
     this.persist((p) => p.saveMeta("activity", summary ? JSON.stringify(summary) : null));
     this.emit();
+  }
+
+  /** CF5: the server's attachment limit and month-folder zone, from bootstrap. */
+  setServerLimits(attachmentMaxBytes: number | null | undefined, channelFilesTimeZone: string | null | undefined): void {
+    this.attachmentMaxBytes = typeof attachmentMaxBytes === "number" && attachmentMaxBytes > 0 ? attachmentMaxBytes : null;
+    this.channelFilesTimeZone = channelFilesTimeZone || null;
   }
 
   /** M88: bootstrap's (none from a server before M88: the defaults) or the event's settings. */

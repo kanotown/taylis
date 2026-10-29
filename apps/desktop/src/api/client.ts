@@ -8,7 +8,7 @@ import type { SendOptions } from "../sync/types";
 import type { PresenceUpdate, TestNotificationOut } from "./types";
 import type { AccountDeletion, AdminReportOut, BlockOut, BlockStateOut, GeneralReportAck, GeneralReportCreate, ReportAck, ReportCreate } from "./types";
 import type { AnalyticsMembersOut, AnalyticsMembersQuery, AnalyticsOverviewOut } from "./types";
-import type { DriveChildrenOut, DriveCopyResultsOut, DriveDownloadTicketOut, DriveLocationUsageOut, DriveUsageOut, DriveVersionListOut, DriveZipOut, DriveItemDetailOut, DriveItemOut, DriveLocationListOut, DriveLocationOut, DrivePreviewOut, DriveResultsOut, DriveSearchOut, DriveSearchOrigin, DriveImpactOut, DriveMessageFilesOut, DriveTrashOut, DriveUploadCompleteOut, DriveUploadCreate, DriveUploadListOut, DriveUploadOut, DriveUploadPartOut, DriveUploadPatch } from "./types";
+import type { DriveChannelPostsOut, DriveChildrenOut, DriveCopyResultsOut, DriveDownloadTicketOut, DriveLocationUsageOut, DriveUsageOut, DriveVersionListOut, DriveZipOut, DriveItemDetailOut, DriveItemOut, DriveLocationListOut, DriveLocationOut, DrivePreviewOut, DriveResultsOut, DriveSearchOut, DriveSearchOrigin, DriveImpactOut, DriveMessageFilesOut, DriveTrashOut, DriveUploadCompleteOut, DriveUploadCreate, DriveUploadListOut, DriveUploadOut, DriveUploadPartOut, DriveUploadPatch } from "./types";
 import type { DriveReachOut, DriveSaveAttachmentIn } from "./types";
 import type { AlbumAddIn, AlbumAddOut, AlbumCreate, AlbumCreatedOut, AlbumDetailOut, AlbumListOut, AlbumOut, AlbumPut } from "./types";
 import type { LendingApproversOut, LendingBorrowIn, LendingCategoryCreate, LendingCategoryOut, LendingCategoryUpdate, LendingImportOut, LendingItemCreate, LendingItemDetailOut, LendingItemHistoryOut, LendingItemOut, LendingItemStatusIn, LendingItemUpdate, LendingLoanOut, LendingLoanScope, LendingPermissionIn, LendingReturnIn, LendingSettingsOut, LendingSettingsUpdate, LendingSummaryOut } from "./types";
@@ -1916,6 +1916,15 @@ export class ApiClient {
   /** A channel's drive or my My Drive, made on first use (idempotent). */
   resolveDriveLocation(body: { kind: "channel"; channel_id: string } | { kind: "me" }): Promise<DriveLocationOut> {
     return this.request("POST", "/api/v1/drive/locations/resolve", body);
+  }
+
+  /**
+   * CF5 (docs/CHANNEL_FILES.md §26): where a file too big to attach goes in a channel — its 「投稿のファイル」 and this
+   * month's folder, made when missing (both null while the channel's files stay out of its drive). 403 where I cannot
+   * write the channel's drive, 422 in a DM; a server before CF5 answers 404 (no such route).
+   */
+  driveChannelPosts(channelId: string): Promise<DriveChannelPostsOut> {
+    return this.request("POST", "/api/v1/drive/channel-posts", { channel_id: channelId });
   }
 
   driveChildren(folderId: string, query: { sort?: "name" | "modified" | "size" | "taken" | "added"; order?: "asc" | "desc"; cursor?: string | null; limit?: number } = {}): Promise<DriveChildrenOut> {
