@@ -252,7 +252,7 @@ final class SyncEngineTests: XCTestCase {
         XCTAssertEqual(notifications, [])
         // Pushes only: the mention is still unread and not muted.
         XCTAssertEqual(w.store.channel(w.channel.id)?.isMuted, false)
-        XCTAssertEqual(w.store.channel(w.channel.id)?.hasUnread(meId: w.bob.id), true)
+        XCTAssertEqual(w.store.channel(w.channel.id)?.hasUnread(me: w.store.me), true)
         w.engine.stop()
     }
 

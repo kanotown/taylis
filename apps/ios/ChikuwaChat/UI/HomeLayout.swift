@@ -35,6 +35,8 @@ enum HomeSections {
     struct Input {
         var channels: [ChannelState]
         var meId: String?
+        /// My times setting (UserMe.timesDefault): whether someone else's times counts as unread without a mention.
+        var timesDefault = "mentions"
         var favorites: Set<String> = []
         /// M118: the pinned DMs, oldest pin first; first in every section they are in.
         var dmPins: [String] = []
@@ -62,8 +64,8 @@ enum HomeSections {
     }
 
     static func build(_ input: Input) -> Layout {
-        let meId = input.meId, now = input.now
-        let unread = { (channel: ChannelState) in channel.hasUnread(meId: meId, now: now) }
+        let meId = input.meId, now = input.now, timesDefault = input.timesDefault
+        let unread = { (channel: ChannelState) in channel.hasUnread(meId: meId, timesDefault: timesDefault, now: now) }
         let live = input.channels.filter { $0.isMember && !$0.channel.archived && !input.closedDms.contains($0.id) }
         var layout = Layout()
         var pool = live

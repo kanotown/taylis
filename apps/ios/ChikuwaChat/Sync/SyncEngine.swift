@@ -1256,7 +1256,7 @@ final class SyncEngine {
         if store.isBlocked(message.senderId) { return } // M104: nothing from someone I blocked
         // Same rule as the server's PushPlanner: the channel's level (its own, else from my overall setting, M35);
         // "none", a mute until unmuted or a timed mute silences everything.
-        let level = channel.pushLevel(overall: me.overallNotification, meId: me.id)
+        let level = channel.pushLevel(me: me)
         if level == "none" || channel.isMuted { return }
         // A reply only in its thread: its followers and those it addresses, never after unfollowing it by hand (review
         // v0.1.18 #6; NotificationRules.notifies, the same vectors as the server).
@@ -1272,7 +1272,7 @@ final class SyncEngine {
     private func maybeNotifyCanvasMention(_ mention: CanvasMentioned) {
         guard let me = store.me, mention.byUserId != me.id, !store.isBlocked(mention.byUserId),
               let channel = store.channel(mention.channelId), channel.isMember else { return }
-        if channel.pushLevel(overall: me.overallNotification, meId: me.id) == "none" || channel.isMuted { return }
+        if channel.pushLevel(me: me) == "none" || channel.isMuted { return }
         onCanvasMention?(mention, channel)
     }
 

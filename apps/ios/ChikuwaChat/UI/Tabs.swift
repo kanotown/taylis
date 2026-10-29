@@ -36,9 +36,10 @@ enum MainRoute: Hashable {
 /// The tab badges (the same rules on the three clients, IMPLEMENTATION_PLAN.md M34 (6)). Pure over the store's
 /// conversations; the unread rule itself is ChannelState.hasUnread (unchanged).
 enum TabBadges {
-    /// DM: the conversations with someone (or myself) that count as unread.
+    /// DM: the conversations with someone (or myself) that count as unread (a DM is never a times: my times
+    /// setting does not matter).
     static func dms(_ channels: [ChannelState], meId: String?, now: Date = Date()) -> Int {
-        channels.filter { $0.isMember && $0.channel.isDm && $0.hasUnread(meId: meId, now: now) }.count
+        channels.filter { $0.isMember && $0.channel.isDm && $0.hasUnread(meId: meId, timesDefault: "mentions", now: now) }.count
     }
 
     /// Activity. Stage B (M39, the server sends `activity`): its unread items, red with a mention among them. Stage A (a
@@ -51,9 +52,9 @@ enum TabBadges {
     }
 
     /// Home: a dot while a channel (not a DM) counts as unread.
-    static func homeDot(_ channels: [ChannelState], meId: String?, now: Date = Date()) -> Bool {
+    static func homeDot(_ channels: [ChannelState], meId: String?, timesDefault: String = "mentions", now: Date = Date()) -> Bool {
         // Not an archived channel: the home list does not show it, so its dot would point at nothing.
-        channels.contains { $0.isMember && !$0.channel.archived && !$0.channel.isDm && $0.hasUnread(meId: meId, now: now) }
+        channels.contains { $0.isMember && !$0.channel.archived && !$0.channel.isDm && $0.hasUnread(meId: meId, timesDefault: timesDefault, now: now) }
     }
 }
 
@@ -246,7 +247,7 @@ struct DMListView: View {
         let others = (channel.channel.dmUserIds ?? []).filter { $0 != meId }
         let avatarId = others.first ?? meId ?? channel.id
         let statusId = DMList.statusUserId(channel, meId: meId)
-        let unread = channel.hasUnread(meId: meId)
+        let unread = channel.hasUnread(meId: meId, timesDefault: store.me?.timesDefault ?? "mentions")
         let badge = channel.badgeContribution
         // M49: the last message (「あなた: …」 / 「佐藤: …」); without one, the status, presence or size as before.
         let preview = DMList.previewLine(channel, meId: meId, users: store.users)

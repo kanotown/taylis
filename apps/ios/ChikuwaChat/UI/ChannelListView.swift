@@ -47,6 +47,7 @@ struct ChannelListView: View {
 
     private var channels: [ChannelState] { Array(controller.store.channels.values) }
     private var meId: String? { controller.store.me?.id ?? controller.me?.id }
+    private var timesDefault: String { (controller.store.me ?? controller.me)?.timesDefault ?? "mentions" }
     private func starred(_ channel: ChannelState) -> Bool { controller.store.favorites.contains(channel.id) }
     /// M24: the row to make my times stays until I have one; guests cannot have one.
     private var canMakeTimes: Bool {
@@ -60,7 +61,7 @@ struct ChannelListView: View {
 
     private func input(editing: String?) -> HomeSections.Input {
         let store = controller.store
-        return HomeSections.Input(channels: channels, meId: meId, favorites: store.favorites, dmPins: store.dmPins,
+        return HomeSections.Input(channels: channels, meId: meId, timesDefault: timesDefault, favorites: store.favorites, dmPins: store.dmPins,
                                   closedDms: store.closedDms, sections: store.sidebarSections,
                                   groupUnread: groupUnread, folded: folded, defaults: store.sidebarDefaults,
                                   title: { channelTitle($0, store: store) }, editing: editing)
@@ -186,8 +187,9 @@ struct ChannelListView: View {
     }
 
     /// M26 (Slack): a folded section still shows what is unread, and the open conversation.
-    nonisolated static func shown(_ rows: [ChannelState], collapsed: Bool, meId: String?, selection: String?, now: Date = Date()) -> [ChannelState] {
-        collapsed ? rows.filter { $0.id == selection || $0.hasUnread(meId: meId, now: now) } : rows
+    nonisolated static func shown(_ rows: [ChannelState], collapsed: Bool, meId: String?, timesDefault: String = "mentions", selection: String?,
+                                  now: Date = Date()) -> [ChannelState] {
+        collapsed ? rows.filter { $0.id == selection || $0.hasUnread(meId: meId, timesDefault: timesDefault, now: now) } : rows
     }
 
     /// M26: the default sections (favorites, channels, times, dms) folded on this device, kept as one line of keys.
@@ -584,9 +586,9 @@ struct ChannelListView: View {
         let badge = channel.badgeContribution
         let muted = channel.isMuted
         let open = channel.id == selection || channel.id == current
-        let unread = channel.hasUnread(meId: meId) && !open
+        let unread = channel.hasUnread(meId: meId, timesDefault: timesDefault) && !open
         // M24: someone else's times with new posts but no mention: not bold, a faint dot (SYNC_PROTOCOL.md §10.5).
-        let quietUnread = !unread && !open && channel.unreadCount > 0 && channel.isQuiet(meId: meId)
+        let quietUnread = !unread && !open && channel.unreadCount > 0 && channel.isQuiet(meId: meId, timesDefault: timesDefault)
         let store = controller.store
         return Button { selection = channel.id } label: {
             HStack(spacing: 10) {

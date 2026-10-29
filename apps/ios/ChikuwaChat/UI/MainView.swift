@@ -404,7 +404,7 @@ struct MainView: View {
         })) {
             homeTab
                 .tabItem { Label("ホーム", systemImage: "house") }
-                .badge(TabBadges.homeDot(Array(store.channels.values), meId: store.me?.id) ? " " : nil) // a dot, no number
+                .badge(TabBadges.homeDot(Array(store.channels.values), meId: store.me?.id, timesDefault: store.me?.timesDefault ?? "mentions") ? " " : nil) // a dot, no number
                 .tag(MainTab.home)
             dmTab
                 .tabItem { Label("DM", systemImage: "bubble.left.and.bubble.right") }

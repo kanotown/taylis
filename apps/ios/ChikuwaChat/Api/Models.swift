@@ -59,6 +59,10 @@ struct UserMe: Codable, Equatable {
     /// servers before M35 (their per-type defaults are the same as "mentions").
     var notificationDefault: String? = nil
     var overallNotification: String { notificationDefault ?? "mentions" }
+    /// 2026-10-30: what someone else's times without a level of its own notifies me of ("mentions" / "all"); nil from
+    /// a server before it (the switch is hidden; there it is always "mentions").
+    var timesNotificationDefault: String? = nil
+    var timesDefault: String { timesNotificationDefault ?? "mentions" }
     /// M39: reactions to my messages as banners (pushes). nil from a server before M39 (no such setting there: the
     /// switch is hidden); off when absent.
     var notifyReactions: Bool? = nil
@@ -451,12 +455,13 @@ struct NotificationPreferenceOut: Codable, Equatable {
 /// channel's own level and mute (SYNC_PROTOCOL.md §10.5), never the overall setting.
 enum NotificationRules {
     /// The server's `push_level`: the channel's own level if it has one; else nothing when my overall setting is
-    /// "none", every message of a DM, mentions in someone else's times (M24), and my overall setting elsewhere.
-    static func pushLevel(own: String?, isDm: Bool, othersTimes: Bool, overall: String) -> String {
+    /// "none", every message of a DM, my times setting in someone else's times (M24: "mentions" unless I chose "all"),
+    /// and my overall setting elsewhere (the `levels` vectors of apps/shared/notify-rules.json).
+    static func pushLevel(own: String?, isDm: Bool, othersTimes: Bool, overall: String, timesDefault: String) -> String {
         if let own { return own }
         if overall == "none" { return "none" }
         if isDm { return "all" }
-        if othersTimes { return "mentions" }
+        if othersTimes { return timesDefault == "all" ? "all" : "mentions" }
         return overall
     }
 

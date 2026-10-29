@@ -38064,6 +38064,38 @@
           }
         }
       }
+    },
+    "他の人の Times もすべて通知" : {
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Every post in others' times"
+          }
+        },
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "他人的 Times 也通知所有帖子"
+          }
+        }
+      }
+    },
+    "他の人の Times も、新しい投稿ごとに通知する（オフのときはメンションだけ）。未読も太字で数える。Times ごとに決めた通知が優先される。" : {
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Notifies you of each new post in other people's times too (off: mentions only) and counts them as unread. A level set on one times channel wins."
+          }
+        },
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "他人的 Times 有新帖子时也通知（关闭时仅限提及），并计入未读。为单个 Times 设置的通知优先。"
+          }
+        }
+      }
     }
   },
   "version" : "1.0"

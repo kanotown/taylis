@@ -761,8 +761,8 @@ final class AppController {
     private func activeBadgeChanged(_ count: Int) {
         activeBadge = count
         if let serverUrl = activeServerUrl {
-            let meId = store.me?.id
-            let unread = store.channels.values.contains { $0.hasUnread(meId: meId) && !$0.channel.archived } || store.threadSummary.unreadCount > 0
+            let me = store.me
+            let unread = store.channels.values.contains { $0.hasUnread(me: me) && !$0.channel.archived } || store.threadSummary.unreadCount > 0
             patch(serverUrl) { entry in
                 entry.badge = count
                 entry.hasUnread = unread
@@ -1740,8 +1740,8 @@ final class AppController {
     /// M11d: title / custom status. nil values clear; pass only the fields to change.
     func updateProfile(title: String?? = nil, statusText: String?? = nil, statusEmoji: String?? = nil, statusExpiresAt: String?? = nil,
                        dndUntil: String?? = nil, quietHours: QuietHours?? = nil, notifyKeywords: [String]? = nil,
-                       presenceHidden: Bool? = nil, notificationDefault: String? = nil, notifyReactions: Bool? = nil,
-                       quickReactions: [String]?? = nil, notifyTasks: Bool? = nil, navItems: [NavItem]?? = nil,
+                       presenceHidden: Bool? = nil, notificationDefault: String? = nil, timesNotificationDefault: String? = nil,
+                       notifyReactions: Bool? = nil, quickReactions: [String]?? = nil, notifyTasks: Bool? = nil, navItems: [NavItem]?? = nil,
                        locale: String?? = nil, quiet: Bool = false) async -> Bool {
         guard let api else { return false }
         var fields: [String: JSONValue] = [:]
@@ -1754,6 +1754,8 @@ final class AppController {
         if let notifyReactions { fields["notify_reactions"] = .bool(notifyReactions) }  // M39
         // M35: channels that follow the default show the new level at once (they resolve with store.me).
         if let notificationDefault { fields["notification_default"] = .string(notificationDefault) }
+        // 2026-10-30: so do others' times that follow it, and their unread (PUSH_NOTIFICATIONS.md §4, SYNC_PROTOCOL.md §10.5).
+        if let timesNotificationDefault { fields["times_notification_default"] = .string(timesNotificationDefault) }
         if let title { fields["title"] = title.map(JSONValue.string) ?? .null }
         if let statusText { fields["status_text"] = statusText.map(JSONValue.string) ?? .null }
         if let statusEmoji { fields["status_emoji"] = statusEmoji.map(JSONValue.string) ?? .null }

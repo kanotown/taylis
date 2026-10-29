@@ -32,22 +32,37 @@ struct ChannelState: Codable, Identifiable, Equatable {
         guard let until = pref.mutedUntil.flatMap(parseIsoDate) else { return false }
         return until > now
     }
-    /// M24: someone else's times whose own level is not "all" is quiet unread: unread only with a mention, a faint dot
-    /// otherwise (SYNC_PROTOCOL.md §10.5; the vectors in apps/shared/unread-rules.json).
-    func isQuiet(meId: String?, now: Date = Date()) -> Bool {
+    /// M24: someone else's times is quiet unread (unread only with a mention, a faint dot otherwise) unless its own
+    /// level is "all", or it has none and my times setting (`timesDefault`, UserMe.timesDefault) is "all"; a muted one
+    /// is muted, not quiet (SYNC_PROTOCOL.md §10.5; the vectors in apps/shared/unread-rules.json).
+    func isQuiet(meId: String?, timesDefault: String, now: Date = Date()) -> Bool {
         guard let owner = channel.timesOwnerId, owner != meId else { return false }
-        return ownNotificationLevel != "all" && !isMuted(now: now)
+        if ownNotificationLevel == "all" || (ownNotificationLevel == nil && timesDefault == "all") { return false }
+        return !isMuted(now: now)
     }
-    /// M35: what this conversation notifies me of, with my overall setting (PUSH_NOTIFICATIONS.md §4).
-    func pushLevel(overall: String, meId: String?) -> String {
+    /// `isQuiet` for me as `me` has it (the store's me at the call sites; an older server's "mentions" without it).
+    func isQuiet(me: UserMe?, now: Date = Date()) -> Bool {
+        isQuiet(meId: me?.id, timesDefault: me?.timesDefault ?? "mentions", now: now)
+    }
+    /// M35: what this conversation notifies me of, with my overall and times settings (PUSH_NOTIFICATIONS.md §4).
+    func pushLevel(overall: String, timesDefault: String, meId: String?) -> String {
         let othersTimes = channel.timesOwnerId.map { $0 != meId } ?? false
-        return NotificationRules.pushLevel(own: ownNotificationLevel, isDm: channel.isDm, othersTimes: othersTimes, overall: overall)
+        return NotificationRules.pushLevel(own: ownNotificationLevel, isDm: channel.isDm, othersTimes: othersTimes, overall: overall,
+                                           timesDefault: timesDefault)
+    }
+    /// `pushLevel` with my settings as `me` has them (an older server's defaults without them).
+    func pushLevel(me: UserMe?) -> String {
+        pushLevel(overall: me?.overallNotification ?? "mentions", timesDefault: me?.timesDefault ?? "mentions", meId: me?.id)
     }
     /// Slack / Mattermost rule: a muted conversation is unread only when I am mentioned; so is a quiet one (M24).
-    /// Bold rows, the unread filter and the workspace dot all ask this, with my id.
-    func hasUnread(meId: String?, now: Date = Date()) -> Bool {
+    /// Bold rows, the unread filter and the workspace dot all ask this, with my id and my times setting.
+    func hasUnread(meId: String?, timesDefault: String, now: Date = Date()) -> Bool {
         guard isMember else { return false }
-        return isMuted(now: now) || isQuiet(meId: meId, now: now) ? mentionCount > 0 : unreadCount > 0
+        return isMuted(now: now) || isQuiet(meId: meId, timesDefault: timesDefault, now: now) ? mentionCount > 0 : unreadCount > 0
+    }
+    /// `hasUnread` for me as `me` has it (the store's me at the call sites).
+    func hasUnread(me: UserMe?, now: Date = Date()) -> Bool {
+        hasUnread(meId: me?.id, timesDefault: me?.timesDefault ?? "mentions", now: now)
     }
     /// What the app badge and the list show for this channel (PUSH_NOTIFICATIONS.md §4.2). Quiet channels need no
     /// rule of their own: a channel's badge is its mentions already.

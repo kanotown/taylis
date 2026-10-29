@@ -24,16 +24,16 @@ final class ChannelRulesTests: XCTestCase {
     func testMutedChannelsCountOnlyMentions() {
         let muted = channel("a", unread: 5, level: "none")
         XCTAssertTrue(muted.isMuted)
-        XCTAssertFalse(muted.hasUnread(meId: nil))
+        XCTAssertFalse(muted.hasUnread(meId: nil, timesDefault: "mentions"))
         XCTAssertEqual(muted.badgeContribution, 0)
         let future = ISO8601DateFormatter().string(from: Date().addingTimeInterval(3600))
         let mentioned = channel("b", unread: 5, mentions: 2, level: "mentions", mutedUntil: future)
         XCTAssertTrue(mentioned.isMuted)
-        XCTAssertTrue(mentioned.hasUnread(meId: nil))
+        XCTAssertTrue(mentioned.hasUnread(meId: nil, timesDefault: "mentions"))
         XCTAssertEqual(mentioned.badgeContribution, 2)
         let expired = channel("c", unread: 1, level: "mentions", mutedUntil: "2020-01-01T00:00:00Z")
         XCTAssertFalse(expired.isMuted)
-        XCTAssertTrue(expired.hasUnread(meId: nil))
+        XCTAssertTrue(expired.hasUnread(meId: nil, timesDefault: "mentions"))
         XCTAssertEqual(channel("d", type: "dm", unread: 3).badgeContribution, 3)
     }
 
@@ -47,26 +47,27 @@ final class ChannelRulesTests: XCTestCase {
             ("none", "none", "none", "none"),
         ]
         for row in table {
-            XCTAssertEqual(NotificationRules.pushLevel(own: nil, isDm: true, othersTimes: false, overall: row.overall), row.dm, row.overall)
-            XCTAssertEqual(NotificationRules.pushLevel(own: nil, isDm: false, othersTimes: true, overall: row.overall), row.othersTimes, row.overall)
-            XCTAssertEqual(NotificationRules.pushLevel(own: nil, isDm: false, othersTimes: false, overall: row.overall), row.other, row.overall)
+            XCTAssertEqual(NotificationRules.pushLevel(own: nil, isDm: true, othersTimes: false, overall: row.overall, timesDefault: "mentions"), row.dm, row.overall)
+            XCTAssertEqual(NotificationRules.pushLevel(own: nil, isDm: false, othersTimes: true, overall: row.overall, timesDefault: "mentions"), row.othersTimes, row.overall)
+            XCTAssertEqual(NotificationRules.pushLevel(own: nil, isDm: false, othersTimes: false, overall: row.overall, timesDefault: "mentions"), row.other, row.overall)
             for own in ["all", "mentions", "none"] {
-                XCTAssertEqual(NotificationRules.pushLevel(own: own, isDm: true, othersTimes: false, overall: row.overall), own)
-                XCTAssertEqual(NotificationRules.pushLevel(own: own, isDm: false, othersTimes: true, overall: row.overall), own)
+                XCTAssertEqual(NotificationRules.pushLevel(own: own, isDm: true, othersTimes: false, overall: row.overall, timesDefault: "mentions"), own)
+                XCTAssertEqual(NotificationRules.pushLevel(own: own, isDm: false, othersTimes: true, overall: row.overall, timesDefault: "mentions"), own)
             }
         }
         // Through a channel: a group DM is a DM, my own times is an ordinary channel, a missing preference follows.
-        XCTAssertEqual(channel("g", type: "group_dm").pushLevel(overall: "mentions", meId: "me"), "all")
+        XCTAssertEqual(channel("g", type: "group_dm").pushLevel(overall: "mentions", timesDefault: "mentions", meId: "me"), "all")
         var times = channel("t")
         times.channel.timesOwnerId = "me"
-        XCTAssertEqual(times.pushLevel(overall: "all", meId: "me"), "all")
+        XCTAssertEqual(times.pushLevel(overall: "all", timesDefault: "mentions", meId: "me"), "all")
         times.channel.timesOwnerId = "someone"
-        XCTAssertEqual(times.pushLevel(overall: "all", meId: "me"), "mentions")
+        XCTAssertEqual(times.pushLevel(overall: "all", timesDefault: "mentions", meId: "me"), "mentions")
+        XCTAssertEqual(times.pushLevel(overall: "mentions", timesDefault: "all", meId: "me"), "all")  // 2026-10-30
         times.channel.notification = NotificationPreferenceOut(channelId: "t", level: "all", mutedUntil: nil, followsDefault: false)
-        XCTAssertEqual(times.pushLevel(overall: "none", meId: "me"), "all")
+        XCTAssertEqual(times.pushLevel(overall: "none", timesDefault: "mentions", meId: "me"), "all")
         // Following the default: the level the server resolved then is not used, the overall setting held now is.
         times.channel.notification = NotificationPreferenceOut(channelId: "t", level: "mentions", mutedUntil: nil, followsDefault: true)
-        XCTAssertEqual(times.pushLevel(overall: "none", meId: "me"), "none")
+        XCTAssertEqual(times.pushLevel(overall: "none", timesDefault: "mentions", meId: "me"), "none")
     }
 
     func testOwnLevelAndMuteComeFromThePreference() {
@@ -81,12 +82,12 @@ final class ChannelRulesTests: XCTestCase {
         XCTAssertTrue(row.isMuted)
         row.channel.notification = NotificationPreferenceOut(channelId: "a", level: "all", mutedUntil: nil, followsDefault: false, muted: true)
         XCTAssertTrue(row.isMuted)
-        XCTAssertTrue(row.hasUnread(meId: "me"))  // the mention
+        XCTAssertTrue(row.hasUnread(meId: "me", timesDefault: "mentions"))  // the mention
         row.mentionCount = 0
-        XCTAssertFalse(row.hasUnread(meId: "me"))
+        XCTAssertFalse(row.hasUnread(meId: "me", timesDefault: "mentions"))
         // Muted someone else's times is muted, not quiet.
         row.channel.timesOwnerId = "someone"
-        XCTAssertFalse(row.isQuiet(meId: "me"))
+        XCTAssertFalse(row.isQuiet(meId: "me", timesDefault: "mentions"))
         // Old servers and rows stored before M35: the reported level is the channel's own.
         row.channel.notification = NotificationPreferenceOut(channelId: "a", level: "mentions", mutedUntil: nil)
         XCTAssertEqual(row.ownNotificationLevel, "mentions")
@@ -156,6 +157,8 @@ final class ChannelRulesTests: XCTestCase {
         let muted: Bool
         let unread: Int
         let mentions: Int
+        /// 2026-10-30: users.times_notification_default; absent = "mentions" (as from an older server).
+        let timesDefault: String?
         let expect: Expect
     }
 
@@ -165,38 +168,48 @@ final class ChannelRulesTests: XCTestCase {
             .appendingPathComponent("shared/unread-rules.json")
         struct Vectors: Decodable { let cases: [UnreadCase] }
         let cases = try JSON.snakeDecoder.decode(Vectors.self, from: Data(contentsOf: url)).cases
-        XCTAssertGreaterThanOrEqual(cases.count, 11)
+        XCTAssertGreaterThanOrEqual(cases.count, 18)
+        XCTAssertTrue(cases.contains { $0.timesDefault == "all" })
         let now = try XCTUnwrap(parseIsoDate("2026-09-26T12:00:00Z"))
         for c in cases {
+            let timesDefault = c.timesDefault ?? "mentions"
             var row = channel("c", type: c.type, unread: c.unread, mentions: c.mentions)
             row.channel.timesOwnerId = c.times == "mine" ? "me" : c.times == "others" ? "someone" : nil
             // M35: without a level of its own the server reports the one resolved from the overall setting (any of them:
             // the rules must not look at it) with follows_default; muted is either mute (until unmuted, or timed).
             for overall in ["all", "mentions", "none"] {
-                let resolved = row.pushLevel(overall: overall, meId: "me")
+                let resolved = row.pushLevel(overall: overall, timesDefault: timesDefault, meId: "me")
                 for timed in [false, true] {
                     row.channel.notification = NotificationPreferenceOut(
                         channelId: "c", level: c.level ?? resolved, mutedUntil: c.muted && timed ? "2026-09-27T00:00:00Z" : nil,
                         followsDefault: c.level == nil, muted: c.muted && !timed)
                     let label = "\(c.name) (overall \(overall), \(timed ? "timed" : "until unmuted"))"
-                    XCTAssertEqual(row.hasUnread(meId: "me", now: now), c.expect.hasUnread, label)
+                    XCTAssertEqual(row.hasUnread(meId: "me", timesDefault: timesDefault, now: now), c.expect.hasUnread, label)
                     XCTAssertEqual(row.badgeContribution(now: now), c.expect.badge, label)
-                    XCTAssertEqual(row.isQuiet(meId: "me", now: now), c.expect.quiet, label)
+                    XCTAssertEqual(row.isQuiet(meId: "me", timesDefault: timesDefault, now: now), c.expect.quiet, label)
                 }
             }
             // A server before M35 (no follows_default): the level it reported, the type's default when none was set,
-            // counted as the channel's own gives the same answers.
-            row.channel.notification = NotificationPreferenceOut(channelId: "c", level: c.level ?? (row.channel.isDm ? "all" : "mentions"),
-                                                                mutedUntil: c.muted ? "2026-09-27T00:00:00Z" : nil)
-            XCTAssertEqual(row.hasUnread(meId: "me", now: now), c.expect.hasUnread, c.name)
-            XCTAssertEqual(row.badgeContribution(now: now), c.expect.badge, c.name)
-            XCTAssertEqual(row.isQuiet(meId: "me", now: now), c.expect.quiet, c.name)
+            // counted as the channel's own gives the same answers. Such a server has no times setting either.
+            if c.timesDefault == nil || c.timesDefault == "mentions" {
+                row.channel.notification = NotificationPreferenceOut(channelId: "c", level: c.level ?? (row.channel.isDm ? "all" : "mentions"),
+                                                                    mutedUntil: c.muted ? "2026-09-27T00:00:00Z" : nil)
+                XCTAssertEqual(row.hasUnread(meId: "me", timesDefault: "mentions", now: now), c.expect.hasUnread, c.name)
+                XCTAssertEqual(row.badgeContribution(now: now), c.expect.badge, c.name)
+                XCTAssertEqual(row.isQuiet(meId: "me", timesDefault: "mentions", now: now), c.expect.quiet, c.name)
+            }
             // A channel joined since bootstrap has no preference yet: the same answers.
             guard c.level == nil, !c.muted else { continue }
             row.channel.notification = nil
-            XCTAssertEqual(row.hasUnread(meId: "me", now: now), c.expect.hasUnread, c.name)
+            XCTAssertEqual(row.hasUnread(meId: "me", timesDefault: timesDefault, now: now), c.expect.hasUnread, c.name)
             XCTAssertEqual(row.badgeContribution(now: now), c.expect.badge, c.name)
-            XCTAssertEqual(row.isQuiet(meId: "me", now: now), c.expect.quiet, c.name)
+            XCTAssertEqual(row.isQuiet(meId: "me", timesDefault: timesDefault, now: now), c.expect.quiet, c.name)
+            // The same through me (UserMe.timesDefault; nil from an older server = "mentions").
+            var me = UserMe(id: "me", username: "kano", displayName: "Kano", role: "member", deactivatedAt: nil, createdAt: "", updatedAt: "",
+                            email: nil, mustChangePassword: false)
+            me.timesNotificationDefault = c.timesDefault
+            XCTAssertEqual(row.hasUnread(me: me, now: now), c.expect.hasUnread, c.name)
+            XCTAssertEqual(row.isQuiet(me: me, now: now), c.expect.quiet, c.name)
         }
     }
 
@@ -303,6 +316,50 @@ final class ChannelRulesTests: XCTestCase {
         }
     }
 
+    /// 2026-10-30 (PUSH_NOTIFICATIONS.md §4): the `levels` cases of apps/shared/notify-rules.json: what a conversation
+    /// notifies me of, from its own level, my overall setting and my times setting.
+    func testNotificationLevelsFollowTheSharedVectors() throws {
+        struct LevelCase: Decodable {
+            struct Expect: Decodable { let level: String }
+            let name: String
+            let own: String?
+            let dm: Bool
+            let othersTimes: Bool
+            let overall: String
+            let timesDefault: String
+            let expect: Expect
+        }
+        struct Section: Decodable { let cases: [LevelCase] }
+        struct Vectors: Decodable { let levels: Section }
+        let url = URL(fileURLWithPath: #filePath).deletingLastPathComponent().deletingLastPathComponent().deletingLastPathComponent()
+            .appendingPathComponent("shared/notify-rules.json")
+        let cases = try JSON.snakeDecoder.decode(Vectors.self, from: Data(contentsOf: url)).levels.cases
+        XCTAssertGreaterThanOrEqual(cases.count, 15)
+        for c in cases {
+            XCTAssertEqual(NotificationRules.pushLevel(own: c.own, isDm: c.dm, othersTimes: c.othersTimes, overall: c.overall,
+                                                       timesDefault: c.timesDefault), c.expect.level, c.name)
+            // The same through a channel row and me (the server reports a followed default as follows_default).
+            var row = channel("c", type: c.dm ? "dm" : "public")
+            row.channel.timesOwnerId = c.othersTimes ? "someone" : nil
+            row.channel.notification = NotificationPreferenceOut(channelId: "c", level: c.own ?? "mentions", mutedUntil: nil,
+                                                                followsDefault: c.own == nil)
+            var me = UserMe(id: "me", username: "kano", displayName: "Kano", role: "member", deactivatedAt: nil, createdAt: "", updatedAt: "",
+                            email: nil, mustChangePassword: false, notificationDefault: c.overall)
+            me.timesNotificationDefault = c.timesDefault
+            XCTAssertEqual(row.pushLevel(me: me), c.expect.level, c.name)
+        }
+        // UserMe: the times setting, "mentions" when an older server leaves it out.
+        let me = #"{"id":"u","username":"bob","display_name":"Bob","role":"member","deactivated_at":null,"created_at":"","updated_at":"","email":null,"must_change_password":false"#
+        let old = try JSON.snakeDecoder.decode(UserMe.self, from: Data((me + "}").utf8))
+        XCTAssertNil(old.timesNotificationDefault)
+        XCTAssertEqual(old.timesDefault, "mentions")
+        let new = try JSON.snakeDecoder.decode(UserMe.self, from: Data((me + #","times_notification_default":"all"}"#).utf8))
+        XCTAssertEqual(new.timesNotificationDefault, "all")
+        XCTAssertEqual(new.timesDefault, "all")
+        // Stored with the plain coders (the local cache): it survives the round trip.
+        XCTAssertEqual(try JSON.plainDecoder.decode(UserMe.self, from: JSON.plainEncoder.encode(new)).timesDefault, "all")
+    }
+
     func testAThreadOnlyReplyWithoutParentThreadUsesTheStoredFollow() {
         let me = UserMe(id: "me", username: "kano", displayName: "Kano", role: "member", deactivatedAt: nil, createdAt: "", updatedAt: "",
                         email: nil, mustChangePassword: false)
@@ -324,11 +381,11 @@ final class ChannelRulesTests: XCTestCase {
         XCTAssertEqual(sections.channels.map(\.id), ["general"])
         XCTAssertEqual(sections.times.map(\.id), ["times-me", "times-amy", "times-bob", "times-zed"])
         // The unread filter: amy's quiet unread stays out, bob's mention does not.
-        let unread = ChannelListView.channelSections(all, meId: "me") { $0.hasUnread(meId: "me") }
+        let unread = ChannelListView.channelSections(all, meId: "me") { $0.hasUnread(meId: "me", timesDefault: "mentions") }
         XCTAssertEqual(unread.times.map(\.id), ["times-bob"])
         // Someone else's times at level all is an ordinary channel again.
         all[3].channel.notification = NotificationPreferenceOut(channelId: "times-amy", level: "all", mutedUntil: nil)
-        XCTAssertEqual(ChannelListView.channelSections(all, meId: "me") { $0.hasUnread(meId: "me") }.times.map(\.id), ["times-amy", "times-bob"])
+        XCTAssertEqual(ChannelListView.channelSections(all, meId: "me") { $0.hasUnread(meId: "me", timesDefault: "mentions") }.times.map(\.id), ["times-amy", "times-bob"])
     }
 
     func testAFoldedSectionKeepsUnreadAndTheOpenConversation() {  // M26 (Slack)
