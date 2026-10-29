@@ -1501,8 +1501,10 @@ final class AppController {
 
     func toggleReaction(_ message: MessageState, emoji: String) async {
         guard let api, let me = store.me else { return }
+        let adding = !message.reactedBy(me.id, emoji)
+        if adding { EmojiUsage.note(emoji) } // 「よく使う」 and the quick reactions' recent list (EMOJI.md §9.4)
         do {
-            let updated = message.reactedBy(me.id, emoji)
+            let updated = !adding
                 ? try await api.removeReaction(id: message.id, emoji: emoji)
                 : try await api.addReaction(id: message.id, emoji: emoji)
             _ = store.upsertMessage(updated)

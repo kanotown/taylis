@@ -2,7 +2,7 @@ import { SmilePlus } from "lucide-react";
 import { type FormEvent, useState } from "react";
 
 import type { AppController } from "../state/app";
-import { EmojiPicker, readRecentEmoji } from "./EmojiPicker";
+import { EmojiPicker } from "./EmojiPicker";
 import { Button, cn, Field, Input, Modal, PopoverContent, PopoverRoot, PopoverTrigger } from "./primitives";
 import { SectionIcon } from "./SectionDialog";
 import { activeStatus, EXPIRY_OPTIONS, expiryAt, expiryLabel, STATUS_PRESETS, type StatusExpiry } from "./users";
@@ -67,7 +67,6 @@ export function StatusForm({ controller, onDone, onCancel, className }: { contro
           </PopoverTrigger>
           <PopoverContent align="start" className="w-auto p-3">
             <EmojiPicker
-              recent={readRecentEmoji()}
               custom={[...controller.store.customEmoji.values()]}
               controller={controller}
               onPick={(entry) => {

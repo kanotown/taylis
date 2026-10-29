@@ -1076,7 +1076,7 @@ export function QuickReactionsSettings({ controller }: { controller: AppControll
             <button type="button" className="rounded px-1.5 py-0.5 hover:bg-panel hover:text-ink" onClick={() => setSlot(null)}>{t("common.cancel")}</button>
           </div>
           {/* The reaction picker's tabs, custom emoji and packs included (2026-10-13); a custom one is picked as `:name:`. */}
-          <EmojiPicker recent={recent} custom={[...controller.store.customEmoji.values()]} controller={controller} onPick={(entry) => pick(slot, entry.glyph)} />
+          <EmojiPicker custom={[...controller.store.customEmoji.values()]} controller={controller} onPick={(entry) => pick(slot, entry.glyph)} />
         </div>
       )}
     </section>

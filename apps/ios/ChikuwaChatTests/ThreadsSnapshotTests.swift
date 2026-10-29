@@ -184,11 +184,17 @@ final class PolishCSnapshotTests: XCTestCase {
             defaults.set(saved.0, forKey: EmojiUsage.key)
             defaults.set(saved.1, forKey: EmojiUsage.recentKey)
         }
+        // 2026-10-29: whole rows, a text emoji's pill taking the cells it needs (EMOJI.md §9.4).
         var usage = EmojiUsage()
-        for glyph in ["👍", "🎉", "👍", "🙏", "😂", "👍", "🎉", "✅", "👀", "❤️", "🙇"] { usage.record(glyph) }
+        for glyph in ["👍", "🎉", "👍", ":thanks:", "🙏", "😂", "👍", "🎉", "✅", "👀", "❤️", "🙇", "🔥", "🙌", "💯", "👏", "🤔", "😊", "🚀"] { usage.record(glyph) }
         defaults.set(usage.encoded, forKey: EmojiUsage.key)
+        let pill = CustomEmojiOut(id: "t-thanks", name: "thanks", contentType: "", width: 0, height: 0, createdBy: "u", createdAt: "",
+                                  kind: "text", label: "ありがとう", color: "blue")
         for style in [UIUserInterfaceStyle.light, .dark] {
-            let view = Color(.systemBackground).sheet(isPresented: .constant(true)) { EmojiPickerView { _ in }.presentationDetents([.large]) }
+            let images = [pill.id: CustomEmoji.textPill(pill, dark: style == .dark)]
+            let view = Color(.systemBackground).sheet(isPresented: .constant(true)) {
+                EmojiPickerView(custom: [pill], images: images) { _ in }.presentationDetents([.large])
+            }
             let image = try render(view, size: CGSize(width: 393, height: 852), style: style, name: "emoji-picker-\(style == .dark ? "dark" : "light").png", settle: 1.2)
             XCTAssertGreaterThan(image.size.width, 0)
         }

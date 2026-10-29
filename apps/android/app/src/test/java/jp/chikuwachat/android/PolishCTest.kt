@@ -9,6 +9,7 @@ import jp.chikuwachat.android.sync.Store
 import jp.chikuwachat.android.sync.toOut
 import jp.chikuwachat.android.ui.ChannelDetailsHeader
 import jp.chikuwachat.android.ui.ConversationTab
+import jp.chikuwachat.android.ui.FrequentEmoji
 import jp.chikuwachat.android.ui.MainNav
 import jp.chikuwachat.android.ui.Route
 import jp.chikuwachat.android.ui.Search
@@ -140,16 +141,15 @@ class PolishCTest {
     // --- C9 / C10: the emoji sheet ---
 
     @Test
-    fun frequentComesFirstFromThisDevicesRecentEmoji() {
+    fun frequentComesFirstFromThisDevicesUses() {
         val prefs = MemoryStore()
-        QuickReactions.remember(prefs, "🎉")
-        QuickReactions.remember(prefs, ":hanpen:")
-        QuickReactions.remember(prefs, "👍")
-        QuickReactions.remember(prefs, "🎉")
-        val sections = EmojiPicker.sections(QuickReactions.read(prefs), customNames = listOf("hanpen"))
+        val t0 = 1_790_000_000_000L
+        listOf("🎉", ":hanpen:", "👍", "🎉").forEachIndexed { i, glyph -> FrequentEmoji.note(prefs, glyph, t0 + i * 1000L) }
+        QuickReactions.remember(prefs, "👍") // counts too
+        val sections = EmojiPicker.sections(FrequentEmoji.read(prefs), customNames = listOf("hanpen"))
         assertEquals(EmojiPicker.FREQUENT, sections.first().key)
         assertEquals("よく使う", sections.first().label)
-        assertEquals(listOf("🎉", "👍", ":hanpen:"), sections.first().cells)
+        assertEquals(listOf("👍", "🎉", ":hanpen:"), sections.first().cells)
         // As in Slack: recent, then the custom emoji, then the standard categories.
         assertEquals(EmojiPicker.CUSTOM, sections[1].key)
         assertEquals(listOf(":hanpen:"), sections[1].cells)
@@ -166,8 +166,13 @@ class PolishCTest {
     @Test
     fun aRemovedCustomEmojiLeavesFrequentAndTheListIsCapped() {
         assertEquals(listOf("👍"), EmojiPicker.frequent(listOf(":gone:", "👍", ""), customNames = emptySet()))
+        // Whole rows (EMOJI.md §9.4): two rows of the eight columns from a longer list.
         val many = (0 until 30).map { "e$it" }
-        assertEquals(EmojiPicker.FREQUENT_MAX, EmojiPicker.frequent(many, emptySet()).size)
+        assertEquals(16, EmojiPicker.frequent(many, emptySet()).size)
+        // A pill of 3 cells: 14 items still end both rows flush.
+        val withPill = EmojiPicker.frequent(listOf(":thanks:") + many, setOf("thanks")) { if (it == ":thanks:") 3 else 1 }
+        assertEquals(14, withPill.size)
+        assertEquals(":thanks:", withPill.first())
     }
 
     @Test

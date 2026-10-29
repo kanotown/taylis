@@ -44,7 +44,7 @@ import { EmojiText, StatusEmoji, UserPopover } from "./UserPopover";
 import { channelTitle, myDisplayName } from "./MainScreen";
 import { isSelfNotes, selfNotesIntro } from "./channels";
 import { intlLocale, t } from "../i18n";
-import { EmojiPicker, rememberEmoji, useRecentEmoji } from "./EmojiPicker";
+import { EmojiPicker, useRecentEmoji } from "./EmojiPicker";
 import { autoLinkPreview, LinkPreviewCard } from "./LinkPreviewCard";
 import { LONG_PRESS_MS, MessageActionsSheet, QuickReactionGlyph, quickReactions } from "./MessageActionsSheet";
 import { firstLink } from "./links";
@@ -1209,12 +1209,10 @@ const MessageRowView = memo(function MessageRowView({ controller, message, compa
               </PopoverTrigger>
               <PopoverContent align="start" className="w-auto p-3" onAnchorHidden={() => setChipPicker(false)}>
                 <EmojiPicker
-                  recent={recentEmoji}
                   custom={[...store.customEmoji.values()]}
                   controller={controller}
                   onPick={(entry) => {
                     setChipPicker(false);
-                    rememberEmoji(entry.glyph);
                     void controller.toggleReaction(message, entry.glyph);
                   }}
                 />
@@ -1243,12 +1241,10 @@ const MessageRowView = memo(function MessageRowView({ controller, message, compa
             </PopoverTrigger>
             <PopoverContent align="end" className="w-auto p-3" onAnchorHidden={() => setPickerOpen(false)}>
               <EmojiPicker
-                recent={recentEmoji}
                 custom={[...store.customEmoji.values()]}
                 controller={controller}
                 onPick={(entry) => {
                   setPickerOpen(false);
-                  rememberEmoji(entry.glyph);
                   void controller.toggleReaction(message, entry.glyph);
                 }}
               />

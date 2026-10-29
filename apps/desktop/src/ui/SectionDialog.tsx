@@ -7,7 +7,7 @@ import type { ChannelState } from "../sync/types";
 import { isPlainEnter } from "./ime";
 import { channelTitle } from "./MainScreen";
 import { CustomEmojiImage, customEmojiName } from "./customEmoji";
-import { EmojiPicker, readRecentEmoji } from "./EmojiPicker";
+import { EmojiPicker } from "./EmojiPicker";
 import { Button, cn, Field, Input, Modal, PopoverContent, PopoverRoot, PopoverTrigger } from "./primitives";
 import { isLetterText, letterIcon, normalizeLetterInput, parseLetterIcon } from "./sectionIcon";
 import { TEXT_EMOJI_COLOR_NAMES, TEXT_EMOJI_COLORS, textEmojiColors } from "./textEmoji";
@@ -160,7 +160,6 @@ export function SectionDialog({ controller, title, submitLabel, initial, pickCha
                 </div>
                 {pickerTab === "emoji" ? (
                   <EmojiPicker
-                    recent={readRecentEmoji()}
                     custom={[...store.customEmoji.values()]}
                     controller={controller}
                     onPick={(entry) => {

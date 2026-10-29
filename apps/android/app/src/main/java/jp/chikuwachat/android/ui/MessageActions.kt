@@ -93,8 +93,12 @@ object QuickReactions {
 
     fun read(store: KeyValueStore): List<String> = store.getString(KEY)?.split("\n")?.filter { it.isNotEmpty() } ?: emptyList()
 
-    /** Called when I add a reaction (not when I take one back). */
+    /**
+     * Called when I add a reaction (not when I take one back) or put an emoji in the composer: this list and the
+     * picker's 「よく使う」 ([FrequentEmoji], EMOJI.md §9.4; first, as it starts from this list when it has none).
+     */
     fun remember(store: KeyValueStore, glyph: String) {
+        FrequentEmoji.note(store, glyph)
         store.putString(KEY, (listOf(glyph) + read(store).filter { it != glyph }).take(16).joinToString("\n"))
     }
 

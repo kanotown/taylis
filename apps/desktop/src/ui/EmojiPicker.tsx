@@ -6,8 +6,16 @@ import type { AppController } from "../state/app";
 import { CustomEmojiImage, customEmojiName, usePackTabUrl } from "./customEmoji";
 import { customEmojiCandidates, EMOJI, EMOJI_CATEGORIES, type EmojiEntry, searchEmoji } from "./emoji";
 import { gridChunks, pickerSectionKeys, sectionAt } from "./emojiPickerLayout";
+import { fillFrequent, FREQUENT_ROWS, noteFrequentEmoji, pillAspect, pillSpan, readFrequentEmoji, subscribeFrequentEmoji } from "./emojiFrequent";
 import { cn, Input } from "./primitives";
 import { type MessageKey, t } from "../i18n";
+
+/** The picker's columns, and a text emoji's pill in 「よく使う」: its height and its button's padding (px). */
+const COLUMNS = 8;
+const PILL = 20;
+const PILL_PAD = 8;
+
+export interface FrequentItem { glyph: string; emoji?: CustomEmojiOut; span: number }
 
 /** A cell of the picker's grids (h-8) and a pack's big cell (h-[4.5rem]), in px: the chunks' heights come from them. */
 const CELL = 32;
@@ -26,20 +34,21 @@ for (const entry of EMOJI) {
 }
 
 type Section =
-  | { key: "recent"; kind: "recent"; label: string; items: Array<{ glyph: string; emoji?: CustomEmojiOut }> }
+  | { key: "frequent"; kind: "frequent"; label: string; items: FrequentItem[] }
   | { key: string; kind: "custom"; label: string; text: CustomEmojiOut[]; images: CustomEmojiOut[]; big: boolean; empty: string; add: boolean }
   | { key: string; kind: "standard"; label: string; entries: EmojiEntry[] };
 
 /**
  * Emoji picker (M11f): search by shortcode / keyword (en + ja) or browse. Browsing is one scrolling list (2026-10-07,
- * docs/EMOJI.md §6, like Slack): 最近使った絵文字, カスタム, each pack, then the standard categories, each under a
+ * docs/EMOJI.md §9, like Slack): よく使う (§9.4), カスタム, each pack, then the standard categories, each under a
  * header that stays at the top while its section scrolls. A tab jumps to its section; the highlighted tab follows the
  * section in view. Before, each tab was its own page sharing one scroll position (a tab opened mid-way down).
  * `onPick` gets the glyph.
  */
-export function EmojiPicker({ onPick, recent = [], custom = [], controller, onAddCustom }: {
+export function EmojiPicker({ onPick, frequent: given, custom = [], controller, onAddCustom }: {
   onPick: (entry: EmojiEntry) => void;
-  recent?: string[];
+  /** 「よく使う」 best first; by default this device's (emojiFrequent.ts). */
+  frequent?: string[];
   /** M12f: custom emoji shown under 「カスタム」 (M100: the ungrouped ones; a pack's under its own section) and found
    * by name, label and keywords; `glyph` of a pick is `:name:`. */
   custom?: CustomEmojiOut[];
@@ -61,25 +70,31 @@ export function EmojiPicker({ onPick, recent = [], custom = [], controller, onAd
   const packsKey = packList.map((p) => `${p.id}\u0000${p.name}\u0000${p.tab_version ?? ""}`).join("\u0001");
   // eslint-disable-next-line react-hooks/exhaustive-deps -- by content: the store hands out a new array each call
   const packs = useMemo(() => packList, [packsKey]);
-  // A recent custom emoji shows as its image, and only while it exists (testers, 2026-09-29: 「:hanpen:」 as text, wider
-  // than its cell, also for names with no emoji).
-  // Each glyph once: they are the row's keys (a stored list from elsewhere may repeat one).
-  const recentKey = recent.join("\u0000");
-  const recentShown = useMemo(() => [...new Set(recent)].filter((glyph) => {
-    if (!glyph) return false;
-    const name = customEmojiName(glyph);
-    return !name || (!!controller && customByName.has(name));
-  }), [recentKey, customByName, controller]); // eslint-disable-line react-hooks/exhaustive-deps
+  const stored = useFrequentEmoji();
+  const frequent = given ?? stored;
+  // The list's width: 「よく使う」 fills whole rows of its eight columns, a text emoji's pill taking the cells it needs.
+  const scrollRef = useRef<HTMLDivElement | null>(null);
+  const [listWidth, setListWidth] = useState(320);
+  useEffect(() => {
+    const list = scrollRef.current;
+    if (!list || typeof ResizeObserver === "undefined") return undefined;
+    const observer = new ResizeObserver(() => { if (list.clientWidth > 0) setListWidth(list.clientWidth); });
+    observer.observe(list);
+    return () => observer.disconnect();
+  }, [searching]);
+  // A frequent custom emoji shows as its image, and only while it exists (testers, 2026-09-29: 「:hanpen:」 as text,
+  // wider than its cell, also for names with no emoji). Each glyph once: they are the row's keys.
+  const frequentKey = frequent.join("\u0000");
+  const frequentShown = useMemo(() => frequentItems(frequent, controller ? customByName : new Map(), listWidth), [frequentKey, customByName, controller, listWidth]); // eslint-disable-line react-hooks/exhaustive-deps
   const hasCustom = custom.length > 0 || !!onAddCustom;
   const sections = useMemo(
-    () => buildSections({ recent: recentShown, custom, customByName, packs, hasCustom, add: !!onAddCustom }),
-    [recentShown, custom, customByName, packs, hasCustom, onAddCustom !== undefined], // eslint-disable-line react-hooks/exhaustive-deps
+    () => buildSections({ frequent: frequentShown, custom, customByName, packs, hasCustom, add: !!onAddCustom }),
+    [frequentShown, custom, customByName, packs, hasCustom, onAddCustom !== undefined], // eslint-disable-line react-hooks/exhaustive-deps
   );
   const keys = useMemo(() => sections.map((s) => s.key), [sections]);
 
   const [active, setActive] = useState<string>("");
   const shownActive = keys.includes(active) ? active : keys[0] ?? "";
-  const scrollRef = useRef<HTMLDivElement | null>(null);
   const sectionEls = useRef(new Map<string, HTMLElement>());
   const register = useCallback((key: string, el: HTMLElement | null) => {
     if (el) sectionEls.current.set(key, el);
@@ -140,7 +155,7 @@ export function EmojiPicker({ onPick, recent = [], custom = [], controller, onAd
           {sections.map((section) => {
             const selected = shownActive === section.key;
             const pack = section.key.startsWith("pack:") ? packs.find((p) => `pack:${p.id}` === section.key) : undefined;
-            if (section.kind === "recent") {
+            if (section.kind === "frequent") {
               return (
                 <button key={section.key} type="button" role="tab" aria-selected={selected} title={section.label} aria-label={section.label} onClick={() => jump(section.key)} className={cn("flex h-6 items-center rounded-md px-1.5", selected ? "bg-accent-soft text-accent" : "text-muted hover:bg-panel hover:text-ink")}>
                   <Clock size={13} />
@@ -175,7 +190,25 @@ export function EmojiPicker({ onPick, recent = [], custom = [], controller, onAd
   );
 }
 
-function buildSections({ recent, custom, customByName, packs, hasCustom, add }: { recent: string[]; custom: CustomEmojiOut[]; customByName: ReadonlyMap<string, CustomEmojiOut>; packs: EmojiPackOut[]; hasCustom: boolean; add: boolean }): Section[] {
+/**
+ * 「よく使う」 as shown in a list `listWidth` px wide: known emoji only (a custom `:name:` while `customByName` has it),
+ * each once, then whole rows (fillFrequent: a text emoji's pill spans the cells its estimated width needs).
+ */
+export function frequentItems(frequent: readonly string[], customByName: ReadonlyMap<string, CustomEmojiOut>, listWidth: number): FrequentItem[] {
+  const cell = listWidth / COLUMNS;
+  const items = [...new Set(frequent)].flatMap((glyph): FrequentItem[] => {
+    if (!glyph) return [];
+    const name = customEmojiName(glyph);
+    if (!name) return [{ glyph, span: 1 }];
+    const emoji = customByName.get(name);
+    if (!emoji) return [];
+    const span = emoji.kind === "text" ? pillSpan(PILL * pillAspect(emoji.label || emoji.name) + PILL_PAD, cell, 0, COLUMNS) : 1;
+    return [{ glyph, emoji, span }];
+  });
+  return fillFrequent(items, COLUMNS).flat();
+}
+
+function buildSections({ frequent, custom, customByName, packs, hasCustom, add }: { frequent: FrequentItem[]; custom: CustomEmojiOut[]; customByName: ReadonlyMap<string, CustomEmojiOut>; packs: EmojiPackOut[]; hasCustom: boolean; add: boolean }): Section[] {
   const ordered = (pick: (c: CustomEmojiOut) => boolean) => custom.filter(pick).sort((a, b) => (a.position ?? 0) - (b.position ?? 0) || a.name.localeCompare(b.name));
   const customSection = (key: string, label: string, list: CustomEmojiOut[], big: boolean, empty: string, withAdd: boolean): Section => ({
     key, kind: "custom", label, big, empty, add: withAdd,
@@ -183,9 +216,9 @@ function buildSections({ recent, custom, customByName, packs, hasCustom, add }: 
     images: list.filter((c) => c.kind !== "text"),
   });
   const standard = EMOJI_CATEGORIES.map(([key]) => key);
-  const keys = pickerSectionKeys({ recent: recent.length > 0, custom: hasCustom, packIds: packs.map((p) => p.id), standard });
+  const keys = pickerSectionKeys({ frequent: frequent.length > 0, custom: hasCustom, packIds: packs.map((p) => p.id), standard });
   return keys.map((key): Section => {
-    if (key === "recent") return { key: "recent", kind: "recent", label: t("emojiPicker.recent"), items: recent.map((glyph) => ({ glyph, emoji: customByName.get(customEmojiName(glyph) ?? "") })) };
+    if (key === "frequent") return { key: "frequent", kind: "frequent", label: t("emojiPicker.frequent"), items: frequent };
     if (key === "custom") return customSection(key, t("emoji.category.custom"), ordered((c) => !c.pack_id || !packs.some((p) => p.id === c.pack_id)), false, t("emoji.none"), add);
     if (key.startsWith("pack:")) {
       const pack = packs.find((p) => `pack:${p.id}` === key)!;
@@ -220,13 +253,14 @@ const SectionList = memo(function SectionList({ sections, controller, pick, add,
       {sections.map((section) => {
         y += 24;
         let body: ReactNode;
-        if (section.kind === "recent") {
-          y += Math.ceil(section.items.length / 8) * CELL;
+        if (section.kind === "frequent") {
+          y += FREQUENT_ROWS * CELL;
           body = (
-            <div className="flex flex-wrap" role="group" aria-label={section.label}>
-              {section.items.map(({ glyph, emoji }) => (
-                <button key={glyph} type="button" title={emoji ? titleOf(emoji) : undefined} className="flex h-8 min-w-8 items-center justify-center overflow-hidden rounded-md px-0.5 text-xl hover:bg-panel-2" onClick={() => pick({ shortcode: emoji?.name ?? "", glyph, category: emoji ? "custom" : "", keywords: "" })}>
-                  {emoji && controller ? <CustomEmojiImage controller={controller} emoji={emoji} size={22} /> : glyph}
+            // Whole rows (frequentItems): a text emoji's pill spans the cells it needs.
+            <div className="grid grid-cols-8" role="group" aria-label={section.label}>
+              {section.items.map(({ glyph, emoji, span }) => (
+                <button key={glyph} type="button" title={emoji ? titleOf(emoji) : undefined} data-span={span} style={span > 1 ? { gridColumn: `span ${span}` } : undefined} className={cn("flex h-8 items-center justify-center justify-self-start overflow-hidden rounded-md text-xl hover:bg-panel-2", emoji?.kind === "text" ? "max-w-full px-1" : "w-8")} onClick={() => pick({ shortcode: emoji?.name ?? "", glyph, category: emoji ? "custom" : "", keywords: "" })}>
+                  {emoji && controller ? <CustomEmojiImage controller={controller} emoji={emoji} size={emoji.kind === "text" ? PILL : 22} square={emoji.kind !== "text"} /> : glyph}
                 </button>
               ))}
             </div>
@@ -429,7 +463,9 @@ export function readRecentEmoji(): string[] {
   return value;
 }
 
+/** One use of an emoji (a reaction I add, one put in the composer): the quick reactions' recent list and 「よく使う」. */
 export function rememberEmoji(glyph: string): void {
+  noteFrequentEmoji(glyph);
   try {
     const next = [glyph, ...readRecentEmoji().filter((g) => g !== glyph)].slice(0, 16);
     localStorage.setItem(RECENT_KEY, JSON.stringify(next));
@@ -442,6 +478,11 @@ export function rememberEmoji(glyph: string): void {
 /** Re-renders with the recent emoji: a pick in one message row moves the quick reactions of every row (M28b). */
 export function useRecentEmoji(): string[] {
   return useSyncExternalStore(subscribeRecentEmoji, readRecentEmoji);
+}
+
+/** 「よく使う」 best first (emojiFrequent.ts), re-rendering when a use changes it. */
+export function useFrequentEmoji(): string[] {
+  return useSyncExternalStore(subscribeFrequentEmoji, readFrequentEmoji);
 }
 
 function subscribeRecentEmoji(listener: () => void): () => void {

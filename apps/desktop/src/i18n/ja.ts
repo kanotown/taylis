@@ -2672,7 +2672,7 @@ export const ja = {
   "changePassword.note": "仮パスワードでログインしています。続ける前に新しいパスワードを設定してください。",
   "saved.none": "保存したメッセージはありません",
   "saved.hint": "メッセージのしおりアイコンで、あとで見返したいものをここに集められます。",
-  "emojiPicker.recent": "最近使った絵文字",
+  "emojiPicker.frequent": "よく使う",
   "emojiPicker.search": "検索（例：tada、乾杯）",
   "emojiPicker.emptyPack": "このセットは空です",
   "emojiPicker.add": "＋ 絵文字を追加…",

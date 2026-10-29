@@ -251,7 +251,7 @@ fun ConversationComposer(controller: AppController, channelId: String, version: 
             (found.map { EmojiEntry(shortcode = it.name, glyph = ":${it.name}:", category = "custom", keywords = it.label ?: "") } + Emoji.candidates(q)).take(8)
         } ?: emptyList() else emptyList()
         var pickingEmoji by rememberSaveable { mutableStateOf(false) }
-        if (pickingEmoji) EmojiPickerSheet(recent = QuickReactions.read(controller.prefs), store = store, onNeedImage = { controller.loadEmojiImage(it) }, onNeedPackTab = { controller.loadPackTab(it) }, onDismiss = { pickingEmoji = false }, onPick = { pickingEmoji = false; QuickReactions.remember(controller.prefs, it); insertAtCursor(it) })
+        if (pickingEmoji) EmojiPickerSheet(frequent = FrequentEmoji.read(controller.prefs), store = store, onNeedImage = { controller.loadEmojiImage(it) }, onNeedPackTab = { controller.loadPackTab(it) }, onDismiss = { pickingEmoji = false }, onPick = { pickingEmoji = false; QuickReactions.remember(controller.prefs, it); insertAtCursor(it) })
         if (emojiHits.isNotEmpty()) {
             LazyRow(Modifier.fillMaxWidth().padding(horizontal = 8.dp, vertical = 4.dp), horizontalArrangement = Arrangement.spacedBy(6.dp)) {
                 items(emojiHits, key = { it.shortcode }) { entry ->

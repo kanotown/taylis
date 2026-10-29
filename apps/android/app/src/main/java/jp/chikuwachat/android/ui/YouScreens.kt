@@ -407,7 +407,7 @@ private fun StatusScreen(controller: AppController, version: Int, onDone: () -> 
     val scope = rememberCoroutineScope()
     val store = controller.store
     if (pickingEmoji) {
-        EmojiPickerSheet(recent = QuickReactions.read(controller.prefs), store = store,
+        EmojiPickerSheet(frequent = FrequentEmoji.read(controller.prefs), store = store,
             onNeedImage = { controller.loadEmojiImage(it) }, onNeedPackTab = { controller.loadPackTab(it) }, onDismiss = { pickingEmoji = false }, onPick = { pickingEmoji = false; emoji = it })
     }
     ScreenColumn {
@@ -827,7 +827,7 @@ private fun QuickReactionsSection(controller: AppController, me: UserMe) {
     TextButton(enabled = !saving && chosen != null, onClick = { save(null) }) { Text(stringResource(R.string.you_screens_reset)) }
     picking?.let { index ->
         EmojiPickerSheet(
-            recent = QuickReactions.read(controller.prefs), store = store,
+            frequent = FrequentEmoji.read(controller.prefs), store = store,
             onNeedImage = { controller.loadEmojiImage(it) }, onNeedPackTab = { controller.loadPackTab(it) },
             onDismiss = { picking = null },
             onPick = { glyph ->

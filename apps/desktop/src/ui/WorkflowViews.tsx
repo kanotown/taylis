@@ -11,7 +11,7 @@ import type { FieldDefault, WorkflowField, WorkflowFieldType, WorkflowOut, Workf
 import type { AppController } from "../state/app";
 import type { ChannelState, MessageState } from "../sync/types";
 import { Avatar } from "./Avatar";
-import { EmojiPicker, readRecentEmoji } from "./EmojiPicker";
+import { EmojiPicker } from "./EmojiPicker";
 import { MessageBody } from "./MessageBody";
 import { Button, cn, Field, Input, Modal, PopoverContent, PopoverRoot, PopoverTrigger, Textarea } from "./primitives";
 import { SectionIcon } from "./SectionDialog";
@@ -718,7 +718,6 @@ export function WorkflowEditorDialog({ controller, workflow, defaultChannelId, o
               </PopoverTrigger>
               <PopoverContent align="start" className="w-auto p-3">
                 <EmojiPicker
-                  recent={readRecentEmoji()}
                   custom={[...store.customEmoji.values()]}
                   controller={controller}
                   onPick={(entry) => {

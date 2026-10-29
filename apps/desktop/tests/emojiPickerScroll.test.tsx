@@ -10,9 +10,9 @@ import { gridChunks, pickerSectionKeys, sectionAt } from "../src/ui/emojiPickerL
 /** 2026-10-07 (docs/EMOJI.md §6): one scrolling list of sections; a tab jumps to its section, the scroll moves the tab. */
 
 describe("the picker's layout", () => {
-  it("orders the sections recent, custom, packs, then the standard categories", () => {
-    expect(pickerSectionKeys({ recent: true, custom: true, packIds: ["p1", "p2"], standard: ["smileys", "flags"] })).toEqual(["recent", "custom", "pack:p1", "pack:p2", "smileys", "flags"]);
-    expect(pickerSectionKeys({ recent: false, custom: false, packIds: [], standard: ["smileys"] })).toEqual(["smileys"]);
+  it("orders the sections frequent, custom, packs, then the standard categories", () => {
+    expect(pickerSectionKeys({ frequent: true, custom: true, packIds: ["p1", "p2"], standard: ["smileys", "flags"] })).toEqual(["frequent", "custom", "pack:p1", "pack:p2", "smileys", "flags"]);
+    expect(pickerSectionKeys({ frequent: false, custom: false, packIds: [], standard: ["smileys"] })).toEqual(["smileys"]);
   });
 
   it("finds the section at the scroll position: the last one whose top is at or above the view's top", () => {
@@ -52,11 +52,11 @@ describe("the picker's one list", () => {
   const selected = () => screen.getAllByRole("tab").filter((tab) => tab.getAttribute("aria-selected") === "true").map((tab) => tab.getAttribute("aria-label") ?? tab.textContent);
 
   it("draws every section in one list, each under its header, starting at the top with the first tab", () => {
-    render(<EmojiPicker onPick={() => {}} recent={["👍"]} custom={[parrot]} controller={controller} />);
-    expect(sectionKeys()).toEqual(["recent", "custom", "smileys", "people", "nature", "food", "travel", "activities", "objects", "symbols", "flags"]);
+    render(<EmojiPicker onPick={() => {}} frequent={["👍"]} custom={[parrot]} controller={controller} />);
+    expect(sectionKeys()).toEqual(["frequent", "custom", "smileys", "people", "nature", "food", "travel", "activities", "objects", "symbols", "flags"]);
     expect(screen.getAllByRole("tab")).toHaveLength(11);
     expect(list().scrollTop).toBe(0);
-    expect(selected()).toEqual(["最近使った絵文字"]);
+    expect(selected()).toEqual(["よく使う"]);
     // Every category is there at once (no page per tab): a face, an animal, a flag.
     for (const title of [":grinning:", ":dog:", ":checkered_flag:", ":parrot:"]) expect(screen.getAllByTitle(title).length).toBeGreaterThan(0);
     const header = screen.getByRole("region", { name: "動物・自然" }).firstElementChild as HTMLElement;
@@ -65,9 +65,9 @@ describe("the picker's one list", () => {
   });
 
   it("a tab scrolls its section's top to the top of the list and is highlighted, without another tab in between", () => {
-    render(<EmojiPicker onPick={() => {}} recent={["👍"]} custom={[parrot]} controller={controller} />);
+    render(<EmojiPicker onPick={() => {}} frequent={["👍"]} custom={[parrot]} controller={controller} />);
     fireEvent.click(screen.getByRole("tab", { name: "動物・自然" }));
-    expect(list().scrollTop).toBe(4000); // recent 0, custom 1000, smileys 2000, people 3000, nature 4000
+    expect(list().scrollTop).toBe(4000); // frequent 0, custom 1000, smileys 2000, people 3000, nature 4000
     expect(selected()).toEqual(["動物・自然"]);
     fireEvent.scroll(list());
     expect(selected()).toEqual(["動物・自然"]);
@@ -78,7 +78,7 @@ describe("the picker's one list", () => {
   });
 
   it("the highlighted tab follows the section scrolled into view", () => {
-    render(<EmojiPicker onPick={() => {}} recent={["👍"]} custom={[parrot]} controller={controller} />);
+    render(<EmojiPicker onPick={() => {}} frequent={["👍"]} custom={[parrot]} controller={controller} />);
     list().scrollTop = 5500;
     fireEvent.scroll(list());
     expect(selected()).toEqual(["食べ物"]);
@@ -89,7 +89,7 @@ describe("the picker's one list", () => {
 
   it("searching shows a flat list of hits; clearing it comes back to the top of the list", () => {
     const picked: string[] = [];
-    render(<EmojiPicker onPick={(e) => picked.push(e.glyph)} recent={["👍"]} custom={[parrot]} controller={controller} />);
+    render(<EmojiPicker onPick={(e) => picked.push(e.glyph)} frequent={["👍"]} custom={[parrot]} controller={controller} />);
     fireEvent.click(screen.getByRole("tab", { name: "旗" }));
     const search = screen.getByPlaceholderText(/検索/);
     fireEvent.change(search, { target: { value: "sushi" } });
@@ -99,6 +99,6 @@ describe("the picker's one list", () => {
     expect(picked).toEqual(["🍣"]);
     fireEvent.change(search, { target: { value: "" } });
     expect(list().scrollTop).toBe(0);
-    expect(selected()).toEqual(["最近使った絵文字"]);
+    expect(selected()).toEqual(["よく使う"]);
   });
 });

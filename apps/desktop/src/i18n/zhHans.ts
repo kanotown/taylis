@@ -2673,7 +2673,7 @@ export const zhHans: Readonly<Record<MessageKey, string>> = {
   "changePassword.note": "你正在使用临时密码登录。继续之前请设置新密码。",
   "saved.none": "没有已保存的消息",
   "saved.hint": "使用消息的书签图标，可以将稍后想看的内容收集到这里。",
-  "emojiPicker.recent": "最近使用",
+  "emojiPicker.frequent": "常用",
   "emojiPicker.search": "搜索（例如：tada、干杯）",
   "emojiPicker.emptyPack": "此表情集是空的",
   "emojiPicker.add": "＋ 添加表情…",
