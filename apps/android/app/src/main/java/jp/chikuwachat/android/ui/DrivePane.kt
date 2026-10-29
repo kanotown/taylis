@@ -321,8 +321,12 @@ internal fun DriveThumb(controller: AppController, item: DriveItemOut, size: Dp 
     if (path != null && image == null) LaunchedEffect(path) { image = DriveThumbs.load(controller, path) }
     val picture = image
     if (picture != null) {
-        Image(picture, contentDescription = null, contentScale = ContentScale.Crop,
-            modifier = Modifier.size(size).clip(RoundedCornerShape(8.dp)).border(1.dp, MaterialTheme.colorScheme.outlineVariant, RoundedCornerShape(8.dp)))
+        Box {
+            Image(picture, contentDescription = null, contentScale = ContentScale.Crop,
+                modifier = Modifier.size(size).clip(RoundedCornerShape(8.dp)).border(1.dp, MaterialTheme.colorScheme.outlineVariant, RoundedCornerShape(8.dp)))
+            // MOBILE_UI.md §22.10: the thumbnail is the first frame; the viewer plays it.
+            if (AnimatedImageRules.isGif(item.contentType ?: "", item.name)) GifBadge(Modifier.align(Alignment.BottomStart), compact = true)
+        }
     } else DriveBadge(driveIcon(item), size)
 }
 

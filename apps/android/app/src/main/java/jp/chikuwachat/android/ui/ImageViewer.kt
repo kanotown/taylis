@@ -382,7 +382,7 @@ fun PhotoViewer(
                 val page = photos.getOrNull(index) ?: return@HorizontalPager
                 if (page.video) VideoPosterPage(page, controller, onPlay = { onPlayVideo(index) })
                 else PhotoPage(
-                    page, controller, pull, paging = photos.size > 1, original = originals[page.key] == true,
+                    page, controller, pull, paging = photos.size > 1, original = originals[page.key] == true, shown = index == current,
                     onLoaded = { loaded[page.key] = it }, onTap = toggle,
                     onWantOriginal = { if (page.display) originals[page.key] = true },
                 )
@@ -445,10 +445,12 @@ private fun VideoPosterPage(page: ViewerPhoto, controller: AppController, onPlay
 /** A photo page: its display image (or original), then the original when asked for, without blanking in between. */
 @Composable
 private fun PhotoPage(
-    page: ViewerPhoto, controller: AppController, pull: PullToClose, paging: Boolean, original: Boolean,
+    page: ViewerPhoto, controller: AppController, pull: PullToClose, paging: Boolean, original: Boolean, shown: Boolean,
     onLoaded: (Boolean) -> Unit, onTap: () -> Unit, onWantOriginal: () -> Unit,
 ) {
     var image by remember(page.key) { mutableStateOf<ImageBitmap?>(null) }
+    // §22.10: an animated GIF / WebP's frames (API 28+), playing while this is the page shown.
+    var animation by remember(page.key) { mutableStateOf<android.graphics.drawable.Drawable?>(null) }
     var error by remember(page.key) { mutableStateOf<String?>(null) }
     var attempt by remember(page.key) { mutableIntStateOf(0) }
     LaunchedEffect(page.key, original, attempt) {
@@ -466,6 +468,9 @@ private fun PhotoPage(
             val decoded = withContext(Dispatchers.Default) { decodePhoto(bytes) }
             if (decoded != null) image = decoded
             else if (image == null) error = L10n.str(R.string.image_viewer_couldnt_show_this_image)
+            // The first frame shows at once; the frames follow, a frame over 16 MB decoded smaller.
+            if (decoded != null) withContext(Dispatchers.Default) { decodeAnimation(bytes) { w, h -> AnimatedImageRules.decodeSize(w, h) } }
+                ?.let { animation = it }
         } catch (e: CancellationException) {
             throw e
         } catch (e: Exception) {
@@ -474,9 +479,10 @@ private fun PhotoPage(
     }
     val bitmap = image
     LaunchedEffect(bitmap != null) { onLoaded(bitmap != null) }
+    val frames = rememberAnimationPainter(animation, playing = shown)
     Box(Modifier.fillMaxSize(), contentAlignment = Alignment.Center) {
         if (bitmap != null) ZoomableImage(
-            bitmap, page.key, page.attachment.filename, pull, paging, onTap = onTap,
+            bitmap, page.key, page.attachment.filename, pull, paging, onTap = onTap, frames = frames,
             onScale = { scale -> if (!original && AlbumRules.wantsOriginal(scale, bitmap.width, page.attachment.width)) onWantOriginal() },
         )
         else if (error != null) Column(Modifier.safeDrawingPadding().padding(24.dp), horizontalAlignment = Alignment.CenterHorizontally) {
@@ -490,6 +496,8 @@ private fun PhotoPage(
 @Composable
 private fun ZoomableImage(
     image: ImageBitmap, pageKey: String, filename: String, pull: PullToClose, paging: Boolean, onTap: () -> Unit, onScale: (Float) -> Unit = {},
+    /** §22.10: an animation's frames, drawn in the photo's place (the same shape; [image] is its first frame). */
+    frames: androidx.compose.ui.graphics.painter.Painter? = null,
 ) {
     val touchSlop = LocalViewConfiguration.current.touchSlop
     // Kept by the page, not the bitmap: the original replacing the display image keeps the zoom and the place.
@@ -583,18 +591,20 @@ private fun ZoomableImage(
     ) {
         val transparent = remember(image) { Checkerboard.shows(image) }
         val cellPx = with(LocalDensity.current) { Checkerboard.CELL_DP.dp.toPx() }
-        Image(image, contentDescription = filename, contentScale = ContentScale.Fit,
-            modifier = Modifier.fillMaxSize().graphicsLayer {
-                scaleX = scale; scaleY = scale; translationX = offset.x; translationY = offset.y
-            }.drawBehind {
-                // §15 (PREVIEWS.md): drawn in the photo's layer, so it is the photo's rectangle at any zoom and place;
-                // the squares are divided by the zoom to keep their size on the screen.
-                if (transparent) {
-                    drawCheckerboard(
-                        Checkerboard.fitted(image.width, image.height, size.width, size.height), cellPx / scale,
-                        Checkerboard.visible(size, scale, offset),
-                    )
-                }
-            })
+        val layer = Modifier.fillMaxSize().graphicsLayer {
+            scaleX = scale; scaleY = scale; translationX = offset.x; translationY = offset.y
+        }.drawBehind {
+            // §15 (PREVIEWS.md): drawn in the photo's layer, so it is the photo's rectangle at any zoom and place;
+            // the squares are divided by the zoom to keep their size on the screen.
+            if (transparent) {
+                drawCheckerboard(
+                    Checkerboard.fitted(image.width, image.height, size.width, size.height), cellPx / scale,
+                    Checkerboard.visible(size, scale, offset),
+                )
+            }
+        }
+        // The frames fill the same rectangle as the first frame (same shape), so zoom, pan and the squares stay.
+        if (frames != null) Image(frames, contentDescription = filename, contentScale = ContentScale.Fit, modifier = layer)
+        else Image(image, contentDescription = filename, contentScale = ContentScale.Fit, modifier = layer)
     }
 }

@@ -420,9 +420,20 @@ final class ImagePagerController: UIViewController, UIScrollViewDelegate, UIGest
         loadAround()
     }
 
+    override func viewDidAppear(_ animated: Bool) {
+        super.viewDidAppear(animated)
+        playCurrent()
+    }
+
     override func viewDidDisappear(_ animated: Bool) {
         super.viewDidDisappear(animated)
         loads.values.forEach { $0.cancel() }
+        pages.forEach { $0.setPlaying(false) }
+    }
+
+    /// §22.10: only the photo on the screen moves; the ones either side wait on their first frame.
+    private func playCurrent() {
+        for (i, page) in pages.enumerated() { page.setPlaying(i == index && view.window != nil) }
     }
 
     private var pageWidth: CGFloat { pager.bounds.width }
@@ -453,7 +464,7 @@ final class ImagePagerController: UIViewController, UIScrollViewDelegate, UIGest
 
     private func show(_ i: Int) {
         guard !pages[i].hasImage else { return }
-        if let url = files[i], let image = Self.decode(url) { pages[i].state = .shown(image) } else { fetch(i) }
+        if let url = files[i], let decoded = Self.decode(url) { present(decoded, at: i) } else { fetch(i) }
     }
 
     /// Downloads one photo with the controller's authenticated download (its failure also shows as the app's error);
@@ -467,16 +478,23 @@ final class ImagePagerController: UIViewController, UIScrollViewDelegate, UIGest
             let url = await load(item)
             guard let self, !Task.isCancelled else { return }
             loads[i] = nil
-            guard let url, let image = Self.decode(url) else { pages[i].state = .failed; return }
+            guard let url, let decoded = Self.decode(url) else { pages[i].state = .failed; return }
             files[i] = url
             onFile(item.id, url)
-            if abs(i - index) <= 1 { pages[i].state = .shown(image) }
+            if abs(i - index) <= 1 { present(decoded, at: i) }
         }
     }
 
-    private static func decode(_ url: URL) -> UIImage? {
-        guard let data = try? Data(contentsOf: url) else { return nil }
-        return UIImage(data: data)
+    /// The first frame at once; an animated image (GIF, APNG, animated WebP) then moves while it is the one shown.
+    private func present(_ decoded: (image: UIImage, animation: AnimatedImageSource?), at i: Int) {
+        pages[i].state = .shown(decoded.image)
+        pages[i].animate(decoded.animation)
+        pages[i].setPlaying(i == index && view.window != nil)
+    }
+
+    private static func decode(_ url: URL) -> (image: UIImage, animation: AnimatedImageSource?)? {
+        guard let data = try? Data(contentsOf: url), let image = UIImage(data: data) else { return nil }
+        return (image, AnimatedImageSource(data: data))
     }
 
     /// The page the pager came to rest on: the photos that left the screen go back to unzoomed.
@@ -488,6 +506,7 @@ final class ImagePagerController: UIViewController, UIScrollViewDelegate, UIGest
         for (i, page) in pages.enumerated() where i != index { page.resetZoom() }
         pager.isScrollEnabled = true
         loadAround()
+        playCurrent()
         describePages()
         onPage(index)
     }
@@ -522,20 +541,26 @@ final class ImagePagerController: UIViewController, UIScrollViewDelegate, UIGest
             let url = await loadOriginal(item)
             guard let self else { return }
             originalLoads.remove(i)
-            guard let url, let image = await Self.decodeOff(url) else { return }
+            guard let url, let decoded = await Self.decodeOff(url) else { return }
             upgraded.insert(i)
             files[i] = url
             onFile(item.id, url)
             onOriginal(item.id)
-            if abs(i - index) <= 1 { pages[i].upgrade(image) }
+            if abs(i - index) <= 1 {
+                pages[i].upgrade(decoded.image)
+                if let animation = decoded.animation {
+                    pages[i].animate(animation)
+                    pages[i].setPlaying(i == index && view.window != nil)
+                }
+            }
         }
     }
 
     /// An original (some 48 MB decoded) is decoded off the main thread.
-    private static func decodeOff(_ url: URL) async -> UIImage? {
-        await Task.detached(priority: .userInitiated) { () -> UIImage? in
+    private static func decodeOff(_ url: URL) async -> (image: UIImage, animation: AnimatedImageSource?)? {
+        await Task.detached(priority: .userInitiated) { () -> (image: UIImage, animation: AnimatedImageSource?)? in
             guard let data = try? Data(contentsOf: url), let image = UIImage(data: data) else { return nil }
-            return image.preparingForDisplay() ?? image
+            return (image.preparingForDisplay() ?? image, AnimatedImageSource(data: data))
         }.value
     }
 
@@ -722,6 +747,8 @@ final class ImagePageView: UIView, UIScrollViewDelegate {
     let checker = UIView()
     private let spinner = UIActivityIndicatorView(style: .large)
     private let failure = UIStackView()
+    /// §22.10: the frames of an animated photo (nil for a still one); they replace the image in place, the zoom kept.
+    private(set) var player: AnimatedImagePlayer?
     var onRetry: () -> Void = {}
     var onZoomChange: () -> Void = {}
     /// A single tap, recognised once the double tap has failed (so double-tap zoom keeps working).
@@ -796,6 +823,22 @@ final class ImagePageView: UIView, UIScrollViewDelegate {
         if hasImage { state = .loading }
     }
 
+    /// The shown photo's frames (nil: it is still). A frame larger than `AnimatedImageRules.maxFrameBytes` is decoded
+    /// smaller; all of them are kept when they fit `viewerCacheBytes`.
+    func animate(_ source: AnimatedImageSource?) {
+        player?.stop()
+        player = nil
+        guard let source, hasImage else { return }
+        let side = AnimatedImageRules.decodePixels(width: source.width, height: source.height)
+        let player = AnimatedImagePlayer(source: source, longSide: side, cacheBudget: AnimatedImageRules.viewerCacheBytes)
+        player.onFrame = { [weak self] frame in self?.imageView.image = frame }
+        self.player = player
+    }
+
+    func setPlaying(_ playing: Bool) {
+        if playing { player?.play() } else { player?.stop() }
+    }
+
     /// AL3: whether the zoomed photo shows more screen pixels than it has (a display size zoomed in).
     func needsMorePixels(screenScale: CGFloat) -> Bool {
         guard let image = imageView.image, isZoomed, image.size.width > 0, image.size.height > 0, bounds.width > 0 else { return false }
@@ -824,6 +867,8 @@ final class ImagePageView: UIView, UIScrollViewDelegate {
     }
 
     private func apply() {
+        player?.stop()
+        player = nil
         resetZoom()
         switch state {
         case .loading:

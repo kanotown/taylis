@@ -520,16 +520,57 @@ struct ThumbnailView: View {
     @State private var loader = AttachmentImageLoader()
     @State private var attempt = 0
     @State private var viewing = false
+    /// §22.10: a GIF's frames while it is on the screen (the still JPEG thumbnail otherwise, with the 「GIF」 badge).
+    @State private var animated = AnimatedTile()
+    @State private var onScreen = false
+    @Environment(\.accessibilityReduceMotion) private var reduceMotion
+    @Environment(\.accessibilityPlayAnimatedImages) private var playAnimatedImages
+    @Environment(\.scenePhase) private var scenePhase
+    @Environment(\.displayScale) private var displayScale
+
+    private var isGIF: Bool { AnimatedImageRules.isGIF(contentType: attachment.contentType, filename: attachment.filename) }
+
+    private var moves: Bool {
+        let savings = DeviceSavings.shared
+        let conditions = AnimatedImageRules.Conditions(reduceMotion: reduceMotion, playAnimatedImages: playAnimatedImages,
+                                                       lowPower: savings.lowPower, lowData: savings.lowData)
+        return onScreen && scenePhase == .active && loader.image != nil && !viewing
+            && AnimatedImageRules.tileAnimates(contentType: attachment.contentType, filename: attachment.filename,
+                                               sizeBytes: attachment.sizeBytes, conditions: conditions)
+    }
+
+    /// The tile's box in pixels (the frames are decoded to fill it).
+    private var fillPixels: CGSize {
+        if let square { return CGSize(width: square * displayScale, height: square * displayScale) }
+        let box = ImageFit.ratio(attachment).map(ImageFit.box) ?? CGSize(width: ImageFit.maxWidth, height: ImageFit.maxHeight)
+        return CGSize(width: box.width * displayScale, height: box.height * displayScale)
+    }
 
     var body: some View {
+        tile
+            .overlay(alignment: .bottomLeading) {
+                if isGIF, loader.image != nil, animated.frame == nil, !animated.still { GIFBadge() }
+            }
+            .onAppear { onScreen = true }
+            .onDisappear { onScreen = false }
+            .task(id: moves) {
+                guard moves, let api = controller.api else { return }
+                let id = attachment.id
+                await animated.run(key: "\(api.baseUrl.absoluteString)|\(id)", fill: fillPixels) {
+                    try await api.fetchData("/api/v1/attachments/\(id)/content")
+                }
+            }
+    }
+
+    private var tile: some View {
         Group {
-            if let image = loader.image, let square {
+            if let image = animated.frame ?? loader.image, let square {
                 Button { viewing = true } label: {
                     Image(uiImage: image).resizable().scaledToFill().frame(width: square, height: square).clipped()
                 }
                 .buttonStyle(.plain)
                 .accessibilityLabel("写真 \(attachment.filename)")
-            } else if let image = loader.image,
+            } else if let image = animated.frame ?? loader.image,
                       let ratio = ImageFit.ratio(attachment) ?? (image.size.height > 0 ? image.size.width / image.size.height : nil) {
                 // The shape the server recorded, as the frame shown while loading had: the row keeps its height. Without
                 // one, the photo's own: a box no wider than the photo, so all four corners are rounded (2026-10-06).
