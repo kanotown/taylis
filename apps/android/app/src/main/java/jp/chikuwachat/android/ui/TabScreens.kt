@@ -70,6 +70,7 @@ import androidx.compose.material.icons.outlined.Home
 import androidx.compose.material.icons.outlined.Notifications
 import androidx.compose.material.icons.outlined.Search
 import jp.chikuwachat.android.app.AppController
+import jp.chikuwachat.android.sync.NotificationLevels
 import jp.chikuwachat.android.sync.ChannelState
 import jp.chikuwachat.android.sync.DmCloses
 import jp.chikuwachat.android.sync.Store
@@ -139,7 +140,8 @@ private fun rememberTabBadges(store: Store, version: Int): TabBadges {
     val meId = store.me?.id
     val dm = remember(version, meId) { MainTabs.dmBadge(store.channels.values, meId) }
     val activity = remember(version) { MainTabs.activityBadge(store.channels.values, store.threadSummary, store.activity) }
-    val home = remember(version, meId) { MainTabs.homeDot(store.channels.values, meId) }
+    val timesDefault = NotificationLevels.timesDefault(store.me)
+    val home = remember(version, meId, timesDefault) { MainTabs.homeDot(store.channels.values, meId, timesDefault) }
     return TabBadges(dm, activity, home)
 }
 
@@ -268,7 +270,7 @@ private fun DmRow(channel: ChannelState, controller: AppController, version: Int
     val statusUser = if (single != null) store.users[single] else if (self && meId != null) store.users[meId] else null
     val status = jp.chikuwachat.android.api.activeStatus(statusUser)
     val presence = single?.let { store.presenceOf(it) }
-    val unread = Channels.hasUnread(channel, meId)
+    val unread = Channels.hasUnread(channel, meId, NotificationLevels.timesDefault(store.me))
     val muted = Channels.isMuted(channel)
     val badge = Channels.badgeCount(channel)
     val time = MainTabs.dmTimeLabel(channel.channel.lastMessageAt, now)

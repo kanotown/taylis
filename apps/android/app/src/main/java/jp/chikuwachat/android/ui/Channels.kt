@@ -23,22 +23,26 @@ object Channels {
     /**
      * M24: someone else's times that I have not set to level "all" (its own level, M35) is quiet unread: unread only with a mention, a faint
      * dot otherwise (SYNC_PROTOCOL.md §10.5; the vectors in apps/shared/unread-rules.json). A mute takes precedence.
+     * 2026-10-30: with my times setting `timesDefault` "all" ([NotificationLevels.timesDefault]) one without a level of
+     * its own is not quiet either; its own level still wins (its own "mentions" stays quiet).
      */
-    fun isQuiet(channel: ChannelState, meId: String?, now: Instant = Instant.now()): Boolean {
+    fun isQuiet(channel: ChannelState, meId: String?, timesDefault: String, now: Instant = Instant.now()): Boolean {
         val owner = channel.channel.timesOwnerId ?: return false
-        return owner != meId && NotificationLevels.own(channel) != NotificationLevels.ALL && !isMuted(channel, now)
+        val own = NotificationLevels.own(channel)
+        val all = own == NotificationLevels.ALL || (own == null && timesDefault == NotificationLevels.ALL)
+        return owner != meId && !all && !isMuted(channel, now)
     }
 
     /**
      * Bold, the unread filter and the like (§10.5): a muted or quiet conversation is unread only when I am mentioned.
      * `meId` is who is looking: my own times is an ordinary channel.
      */
-    fun hasUnread(channel: ChannelState, meId: String?, now: Instant = Instant.now()): Boolean =
-        channel.isMember && if (isMuted(channel, now) || isQuiet(channel, meId, now)) channel.mentionCount > 0 else channel.unreadCount > 0
+    fun hasUnread(channel: ChannelState, meId: String?, timesDefault: String, now: Instant = Instant.now()): Boolean =
+        channel.isMember && if (isMuted(channel, now) || isQuiet(channel, meId, timesDefault, now)) channel.mentionCount > 0 else channel.unreadCount > 0
 
     /** M24: the faint dot of a quiet row with new posts but no mention (a muted row shows nothing). */
-    fun showsQuietDot(channel: ChannelState, meId: String?, now: Instant = Instant.now()): Boolean =
-        channel.isMember && channel.unreadCount > 0 && isQuiet(channel, meId, now) && !hasUnread(channel, meId, now)
+    fun showsQuietDot(channel: ChannelState, meId: String?, timesDefault: String, now: Instant = Instant.now()): Boolean =
+        channel.isMember && channel.unreadCount > 0 && isQuiet(channel, meId, timesDefault, now) && !hasUnread(channel, meId, timesDefault, now)
 
     /** Badge number: mentions for channels and muted conversations, every message for DMs (quiet rows too: they are channels). */
     fun badgeCount(channel: ChannelState, now: Instant = Instant.now()): Int = when {
@@ -78,6 +82,8 @@ object Channels {
         favorites: Set<String> = emptySet(),
         sidebar: List<SidebarSectionOut> = emptyList(),
         meId: String? = null,
+        /** My times setting ([NotificationLevels.timesDefault]): whether others' times count as unread for 「未読をまとめる」. */
+        timesDefault: String = NotificationLevels.MENTIONS,
         /** DATA_MODEL.md 「並べ替え」: the default sections' sorts (missing ones: SidebarOrder.defaultSorts). */
         defaults: List<SidebarDefaultOut> = emptyList(),
         /** A DM's display title, for 「名前順」. */
@@ -92,7 +98,7 @@ object Channels {
         fun ordered(rows: List<ChannelState>, key: String) = DmPins.first(rows, dmPins) { rest -> sortOf(key).let { SidebarOrder.section(rest, it.sort, it.manualOrder, title) } }
         val manualDms = sortOf("dms").sort == "manual"
         fun live(channel: ChannelState) = channel.isMember && (channel.channel.isDm || !channel.channel.archived)
-        fun grouped(channel: ChannelState) = groupUnread && live(channel) && hasUnread(channel, meId, now)
+        fun grouped(channel: ChannelState) = groupUnread && live(channel) && hasUnread(channel, meId, timesDefault, now)
         fun keep(channel: ChannelState) = !grouped(channel)
         fun starred(channel: ChannelState) = channel.id in favorites
         val placed = HashMap<String, String>()
@@ -118,8 +124,11 @@ object Channels {
     }
 
     /** M26 (Slack): a folded section still shows what is unread, and the open conversation. */
-    fun shown(rows: List<ChannelState>, collapsed: Boolean, meId: String?, currentId: String? = null, now: Instant = Instant.now()): List<ChannelState> =
-        if (!collapsed) rows else rows.filter { it.id == currentId || hasUnread(it, meId, now) }
+    fun shown(
+        rows: List<ChannelState>, collapsed: Boolean, meId: String?, currentId: String? = null, now: Instant = Instant.now(),
+        timesDefault: String = NotificationLevels.MENTIONS,
+    ): List<ChannelState> =
+        if (!collapsed) rows else rows.filter { it.id == currentId || hasUnread(it, meId, timesDefault, now) }
 
     /** M37: the DMs the home list shows besides my own. */
     const val HOME_DMS = 5
@@ -142,7 +151,8 @@ object Channels {
         // 「手動」: my own DM is where I put it, one of the rows.
         val (self, others) = if (manual) emptyList<ChannelState>() to rest else rest.partition { MainTabs.isSelfNotes(it, meId) }
         val newest = others.take(limit)
-        val olderUnread = others.drop(limit).filter { hasUnread(it, meId, now) }
+        // A DM is never a times: the times setting does not matter here.
+        val olderUnread = others.drop(limit).filter { hasUnread(it, meId, NotificationLevels.MENTIONS, now) }
         return DmSection(pinned + self + newest + olderUnread, more = others.size > newest.size + olderUnread.size)
     }
 }

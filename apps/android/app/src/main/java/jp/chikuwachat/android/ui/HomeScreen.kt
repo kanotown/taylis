@@ -89,6 +89,7 @@ import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
 import jp.chikuwachat.android.api.SidebarSectionOut
 import jp.chikuwachat.android.app.AppController
+import jp.chikuwachat.android.sync.NotificationLevels
 import jp.chikuwachat.android.sync.ChannelState
 import kotlinx.coroutines.launch
 import jp.chikuwachat.android.R
@@ -148,8 +149,9 @@ fun HomeScreen(
     val store = controller.store
     val meId = store.me?.id
     val isGuest = controller.isGuest
-    val sections = remember(version, groupUnread, meId) {
-        Channels.sections(store.channels.values, groupUnread = groupUnread, favorites = store.favorites, sidebar = store.sidebarSections, meId = meId,
+    val timesDefault = NotificationLevels.timesDefault(store.me)
+    val sections = remember(version, groupUnread, meId, timesDefault) {
+        Channels.sections(store.channels.values, groupUnread = groupUnread, favorites = store.favorites, sidebar = store.sidebarSections, meId = meId, timesDefault = timesDefault,
             defaults = store.sidebarDefaults, title = { channelTitle(it, store) }, dmPins = store.dmPins, closedDms = store.closedDms)
     }
     val dmsFolded = FoldedSections.DMS in folded && editing != "dms"
@@ -243,7 +245,7 @@ fun HomeScreen(
                     val fold = FoldedSections.FAVORITES in folded && editing != "favorites"
                     item(key = "header:favorites") { Box(Modifier.folding(this)) { SectionHeader(stringResource(R.string.common_star), fold, action = sortAction("favorites", sections.favorites, fold)) { onToggleFolded(FoldedSections.FAVORITES) } } }
                     if (editing == "favorites") items(sections.favorites, key = { "fav:" + it.id }) { reorderRow(it, sections.favorites, AppController.SortTarget.Default("favorites")) }
-                    else items(Channels.shown(sections.favorites, fold, meId), key = { "fav:" + it.id }) { row(it) }
+                    else items(Channels.shown(sections.favorites, fold, meId, timesDefault = timesDefault), key = { "fav:" + it.id }) { row(it) }
                 }
                 sections.custom.forEachIndexed { index, (section, members) ->
                     item(key = "section:" + section.id) {
@@ -256,7 +258,7 @@ fun HomeScreen(
                     if (editing == "custom:" + section.id) {
                         items(members, key = { "sec:" + section.id + ":" + it.id }) { reorderRow(it, members, AppController.SortTarget.Section(section.id)) }
                     } else {
-                        items(Channels.shown(members, section.collapsed, meId), key = { "sec:" + section.id + ":" + it.id }) { row(it) }
+                        items(Channels.shown(members, section.collapsed, meId, timesDefault = timesDefault), key = { "sec:" + section.id + ":" + it.id }) { row(it) }
                     }
                     if (members.isEmpty() && !section.collapsed && !groupUnread) {
                         item(key = "section-empty:" + section.id) { Box(Modifier.folding(this)) { EmptyHint(stringResource(R.string.home_screen_long_press_a_conversation_move_to)) } }
@@ -265,7 +267,7 @@ fun HomeScreen(
                 val channelsFolded = FoldedSections.CHANNELS in folded && editing != "channels"
                 item(key = "header:channels") { Box(Modifier.folding(this)) { SectionHeader(stringResource(R.string.common_channels), channelsFolded, action = sortAction("channels", sections.channels, channelsFolded)) { onToggleFolded(FoldedSections.CHANNELS) } } }
                 if (editing == "channels") items(sections.channels, key = { it.id }) { reorderRow(it, sections.channels, AppController.SortTarget.Default("channels")) }
-                else items(Channels.shown(sections.channels, channelsFolded, meId), key = { it.id }) { row(it) }
+                else items(Channels.shown(sections.channels, channelsFolded, meId, timesDefault = timesDefault), key = { it.id }) { row(it) }
                 if (!channelsFolded) {
                     if (sections.channels.isEmpty() && !groupUnread) {
                         item(key = "channels-empty") { Box(Modifier.folding(this)) { EmptyHint(stringResource(R.string.home_screen_you_havent_joined_any_channels)) } }
@@ -288,7 +290,7 @@ fun HomeScreen(
                             }) { onToggleFolded(FoldedSections.TIMES) }
                         }
                     }
-                    items(Channels.shown(sections.times, timesFolded, meId), key = { "times:" + it.id }) { row(it) }
+                    items(Channels.shown(sections.times, timesFolded, meId, timesDefault = timesDefault), key = { "times:" + it.id }) { row(it) }
                     if (canCreateTimes && !timesFolded) item(key = "times-create") { ActionRow(Icons.Default.Add, stringResource(R.string.common_create_your_times), onClick = onCreateTimes, modifier = Modifier.folding(this)) }
                 }
                 item(key = "header:dms") { Box(Modifier.folding(this)) { SectionHeader(stringResource(R.string.common_direct_message), dmsFolded, action = sortAction("dms", sections.dms, dmsFolded)) { onToggleFolded(FoldedSections.DMS) } } }
@@ -296,7 +298,7 @@ fun HomeScreen(
                     item(key = "dms-self-placeholder") { HomeSelfNotesRow(meId, myName, busy = creatingSelf, onClick = onSelfPlaceholder, modifier = Modifier.folding(this)) }
                 }
                 if (editing == "dms") items(dmSection.rows, key = { it.id }) { reorderRow(it, dmSection.rows, AppController.SortTarget.Default("dms")) }
-                else items(Channels.shown(dmSection.rows, dmsFolded, meId), key = { it.id }) { row(it) }
+                else items(Channels.shown(dmSection.rows, dmsFolded, meId, timesDefault = timesDefault), key = { it.id }) { row(it) }
                 if (!dmsFolded) {
                     if (dmSection.rows.isEmpty() && !selfPlaceholder && !groupUnread) {
                         item(key = "dms-empty") { Box(Modifier.folding(this)) { EmptyHint(stringResource(R.string.home_screen_pick_someone_from_at_the_bottom)) } }
@@ -531,9 +533,10 @@ private fun HomeChannelRow(channel: ChannelState, controller: AppController, ver
     val meId = store.me?.id
     val title = remember(version, channel) { channelTitle(channel, store).let { if (channel.channel.isDm) it else it.removePrefix("#") } }
     val muted = Channels.isMuted(channel)
-    val unread = Channels.hasUnread(channel, meId)
+    val timesDefault = NotificationLevels.timesDefault(store.me)
+    val unread = Channels.hasUnread(channel, meId, timesDefault)
     // M24: someone else's times with new posts but no mention: not bold, a faint dot (SYNC_PROTOCOL.md §10.5).
-    val quietDot = Channels.showsQuietDot(channel, meId)
+    val quietDot = Channels.showsQuietDot(channel, meId, timesDefault)
     val badge = Channels.badgeCount(channel)
     val others = (channel.channel.dmUserIds ?: emptyList()).filter { it != meId }
     Row(

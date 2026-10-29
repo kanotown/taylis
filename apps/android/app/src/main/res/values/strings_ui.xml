@@ -1616,6 +1616,8 @@
     <string name="you_screens_end">終了 %1$s</string>
     <string name="you_screens_end_of_this_week">今週の終わり</string>
     <string name="you_screens_end_of_today">今日の終わり</string>
+    <string name="you_screens_every_post_in_others_times">他の人の Times もすべて通知</string>
+    <string name="you_screens_every_post_in_others_times_note">他の人の Times も、新しい投稿ごとに通知する（オフのときはメンションだけ）。未読も太字で数える。Times ごとに決めた通知が優先される。</string>
     <string name="you_screens_gestures">操作</string>
     <string name="you_screens_group_consecutive_posts">連続した投稿をまとめる</string>
     <string name="you_screens_hide_presence">在席を隠す</string>

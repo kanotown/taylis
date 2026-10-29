@@ -1616,6 +1616,8 @@
     <string name="you_screens_end">结束 %1$s</string>
     <string name="you_screens_end_of_this_week">本周结束时</string>
     <string name="you_screens_end_of_today">今天结束时</string>
+    <string name="you_screens_every_post_in_others_times">他人的 Times 也通知所有帖子</string>
+    <string name="you_screens_every_post_in_others_times_note">他人的 Times 有新帖子时也通知（关闭时仅限提及），并计入未读。为单个 Times 设置的通知优先。</string>
     <string name="you_screens_gestures">手势</string>
     <string name="you_screens_group_consecutive_posts">合并连续的帖子</string>
     <string name="you_screens_hide_presence">隐藏在线状态</string>

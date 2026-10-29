@@ -542,6 +542,21 @@ private fun NotificationSettingsScreen(controller: AppController, version: Int) 
             }
         }
         Hint(NotificationLabels.OVERALL_FOOTNOTE)
+        // 2026-10-30 (PUSH_NOTIFICATIONS.md §4): only against a server that keeps it (it sends times_notification_default).
+        me?.timesNotificationDefault?.let { timesDefault ->
+            var savingTimes by remember { mutableStateOf(false) }
+            Spacer(Modifier.padding(top = 8.dp))
+            SwitchRow(
+                stringResource(R.string.you_screens_every_post_in_others_times), stringResource(R.string.you_screens_every_post_in_others_times_note),
+                checked = timesDefault == NotificationLevels.ALL, enabled = !savingTimes,
+            ) { on ->
+                scope.launch {
+                    savingTimes = true
+                    controller.setTimesNotificationDefault(if (on) NotificationLevels.ALL else NotificationLevels.MENTIONS)
+                    savingTimes = false
+                }
+            }
+        }
         // M39: only against a server that has the activity.
         if (controller.store.activity != null) {
             var savingReactions by remember { mutableStateOf(false) }

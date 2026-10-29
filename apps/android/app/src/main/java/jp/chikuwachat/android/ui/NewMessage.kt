@@ -63,6 +63,7 @@ import androidx.compose.foundation.isSystemInDarkTheme
 import androidx.core.view.WindowCompat
 import jp.chikuwachat.android.api.UserPublic
 import jp.chikuwachat.android.app.AppController
+import jp.chikuwachat.android.sync.NotificationLevels
 import jp.chikuwachat.android.sync.ChannelState
 import kotlinx.coroutines.launch
 import jp.chikuwachat.android.R
@@ -85,7 +86,7 @@ fun NewMessageDialog(controller: AppController, version: Int, onDismiss: () -> U
     var busy by remember { mutableStateOf(false) }
     var error by remember { mutableStateOf<String?>(null) }
     val scope = rememberCoroutineScope()
-    val destinations = remember(query, version) { Jump.destinations(query, store.channels.values, store.users.values, meId, aiBotIds = controller.aiBotIds) }
+    val destinations = remember(query, version) { Jump.destinations(query, store.channels.values, store.users.values, meId, aiBotIds = controller.aiBotIds, timesDefault = NotificationLevels.timesDefault(store.me)) }
     val focus = remember { FocusRequester() }
     LaunchedEffect(Unit) { runCatching { focus.requestFocus() } }
 

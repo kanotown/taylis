@@ -1622,6 +1622,8 @@
     <string name="you_screens_end">End %1$s</string>
     <string name="you_screens_end_of_this_week">End of this week</string>
     <string name="you_screens_end_of_today">End of today</string>
+    <string name="you_screens_every_post_in_others_times">Every post in others\' times</string>
+    <string name="you_screens_every_post_in_others_times_note">Notifies you of each new post in other people\'s times too (off: mentions only) and counts them as unread. A level set on one times channel wins.</string>
     <string name="you_screens_gestures">Gestures</string>
     <string name="you_screens_group_consecutive_posts">Group consecutive posts</string>
     <string name="you_screens_hide_presence">Hide presence</string>

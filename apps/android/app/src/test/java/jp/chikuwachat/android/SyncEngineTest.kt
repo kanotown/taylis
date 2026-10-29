@@ -355,7 +355,7 @@ class SyncEngineTest {
         // ...but it does not mute: the unread rules never read the overall setting (SYNC_PROTOCOL.md §10.5).
         val state = w.store.channel(w.channelId)!!
         assertFalse(jp.chikuwachat.android.ui.Channels.isMuted(state))
-        assertTrue(jp.chikuwachat.android.ui.Channels.hasUnread(state, w.bob))
+        assertTrue(jp.chikuwachat.android.ui.Channels.hasUnread(state, w.bob, "mentions"))
         w.engine.stop(); w.scope.cancel()
     }
 
