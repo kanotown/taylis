@@ -30,6 +30,8 @@ import jp.chikuwachat.android.MainActivity
 import jp.chikuwachat.android.R
 import jp.chikuwachat.android.api.ApiClient
 import jp.chikuwachat.android.sync.DriveNames
+import jp.chikuwachat.android.sync.DrivePost
+import jp.chikuwachat.android.sync.LargeFiles
 import jp.chikuwachat.android.sync.DriveUploadJob
 import jp.chikuwachat.android.sync.DriveUploadJobs
 import jp.chikuwachat.android.sync.DriveUploadRules
@@ -85,18 +87,20 @@ object DriveUploadCenter {
      */
     data class Target(val serverUrl: String, val userId: String, val session: String?, val locationId: String, val parentId: String, val label: String, val onConflict: String = "fail")
 
-    private fun newJob(target: Target, batchId: String, name: String, size: Long, lastModified: Long?, state: String) = DriveUploadJob(
+    private fun newJob(target: Target, batchId: String, name: String, size: Long, lastModified: Long?, state: String, post: DrivePost? = null) = DriveUploadJob(
         id = UUID.randomUUID().toString(), serverUrl = target.serverUrl, userId = target.userId, session = target.session,
         batchId = batchId, clientUploadId = UUID.randomUUID().toString(), name = name, size = size, lastModifiedMs = lastModified,
         locationId = target.locationId, parentId = target.parentId, label = target.label, state = state, createdAt = System.currentTimeMillis(),
         onConflict = target.onConflict,
+        // CF5: a link posted from the share sheet keeps one idempotency key per file.
+        post = post?.let { if (it.mode == LargeFiles.MODE_SEND && it.clientMsgId == null) it.copy(clientMsgId = UUID.randomUUID().toString()) else it },
     )
 
     /**
      * Files picked in the drive (photo picker, camera, the system's file picker): each is copied into its job
      * (準備中) and then queued; the work starts at once. [onCopied] runs once all are copied (the camera's photo goes).
      */
-    fun addUris(context: Context, scope: CoroutineScope, uris: List<Uri>, target: Target, onCopied: (() -> Unit)? = null) {
+    fun addUris(context: Context, scope: CoroutineScope, uris: List<Uri>, target: Target, onCopied: (() -> Unit)? = null, post: DrivePost? = null) {
         if (uris.isEmpty()) return
         val app = context.applicationContext
         val store = store(app)
@@ -105,7 +109,7 @@ object DriveUploadCenter {
             try {
                 val made = uris.map { uri ->
                     val (name, size, modified) = withContext(Dispatchers.IO) { describe(app, uri) }
-                    newJob(target, batch, name, size ?: 0L, modified, UploadState.PREPARING).also {
+                    newJob(target, batch, name, size ?: 0L, modified, UploadState.PREPARING, post).also {
                         preparing += it.id
                         withContext(Dispatchers.IO) { store.save(it) }
                     }
@@ -143,13 +147,13 @@ object DriveUploadCenter {
      * Files already copied into the app (the share screen's copies, MOBILE_UI.md §20.3): moved into their jobs and
      * queued. Runs on the caller's (IO) thread.
      */
-    fun addFiles(context: Context, files: List<Pair<File, String>>, target: Target) {
+    fun addFiles(context: Context, files: List<Pair<File, String>>, target: Target, post: DrivePost? = null) {
         if (files.isEmpty()) return
         val app = context.applicationContext
         val store = store(app)
         val batch = UUID.randomUUID().toString()
         files.forEach { (file, name) ->
-            val job = newJob(target, batch, name, file.length(), null, UploadState.QUEUED)
+            val job = newJob(target, batch, name, file.length(), null, UploadState.QUEUED, post)
             val data = store.data(job.id)
             data.parentFile?.mkdirs()
             if (!file.renameTo(data)) {
@@ -233,7 +237,42 @@ object DriveUploadCenter {
         val store = store(app)
         store.tidy(System.currentTimeMillis(), preparingHere = preparing.toSet())
         refresh(app)
-        _jobs.value.filter { it.state in UploadState.RUNNABLE }.map { it.serverUrl }.distinct().forEach { DriveUploadWorker.enqueue(app, it, keep = true) }
+        _jobs.value.filter { it.state in UploadState.RUNNABLE || LargeFiles.linkPending(it, LargeFiles.MODE_SEND) }
+            .map { it.serverUrl }.distinct().forEach { DriveUploadWorker.enqueue(app, it, keep = true) }
+    }
+
+    /** CF5: the link of [id] went into its draft or was posted (never twice). */
+    fun markLinked(context: Context, id: String): DriveUploadJob? {
+        val app = context.applicationContext
+        val changed = store(app).change(id) { job -> job.post?.takeIf { !it.linked }?.let { job.copy(post = it.copy(linked = true)) } }
+        refresh(app)
+        return changed
+    }
+
+    /**
+     * CF5: a finished file shared into a conversation (MODE_SEND) is posted there as its `/d/` link, with the job's
+     * idempotency key (a retry after a lost answer gives the same message). False: not now (the work tries again).
+     */
+    internal suspend fun postLink(context: Context, job: DriveUploadJob, client: ApiClient): Boolean {
+        val post = job.post ?: return false
+        val item = job.itemId ?: return false
+        if (post.linked) return true
+        return try {
+            val (message, _) = client.postMessage(
+                post.channelId, post.clientMsgId ?: job.id, LargeFiles.link(client.baseUrl, item), post.parentId, emptyList(),
+                jp.chikuwachat.android.sync.SendOptions(),
+            )
+            markLinked(context, job.id)
+            withContext(Dispatchers.Main) { (context.applicationContext as ChikuwaApp).controller.sharePosted(job.serverUrl, message) }
+            true
+        } catch (e: CancellationException) {
+            throw e
+        } catch (e: Exception) {
+            android.util.Log.w("DriveUpload", "could not post the link of ${job.id}", e)
+            // Refused for good (left the channel, archived): nothing to retry; the file stays in the drive.
+            if (e is jp.chikuwachat.android.api.ApiException.Api && !e.isRetryable) markLinked(context, job.id)
+            false
+        }
     }
 
     /** REVIEW-v0.1.62 #1: the account of [serverUrl] left (or another signed in): its jobs, copies, work and notifications go. */
@@ -268,6 +307,7 @@ object DriveUploadCenter {
             save = { next -> store.update(next).also { if (it) _jobs.value = _jobs.value.map { held -> if (held.id == next.id) next else held } } },
             progress = { id, sent -> setLive(id, sent); onProgress() },
             stillOurs = { withContext(Dispatchers.Main) { controller.driveUploadStillOurs(job, client) } },
+            findFolder = { held -> LargeFiles.applied(held, LargeFiles.resolve(client, held.post!!, System.currentTimeMillis())) },
         )
         return try {
             coroutineScope {
@@ -314,7 +354,13 @@ class DriveUploadWorker(context: Context, params: WorkerParameters) : CoroutineW
         var foreground = false
         val done = mutableListOf<DriveUploadJob>()
         var shown = 0L
+        var linksLeft = false
         try {
+            // CF5: links of shared files finished before (their posting failed for now) go first.
+            for (pending in withContext(Dispatchers.IO) { store.all() }.filter { it.serverUrl == server && LargeFiles.linkPending(it, LargeFiles.MODE_SEND) }) {
+                val client = withContext(Dispatchers.Main) { controller.driveUploadClient(pending) } ?: continue
+                if (!DriveUploadCenter.postLink(app, pending, client)) linksLeft = true
+            }
             while (true) {
                 val next = withContext(Dispatchers.IO) { store.all() }.firstOrNull { it.serverUrl == server && it.state in UploadState.RUNNABLE } ?: break
                 val client = withContext(Dispatchers.Main) { controller.driveUploadClient(next) }
@@ -341,6 +387,7 @@ class DriveUploadWorker(context: Context, params: WorkerParameters) : CoroutineW
                     is UploadOutcome.Done -> {
                         withContext(Dispatchers.IO) { store.dropData(outcome.job.id) }
                         withContext(Dispatchers.Main) { controller.driveUploadDone(outcome.job) }
+                        if (LargeFiles.linkPending(outcome.job, LargeFiles.MODE_SEND) && !DriveUploadCenter.postLink(app, outcome.job, client)) linksLeft = true
                         done += outcome.job
                     }
                     is UploadOutcome.Skipped -> withContext(Dispatchers.IO) { store.dropData(outcome.job.id) }
@@ -359,7 +406,7 @@ class DriveUploadWorker(context: Context, params: WorkerParameters) : CoroutineW
             notifications.cancelProgress(server)
         }
         if (done.isNotEmpty() && !controller.appForeground) notifications.showDone(server, done)
-        return Result.success()
+        return if (linksLeft) Result.retry() else Result.success()
     }
 
     private fun describe(job: DriveUploadJob): String = driveUploadError(job.error) ?: jp.chikuwachat.android.api.ErrorTexts.unknown

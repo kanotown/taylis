@@ -154,6 +154,8 @@ data class DriveUploadJob(
     val error: String? = null,
     val itemId: String? = null,
     val createdAt: Long = 0,
+    /** CF5 (docs/CHANNEL_FILES.md §12.4): a large file of a conversation; its folder is found first (parentId empty until then). */
+    val post: DrivePost? = null,
 ) {
     val isFinished: Boolean get() = state in UploadState.FINISHED
 
@@ -267,8 +269,11 @@ object DriveUploadRules {
      */
     fun retry(job: DriveUploadJob, newId: () -> String): DriveUploadJob {
         val fresh = job.error in setOf("drive_upload_target_moved", "drive_upload_expired", "drive_upload_not_found")
-        return if (fresh) job.copy(state = UploadState.QUEUED, error = null, uploadId = null, clientUploadId = newId(), received = emptyList(), partSize = 0, partsTotal = 0)
-        else job.copy(state = UploadState.QUEUED, error = null)
+        // CF5: a conversation's file whose folder went elsewhere finds its folder again.
+        val refind = job.post != null && job.error == "drive_upload_target_moved"
+        val base = if (refind) job.copy(parentId = "", locationId = "") else job
+        return if (fresh) base.copy(state = UploadState.QUEUED, error = null, uploadId = null, clientUploadId = newId(), received = emptyList(), partSize = 0, partsTotal = 0)
+        else base.copy(state = UploadState.QUEUED, error = null)
     }
 }
 
@@ -310,6 +315,8 @@ class DriveUploader(
     private val stillOurs: suspend () -> Boolean = { true },
     private val partsAtOnce: Int = 2,
     private val quickRetries: Int = 4,
+    /** CF5: finds the folder of a conversation's job ([LargeFiles.needsFolder]) before its session is made. */
+    private val findFolder: (suspend (DriveUploadJob) -> DriveUploadJob)? = null,
 ) {
     private class Gone : Exception("the job went")
     private class AccountChanged : Exception("the account changed")
@@ -340,6 +347,11 @@ class DriveUploader(
             while (true) {
                 try {
                     ours()
+                    if (findFolder != null && LargeFiles.needsFolder(job)) {
+                        val found = findFolder.invoke(job)
+                        ours()
+                        put(found)
+                    }
                     put(job.copy(state = UploadState.UPLOADING, error = null))
                     val session = ensureSession()
                     if (session.status != "completing") {

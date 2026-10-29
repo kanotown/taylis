@@ -68,7 +68,17 @@ class ShareModel(app: Application) : AndroidViewModel(app) {
         }
 
     fun problems(limits: Limits?): List<String> =
-        if (driveTarget != null) SharePayload.driveProblems(checkedFiles) else SharePayload.problems(checkedFiles, text, limits)
+        if (driveTarget != null) SharePayload.driveProblems(checkedFiles) else SharePayload.problems(checkedFiles, text, limits, toDrive = largePlace() != null)
+
+    /**
+     * CF5 (docs/CHANNEL_FILES.md §12.4): where files over the attachments' limit go for the chosen conversation (of the
+     * workspace on screen), or null: refused as before.
+     */
+    fun largePlace(): String? = destination?.takeIf { it.first == controller.activeKey }?.second?.let { controller.largeFilePlace(it) }
+
+    /** CF5: the notes of the files that go to the drive and are posted as links. */
+    fun driveNotes(limits: Limits?): List<String> =
+        if (driveTarget != null || largePlace() == null) emptyList() else SharePayload.driveNotes(checkedFiles, limits)
 
     /** Called once with the intent's contents (a rotation keeps the model and calls it again: ignored). */
     fun start(data: ShareIntentData, own: OwnProviders) {
@@ -190,6 +200,35 @@ class ShareModel(app: Application) : AndroidViewModel(app) {
                 return@launch
             }
             val checked = checkedFiles
+            // CF5: files over the limit go to the drive (background upload), each posted as its link when it is there.
+            val place = largePlace()
+            val large = if (place == null) emptySet() else SharePayload.toDrive(checked, limits).map { it.uri }.toSet()
+            val app = getApplication<Application>()
+            val dir = jobs.dir(jobId)
+            if (large.isNotEmpty()) {
+                val moving = checked.mapIndexedNotNull { index, file -> if (file.uri in large) File(dir, index.toString()).takeIf { it.isFile }?.let { it to file.name } else null }
+                withContext(Dispatchers.IO) {
+                    jp.chikuwachat.android.platform.DriveUploadCenter.addFiles(
+                        app, moving,
+                        jp.chikuwachat.android.platform.DriveUploadCenter.Target(
+                            target.first, account.first, account.second, locationId = "", parentId = "", label = channelTitle,
+                            onConflict = jp.chikuwachat.android.sync.ConflictChoice.RENAME,
+                        ),
+                        jp.chikuwachat.android.sync.DrivePost(
+                            channelId = target.second, place = place!!, mode = jp.chikuwachat.android.sync.LargeFiles.MODE_SEND, channelTitle = channelTitle,
+                        ),
+                    )
+                }
+            }
+            val rest = checked.withIndex().filter { it.value.uri !in large }
+            if (rest.isEmpty() && text.isBlank()) {
+                // Only large files: nothing left for a message of its own.
+                withContext(Dispatchers.IO) { dir.deleteRecursively() }
+                handedOver = true
+                controller.accountKey?.let { RecentConversations.push(controller.prefs, recentKey(it), target.second) }
+                onDone(true)
+                return@launch
+            }
             val job = ShareJob(
                 id = jobId,
                 serverUrl = target.first,
@@ -199,7 +238,7 @@ class ShareModel(app: Application) : AndroidViewModel(app) {
                 channelTitle = channelTitle,
                 body = text.trim(),
                 clientMsgId = UUID.randomUUID().toString(),
-                files = checked.mapIndexed { index, file ->
+                files = rest.map { (index, file) ->
                     ShareJobFile(path = index.toString(), name = file.name, mime = file.mime, size = file.size ?: 0L)
                 },
             )

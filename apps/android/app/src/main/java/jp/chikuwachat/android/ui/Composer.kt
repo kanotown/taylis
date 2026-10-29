@@ -200,10 +200,9 @@ fun ConversationComposer(controller: AppController, channelId: String, version: 
         controller.openWorkflow(workflow, channelId)
     }
     val maxAttachments = store.limits?.maxAttachmentsPerMessage ?: 10
-    /** Uploads into this draft; [cleanup] runs once each upload is over (the camera's file). */
-    fun uploadPicked(uris: List<android.net.Uri>, cleanup: () -> Unit = {}) {
-        if (uris.isEmpty()) return
-        if (pendingUploads.size + uploading + uris.size > maxAttachments) {
+    /** Uploads into this draft's attachments; [cleanup] runs once each upload is over (the camera's file). */
+    fun uploadAttachments(uris: List<android.net.Uri>, cleanup: () -> Unit) {
+        if (store.draft(channelId, parentId).attachments.size + store.uploading(channelId, parentId) + uris.size > maxAttachments) {
             controller.error = L10n.str(R.string.composer_you_can_attach_up_to_files, maxAttachments)
             cleanup()
             return
@@ -219,6 +218,17 @@ fun ConversationComposer(controller: AppController, channelId: String, version: 
                 cleanup()
             }
         } }
+    }
+    /** Picked files into this draft (those over the limit to the drive); [cleanup] runs once they are read. */
+    fun uploadPicked(picked: List<android.net.Uri>, cleanup: () -> Unit = {}) {
+        if (picked.isEmpty()) return
+        // CF5 (docs/CHANNEL_FILES.md §12.4): files over the attachments' limit go to the drive and come back as a link.
+        controller.scope.launch {
+            val (uris, large) = controller.splitLargeFiles(channelId, picked)
+            if (uris.isEmpty()) { controller.addLargeFiles(channelId, parentId, large, onCopied = cleanup); return@launch }
+            controller.addLargeFiles(channelId, parentId, large)
+            uploadAttachments(uris, cleanup)
+        }
     }
     val picker = rememberLauncherForActivityResult(ActivityResultContracts.GetMultipleContents()) { uploadPicked(it) }
     val mediaPicker = rememberLauncherForActivityResult(ActivityResultContracts.PickMultipleVisualMedia(10)) { uploadPicked(it) }
@@ -305,6 +315,7 @@ fun ConversationComposer(controller: AppController, channelId: String, version: 
             }
         }
         PendingAttachments(pendingUploads, controller, uploading) { removed -> store.setDraft(channelId, parentId) { it.copy(attachments = it.attachments - removed) } }
+        LargeFileUploads(controller, channelId, parentId) // CF5: files over the limit on their way to the drive
         // CF4 (docs/CHANNEL_FILES.md §12.3): where files sent here go, under the chips (a public or private channel whose
         // files go to its drive; never a DM).
         if (pendingUploads.isNotEmpty() || uploading > 0) {
