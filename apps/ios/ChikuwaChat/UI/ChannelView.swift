@@ -1591,6 +1591,8 @@ struct ComposerView: View {
     @State private var pickedWorkflow: WorkflowOut?
     @State private var workflows: [WorkflowOut] = []
     @State private var customSendAt = Date().addingTimeInterval(3600)
+    /// CF5: files over the attachment limit waiting for 「ドライブにアップロードしてリンクを投稿」.
+    @State private var driveOffer: ComposerDriveOffer?
     /// M15e: priority and "ask for acknowledgement" for a top-level post; cleared after each send.
     @State private var priority: String?
     @State private var ackRequested = false
@@ -1670,14 +1672,19 @@ struct ComposerView: View {
         }
     }
 
-    /// A picked file: checked against the server's size limit first, then streamed from disk (never read whole).
-    private func upload(file url: URL) async {
+    /// A picked file: checked against the server's size limit first, then streamed from disk (never read whole). Over
+    /// the limit, CF5 offers the drive where the conversation's files may go there (`offeringDrive`).
+    private func upload(file url: URL, offeringDrive: Bool = true) async {
         guard let controller else { return }
-        guard pending.count < 10 else { controller.error = tr("添付は10件までです"); return }
         let accessed = url.startAccessingSecurityScopedResource()
         defer { if accessed { url.stopAccessingSecurityScopedResource() } }
         let size = (try? url.resourceValues(forKeys: [.fileSizeKey]).fileSize) ?? 0
-        if let tooLarge = controller.attachmentTooLarge(size) { controller.error = tooLarge; return }
+        if let tooLarge = controller.attachmentTooLarge(size) {
+            if offeringDrive, await offerDrive(.file(url), name: url.lastPathComponent, size: Int64(size)) { return }
+            controller.error = tooLarge
+            return
+        }
+        guard pending.count < 10 else { controller.error = tr("添付は10件までです"); return }
         let type = UTType(filenameExtension: url.pathExtension)?.preferredMIMEType ?? "application/octet-stream"
         if let uploaded = await controller.uploadAttachment(fileAt: url, filename: url.lastPathComponent, contentType: type) {
             controller.store.setDraft(channelId, parentId: parentId) { $0.attachments.append(uploaded) }
@@ -1686,16 +1693,64 @@ struct ComposerView: View {
 
     /// A library video (testers, 2026-09-29): as it is when it fits the server's limit, else exported again at 720p; the
     /// copies go once uploaded.
-    private func upload(video url: URL) async {
+    /// CF5: over the limit where the conversation's files may go to a drive, the question first (the drive, or this 720p
+    /// copy); `offeringDrive` false once it was answered.
+    private func upload(video url: URL, offeringDrive: Bool = true) async {
         guard let controller else { return }
-        defer { try? FileManager.default.removeItem(at: url.deletingLastPathComponent()) } // PickedMovie's folder
         let size = (try? url.resourceValues(forKeys: [.fileSizeKey]).fileSize) ?? 0
-        guard controller.attachmentTooLarge(size) != nil, let smaller = await VideoUpload.shrink(url) else {
-            await upload(file: url)
+        let tooLarge = controller.attachmentTooLarge(size) != nil
+        if tooLarge, offeringDrive, await offerDrive(.temporary(url, name: url.lastPathComponent), name: url.lastPathComponent,
+                                                     size: Int64(size), video: url) {
+            return  // the copy stays for the answer
+        }
+        defer { try? FileManager.default.removeItem(at: url.deletingLastPathComponent()) } // PickedMovie's folder
+        guard tooLarge, let smaller = await VideoUpload.shrink(url) else {
+            await upload(file: url, offeringDrive: false)
             return
         }
         defer { try? FileManager.default.removeItem(at: smaller) }
-        await upload(file: smaller)
+        await upload(file: smaller, offeringDrive: false)
+    }
+
+    /// CF5 (docs/CHANNEL_FILES.md §12.4): a file over the attachment limit, where the conversation's files may go to a
+    /// drive: its folder is asked of the server and the question shows (files picked together join one question).
+    /// false: not offered here (the size error, or the 720p copy, as before).
+    private func offerDrive(_ source: DriveUploadSource, name: String, size: Int64, video: URL? = nil) async -> Bool {
+        guard let controller, let plan = controller.composerDrivePlan(channelId) else { return false }
+        if driveOffer == nil {
+            guard let resolved = await controller.composerDriveTarget(channelId, plan: plan) else {
+                if let video { try? FileManager.default.removeItem(at: video.deletingLastPathComponent()) }
+                return true  // why was said
+            }
+            if driveOffer == nil { driveOffer = ComposerDriveOffer(resolved: resolved) }
+        }
+        driveOffer?.add(source, name: name, size: size, video: video)
+        return true
+    }
+
+    /// 「ドライブにアップロードしてリンクを投稿」: staged (the spinner meanwhile) and handed to the background uploads.
+    private func startDriveUpload(_ offer: ComposerDriveOffer) {
+        guard let controller else { return }
+        let channelId = channelId, parentId = parentId
+        controller.store.trackUpload(channelId, parentId: parentId, delta: 1)
+        Task {
+            defer { controller.store.trackUpload(channelId, parentId: parentId, delta: -1) }
+            await controller.uploadFromComposer(offer.sources, to: offer.resolved.target, channelId: channelId, parentId: parentId)
+        }
+    }
+
+    /// 「画質を下げて添付」 (library videos only): the 720p copies, as before CF5.
+    private func shrinkVideos(_ offer: ComposerDriveOffer) {
+        guard let controller else { return }
+        controller.store.trackUpload(channelId, parentId: parentId, delta: 1)
+        Task {
+            defer { controller.store.trackUpload(channelId, parentId: parentId, delta: -1) }
+            for url in offer.videos { await upload(video: url, offeringDrive: false) }
+        }
+    }
+
+    private var driveOfferShown: Binding<Bool> {
+        Binding(get: { driveOffer != nil }, set: { if !$0 { driveOffer = nil } })
     }
 
     /// M12d 「後で送信」: the same draft, posted by the server at the chosen time.
@@ -1951,6 +2006,8 @@ struct ComposerView: View {
         VStack(spacing: 0) {
             Divider()
             if let accessory { accessory }
+            // CF5: files over the attachment limit going up into a drive; their links come into the draft when done.
+            if let controller { ComposerDriveUploadsView(controller: controller, channelId: channelId, parentId: parentId) }
             PendingAttachmentsView(items: pending, uploading: uploading, controller: controller) { item in
                 controller?.store.setDraft(channelId, parentId: parentId) { $0.attachments.removeAll { $0.id == item.id } }
             }
@@ -2179,6 +2236,13 @@ struct ComposerView: View {
                 }
             }
             .ignoresSafeArea()
+        }
+        .confirmationDialog(tr("添付の上限を超えるファイルです"), isPresented: driveOfferShown, titleVisibility: .visible, presenting: driveOffer) { offer in
+            Button("ドライブにアップロードしてリンクを投稿") { startDriveUpload(offer) }
+            if offer.allVideos { Button("画質を下げて添付") { shrinkVideos(offer) } }
+            Button("キャンセル", role: .cancel) { offer.discardCopies() }
+        } message: { offer in
+            Text(offer.message)
         }
         .fileImporter(isPresented: $showFileImporter, allowedContentTypes: [.item], allowsMultipleSelection: true) { result in
             guard case .success(let urls) = result else { return }

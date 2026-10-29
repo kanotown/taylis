@@ -1024,6 +1024,54 @@
           }
         }
       }
+    },
+    "上限を超えるファイルはドライブにアップロードし、終わったものからリンクを投稿します" : {
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Files over the limit go up into the drive; each one's link is posted when it finishes."
+          }
+        },
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "超过上限的文件会上传到云盘，每个文件完成后发布其链接。"
+          }
+        }
+      }
+    },
+    "%@ · ドライブにアップロードしてリンクを投稿" : {
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "%@ · Upload to the drive and post a link"
+          }
+        },
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "%@ · 上传到云盘并发布链接"
+          }
+        }
+      }
+    },
+    "投稿のファイル" : {
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Posted files"
+          }
+        },
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "帖子中的文件"
+          }
+        }
+      }
     }
   },
   "version" : "1.0"

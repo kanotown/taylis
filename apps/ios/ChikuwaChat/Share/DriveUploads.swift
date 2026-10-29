@@ -45,6 +45,17 @@ enum DriveUploadRules {
         }
     }
 
+    /// CF5 (docs/CHANNEL_FILES.md §12.4): the server files posts by month in its zone (`CHANNEL_FILES_TZ`, default
+    /// Asia/Tokyo; it is not sent to clients): the month folder 「2026-10」 a file over the attachment limit goes into.
+    static let postsZone = TimeZone(identifier: "Asia/Tokyo") ?? .current
+
+    static func monthName(_ date: Date, zone: TimeZone = postsZone) -> String {
+        var calendar = Calendar(identifier: .gregorian)
+        calendar.timeZone = zone
+        let parts = calendar.dateComponents([.year, .month], from: date)
+        return String(format: "%04d-%02d", parts.year ?? 0, parts.month ?? 0)
+    }
+
     /// AL3 (docs/ALBUMS.md §12): a pick of hundreds of photos is read and staged this many at a time, each group a batch
     /// of its own that starts at once.
     static let pickGroup = 20
@@ -64,6 +75,18 @@ struct DriveUploadTarget: Codable, Equatable, Hashable {
     var locationId: String
     /// Shown with the uploads (「研究室ドライブ › 論文」).
     var label: String
+    /// CF5 (docs/CHANNEL_FILES.md §12.4): folders below `parentId` the server finds or makes when the file completes
+    /// (`relative_dir`, the month 「2026-10」 under 「投稿のファイル」); nil for a folder picked in the drive.
+    var relativeDir: String? = nil
+}
+
+/// CF5: the conversation a batch was started from (a file over the attachment limit). Once a job is done its `/d/` link
+/// goes into that conversation's draft (the app's composer), or — `send`, the share sheet — is posted as a message of its
+/// own (the processor, `client_msg_id` = the job's id); then the job is marked `linked`, so it happens once.
+struct DriveUploadComposer: Codable, Equatable, Hashable {
+    var channelId: String
+    var parentId: String?
+    var send: Bool? = nil
 }
 
 enum DriveUploadState: String, Codable, Equatable {
@@ -122,6 +145,8 @@ struct DriveUploadJob: Codable, Equatable, Identifiable {
     var itemId: String?
     var resendRounds = 0
     var attempts = 0
+    /// CF5: its link went into the composer's draft (or its row was taken out of the composer); nil before.
+    var linked: Bool? = nil
 
     var sentBytes: Int64 {
         state == .done ? size : DriveUploadRules.sentBytes(received: received, size: size, partSize: partSize)
@@ -141,8 +166,12 @@ struct DriveUploadBatch: Codable, Equatable, Identifiable {
     var jobs: [DriveUploadJob]
     /// 「残りすべてに同じ操作」: the answer for the rest of the batch.
     var conflictAnswer: DriveConflictChoice?
+    /// CF5: started from a conversation's composer (nil: from the drive, the share sheet).
+    var composer: DriveUploadComposer? = nil
 
     var isFinished: Bool { jobs.allSatisfy(\.state.isFinished) }
+    /// CF5: the share sheet's done files whose link message is not posted yet.
+    var unposted: [DriveUploadJob] { composer?.send == true ? jobs.filter { $0.state == .done && $0.linked != true } : [] }
 }
 
 /// GET /drive/uploads/{id} (and POST /drive/uploads, PATCH).

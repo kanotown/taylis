@@ -9,6 +9,8 @@ extension AppController {
         Keychain.migrateToSharedGroup()
         SharedContainer.saveWorkspaces(workspaces, active: activeServerUrl)
         Task { await resumeShares() }
+        // CF5 (docs/CHANNEL_FILES.md §12.4): a composer's upload that is done puts its link into the draft.
+        DriveUploadCenter.shared.onBatches = { [weak self] batches in self?.linkComposerUploads(batches) }
         Task { await DriveUploadCenter.shared.resume() } // docs/DRIVE.md §29: drive uploads a restart left
     }
 
@@ -56,5 +58,44 @@ extension AppController {
             SharedContainer.saveLimits(ShareLimits(maxAttachmentBytes: Int64(limits.maxAttachmentBytes),
                                                    maxAttachmentsPerMessage: limits.maxAttachmentsPerMessage), account: workspace.account)
         }
+    }
+
+    // MARK: CF5 — files over the attachment limit from the composer (docs/CHANNEL_FILES.md §12.4)
+
+    /// Where a file over the attachment limit added to this conversation's composer may go; nil: the size error.
+    func composerDrivePlan(_ channelId: String) -> ComposerDrive.Plan? {
+        guard let channel = store.channel(channelId)?.channel else { return nil }
+        return ComposerDrive.plan(channel, settings: store.workspaceSettings, driveAvailable: drive?.available == true)
+    }
+
+    /// The plan's folder, asked of the server (the channel's drive is made on first use); nil after saying why not.
+    func composerDriveTarget(_ channelId: String, plan: ComposerDrive.Plan) async -> ComposerDrive.Resolved? {
+        guard let api, let channel = store.channel(channelId)?.channel else { return nil }
+        do { return try await ComposerDrive.resolve(plan, channel: channel, api: api) } catch {
+            self.error = describe(error)
+            return nil
+        }
+    }
+
+    /// The files go up as one background batch tied to the composer; a name taken in the folder keeps both (as the
+    /// server does for posted files), so nothing is asked.
+    func uploadFromComposer(_ sources: [DriveUploadSource], to target: DriveUploadTarget, channelId: String, parentId: String?) async {
+        guard let workspace = activeWorkspace else { return }
+        let composer = DriveUploadComposer(channelId: channelId, parentId: parentId)
+        if let problem = await DriveUploadCenter.shared.add(sources, to: target, workspace: workspace, onConflict: "rename", composer: composer) {
+            error = problem
+        }
+    }
+
+    /// The active account's composer uploads that are done: each link goes at the end of its conversation's draft
+    /// (once; the draft then syncs to my other devices as typed text does). A file I can no longer read (§28.3) has no
+    /// link to give.
+    func linkComposerUploads(_ batches: [DriveUploadBatch]) {
+        let center = DriveUploadCenter.shared
+        let rows = ComposerDrive.finished(batches, account: activeWorkspace?.account).filter { center.takeLink($0) }
+        guard !rows.isEmpty else { return }
+        let unlinked = ComposerDrive.link(rows, store: store)
+        for row in rows { center.markLinked(row) }
+        if let name = unlinked.first { error = tr("「\(name)」はアップロードしましたが、リンクを作れませんでした") }
     }
 }

@@ -346,3 +346,134 @@ enum ChannelFiles {
         return parts.joined(separator: " · ")
     }
 }
+
+/// CF5 (docs/CHANNEL_FILES.md §12.4): a file over the attachment limit (100 MB) added to the composer goes up into a
+/// drive with the background drive upload (DRIVE.md §30), and its `/d/` link goes into the draft once it is done.
+enum ComposerDrive {
+    /// Where such a file may go from a conversation.
+    enum Plan: Equatable {
+        /// A public or private channel: with `posts` (its posted files go to its drive) its 「投稿のファイル › 2026-10」,
+        /// else (the switch off) its drive's top — the members can open the link there, not in マイドライブ. マイドライブ
+        /// when I cannot write to the channel's drive.
+        case channel(posts: Bool)
+        /// A DM or group DM (no drive of its own): マイドライブ, whose link the others cannot open.
+        case myDrive
+    }
+
+    /// The folder the upload was resolved to, for the question before it starts.
+    enum Destination: Equatable {
+        /// The channel's 「投稿のファイル」 (the month's folder below it is found or made on completion).
+        case channelPosts(channelName: String)
+        /// The channel's drive's top: its posted files stay out of the drive (the switch off), or its 「投稿のファイル」
+        /// is not made yet (the first posted file makes it; a client cannot make that special folder, no API).
+        case channelRoot(channelName: String)
+        /// マイドライブ: a DM, or a channel whose drive I may not write to (an owners-only channel's member).
+        case myDrive(fromChannel: Bool)
+    }
+
+    struct Resolved: Equatable {
+        let target: DriveUploadTarget
+        let destination: Destination
+    }
+
+    /// nil: the size error as before — no drive on the server, or an archived conversation.
+    static func plan(_ channel: ChannelOut, settings: WorkspaceSettings, driveAvailable: Bool) -> Plan? {
+        guard driveAvailable, !channel.archived else { return nil }
+        if channel.isDm { return .myDrive }
+        return .channel(posts: ChannelFiles.savesToDrive(channel, settings: settings))
+    }
+
+    /// The month folder 「2026-10」 in the server's zone (DriveUploadRules.monthName).
+    static func monthName(_ date: Date, zone: TimeZone = DriveUploadRules.postsZone) -> String {
+        DriveUploadRules.monthName(date, zone: zone)
+    }
+
+    /// The channel drive's 「投稿のファイル」 among the root's items (by its role, never by its name).
+    static func postsFolder(_ items: [DriveItemOut]) -> DriveItemOut? {
+        items.first { $0.isChannelPosts && $0.isFolder && $0.trashedAt == nil }
+    }
+
+    /// The root's pages read to find 「投稿のファイル」 (folders come first, by name).
+    static let rootPages = 10
+
+    /// The upload's folder: the plan's drive, resolved (made on first use) through the drive's API.
+    @MainActor
+    static func resolve(_ plan: Plan, channel: ChannelOut, api: DriveApi, now: Date = Date()) async throws -> Resolved {
+        let name = channel.name ?? ""
+        if case .channel(let posts) = plan {
+            let location = try await api.resolveDrive(channelId: channel.id)
+            if location.canWrite {
+                var cursor: String?
+                for _ in 0..<(posts ? rootPages : 0) {
+                    let page = try await api.driveChildren(folderId: location.rootId, sort: .name, descending: false, cursor: cursor)
+                    if let posts = postsFolder(page.items) {
+                        let month = monthName(now)
+                        let label = "#\(name) › \(tr("投稿のファイル")) › \(month)"
+                        return Resolved(target: DriveUploadTarget(parentId: posts.id, locationId: location.id, label: label, relativeDir: month),
+                                        destination: .channelPosts(channelName: name))
+                    }
+                    guard let next = page.nextCursor else { break }
+                    cursor = next
+                }
+                return Resolved(target: DriveUploadTarget(parentId: location.rootId, locationId: location.id, label: "#\(name)"),
+                                destination: .channelRoot(channelName: name))
+            }
+        }
+        let mine = try await api.resolveDrive(channelId: nil)
+        return Resolved(target: DriveUploadTarget(parentId: mine.rootId, locationId: mine.id, label: tr("マイドライブ")),
+                        destination: .myDrive(fromChannel: plan != .myDrive))
+    }
+
+    /// The question's text: where the file goes, and who cannot open its link.
+    static func explanation(_ destination: Destination) -> String {
+        let after = tr("終わるとリンクが入力欄に入ります。")
+        let unreadable = tr("ほかの人はリンクのファイルを開けません（ドライブで共有してください）。")
+        switch destination {
+        case .channelPosts(let name): return tr("#\(name) のドライブの「投稿のファイル」にアップロードします。") + after
+        case .channelRoot(let name): return tr("#\(name) のドライブにアップロードします。") + after
+        case .myDrive(fromChannel: true): return tr("このチャンネルのドライブには書き込めないため、マイドライブにアップロードします。") + after + unreadable
+        case .myDrive(fromChannel: false): return tr("マイドライブにアップロードします。") + after + unreadable
+        }
+    }
+
+    /// The composer's rows of a conversation: its uploads not linked yet (cancelled ones leave), oldest first.
+    static func rows(_ batches: [DriveUploadBatch], account: String?, composer: DriveUploadComposer) -> [DriveUploadRow] {
+        guard let account else { return [] }
+        return batches.filter { $0.account == account && $0.composer == composer }.flatMap { batch in
+            batch.jobs.filter { $0.linked != true && $0.state != .cancelled && $0.state != .skipped }.map { DriveUploadRow(batch: batch, job: $0) }
+        }
+    }
+
+    /// The account's composer uploads that are done and whose link is not in their draft yet (the share sheet's are
+    /// posted by the processor instead).
+    static func finished(_ batches: [DriveUploadBatch], account: String?) -> [DriveUploadRow] {
+        guard let account else { return [] }
+        return batches.filter { $0.account == account && $0.composer != nil && $0.composer?.send != true }.flatMap { batch in
+            batch.jobs.filter { $0.state == .done && $0.linked != true }.map { DriveUploadRow(batch: batch, job: $0) }
+        }
+    }
+
+    /// Each finished upload's link at the end of its conversation's draft in `store` (the draft then syncs to my other
+    /// devices as typed text does). Returns the names of those without a link (a file I can no longer read, §28.3).
+    @MainActor
+    static func link(_ rows: [DriveUploadRow], store: Store) -> [String] {
+        var unlinked: [String] = []
+        for row in rows {
+            guard let composer = row.batch.composer else { continue }
+            guard let itemId = row.job.itemId, let base = URL(string: row.batch.serverUrl) else {
+                unlinked.append(row.job.name)
+                continue
+            }
+            let link = DriveLink.url(base: base, itemId: itemId)
+            store.setDraft(composer.channelId, parentId: composer.parentId) { $0.text = inserting(link, into: $0.text) }
+        }
+        return unlinked
+    }
+
+    /// The draft's text with the link at its end, on a line of its own (unchanged when the link is in it already).
+    static func inserting(_ link: String, into text: String) -> String {
+        if text.contains(link) { return text }
+        if text.isEmpty || text.hasSuffix("\n") { return text + link }
+        return text + "\n" + link
+    }
+}

@@ -30,6 +30,9 @@ struct ShareDriveItem: Decodable, Identifiable, Equatable {
     let name: String
     /// AL3 (docs/ALBUMS.md §12): an album folder (its mark in the list); only whether there is one is read.
     var album: AlbumMark? = nil
+    /// CF5: `channel_posts` for a channel drive's 「投稿のファイル」.
+    var systemRole: String? = nil
+    var trashedAt: String? = nil
 
     struct AlbumMark: Decodable, Equatable {}
 
@@ -77,6 +80,111 @@ extension ShareApi {
             throw Self.failure(status: status, data: data)
         }
         return out
+    }
+}
+
+// MARK: CF5 — files over the attachment limit shared into a conversation (docs/CHANNEL_FILES.md §12.4)
+
+extension ShareApi {
+    private struct LargeFilesChannel: Decodable {
+        let type: String
+        var name: String?
+        var archived = false
+        /// Filled by GET /channels/{id} (CF1); nil from an older server: not filed into the drive.
+        var filesToDriveEffective: Bool?
+    }
+
+    /// Where files over the attachment limit shared into this conversation go — the app's composer's rules
+    /// (ComposerDrive): a public or private channel's 「投稿のファイル › 2026-10」 (the month made on completion), its
+    /// drive's top when its posted files stay out of the drive or 「投稿のファイル」 is not made yet, マイドライブ for a DM
+    /// or a channel drive I cannot write to. nil: archived (the size limit as before).
+    func largeFilesTarget(channelId: String, now: Date = Date()) async throws -> DriveUploadTarget? {
+        let channel: LargeFilesChannel = try await getJSON("/api/v1/channels/\(channelId)")
+        if channel.archived { return nil }
+        if channel.type == "public" || channel.type == "private" {
+            let (data, status) = try await driveCall("POST", "/api/v1/drive/locations/resolve", json: ["kind": "channel", "channel_id": channelId])
+            guard (200..<300).contains(status), let location = try? JSON.snakeDecoder.decode(ShareDriveLocation.self, from: data) else {
+                throw Self.failure(status: status, data: data)
+            }
+            let name = channel.name ?? location.name
+            if location.canWrite == true {
+                if channel.filesToDriveEffective == true {
+                    var cursor: String?
+                    for _ in 0..<10 {
+                        let page = try await driveFolders(location.rootId, cursor: cursor)
+                        if let posts = page.items.first(where: { $0.systemRole == "channel_posts" && $0.kind == "folder" && $0.trashedAt == nil }) {
+                            let month = DriveUploadRules.monthName(now)
+                            return DriveUploadTarget(parentId: posts.id, locationId: location.id,
+                                                     label: "#\(name) › \(localized("投稿のファイル")) › \(month)", relativeDir: month)
+                        }
+                        guard let next = page.nextCursor else { break }
+                        cursor = next
+                    }
+                }
+                return DriveUploadTarget(parentId: location.rootId, locationId: location.id, label: "#\(name)")
+            }
+        }
+        let mine = try await myDrive()
+        return DriveUploadTarget(parentId: mine.rootId, locationId: mine.id, label: mine.title)
+    }
+}
+
+extension ShareModel {
+    /// CF5: the files over the attachment limit go up into the conversation's drive (largeFilesTarget) as a batch of
+    /// their own; each is posted as a link message once done (by this sheet's processor, or the app's after it closes).
+    /// Returns false after saying why not.
+    func sendLargeFiles(_ large: [StagedFile], workspace: Workspace, destination: ShareDestination) async -> Bool {
+        guard let api, let processor = DriveUploadProcessor.shared else {
+            phase = .failed(ErrorMessages.unknown)
+            return false
+        }
+        let target: DriveUploadTarget?
+        do { target = try await api.largeFilesTarget(channelId: destination.id) } catch let failure as ShareFailure {
+            phase = .failed(Self.failureText(failure))
+            return false
+        } catch {
+            phase = .failed(ErrorMessages.unknown)
+            return false
+        }
+        guard let target else {
+            phase = .failed(localized("大きすぎます（上限 \(Self.formatSize(limits.maxAttachmentBytes))）"))
+            return false
+        }
+        let batchId = UUID().uuidString.lowercased()
+        let store = processor.store
+        let jobs: [DriveUploadJob]? = await Task.detached(priority: .userInitiated) {
+            var jobs: [DriveUploadJob] = []
+            for file in large {
+                let jobId = UUID().uuidString.lowercased()
+                guard let cut = try? store.stage(file: file.url, batchId: batchId, jobId: jobId) else {
+                    store.remove(batchId)
+                    return nil
+                }
+                try? FileManager.default.removeItem(at: file.url)
+                jobs.append(DriveUploadJob(id: jobId, clientUploadId: UUID().uuidString.lowercased(),
+                                           name: file.filename.precomposedStringWithCanonicalMapping, contentType: file.contentType,
+                                           size: cut.size, onConflict: "rename", partsTotal: cut.parts, sha: cut.sha))
+            }
+            return jobs
+        }.value
+        guard let jobs else {
+            phase = .failed(localized("ファイルを読み込めませんでした"))
+            return false
+        }
+        let batch = DriveUploadBatch(id: batchId, serverUrl: workspace.serverUrl, account: workspace.account,
+                                     generation: generation(workspace), target: target, createdAt: Date(), jobs: jobs,
+                                     composer: DriveUploadComposer(channelId: destination.id, parentId: nil, send: true))
+        do {
+            try store.save(batch)
+        } catch {
+            store.remove(batchId)
+            phase = .failed(localized("共有を保存できませんでした。空き容量を確かめてください"))
+            return false
+        }
+        // Started here, then let go: the parts go on in the system and Taylis completes and posts them.
+        await processor.add(batch)
+        await processor.detach(batchId)
+        return true
     }
 }
 

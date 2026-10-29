@@ -33,6 +33,8 @@ final class DriveUploadCenter {
     private(set) var picked: [String: Int] = [:]
     /// The uploads sheet is open: the question is asked there (a view under a sheet cannot present).
     var sheetOpen = false
+    /// CF5: told every batch after each change (the app puts the links of finished composer uploads into drafts).
+    @ObservationIgnored var onBatches: (([DriveUploadBatch]) -> Void)?
     @ObservationIgnored private let processor: DriveUploadProcessor?
     @ObservationIgnored private var observer: UUID?
     @ObservationIgnored private var started = false
@@ -51,6 +53,7 @@ final class DriveUploadCenter {
                 Task { @MainActor in
                     self?.batches = batches
                     self?.inflight = inflight
+                    self?.onBatches?(batches)
                 }
             }
         }
@@ -126,7 +129,8 @@ final class DriveUploadCenter {
     /// Stages the picks (each cut into its parts in the App Group) as one batch into `target`, then starts it. Returns
     /// a message for what could not be read. `onConflict` (AL3): an album keeps both on a name taken (`rename`, ALBUMS.md
     /// §9) instead of asking.
-    func add(_ sources: [DriveUploadSource], to target: DriveUploadTarget, workspace: Workspace, onConflict: String = "fail") async -> String? {
+    func add(_ sources: [DriveUploadSource], to target: DriveUploadTarget, workspace: Workspace, onConflict: String = "fail",
+             composer: DriveUploadComposer? = nil) async -> String? {
         guard let processor, !sources.isEmpty else { return nil }
         preparing += sources.count
         defer { preparing -= sources.count }
@@ -149,7 +153,7 @@ final class DriveUploadCenter {
         if !staged.jobs.isEmpty {
             let batch = DriveUploadBatch(id: batchId, serverUrl: workspace.serverUrl, account: workspace.account,
                                          generation: AccountSessions.shared.generation(account: workspace.account), target: target,
-                                         createdAt: Date(), jobs: staged.jobs)
+                                         createdAt: Date(), jobs: staged.jobs, composer: composer)
             do {
                 try store.save(batch)
             } catch {
@@ -187,6 +191,22 @@ final class DriveUploadCenter {
         return DriveUploadJob(id: jobId, clientUploadId: UUID().uuidString.lowercased(), name: name.precomposedStringWithCanonicalMapping,
                               contentType: type, size: cut.size, modifiedMs: modified, onConflict: onConflict, partsTotal: cut.parts, sha: cut.sha)
     }
+
+    /// CF5: the composer's rows of a conversation (its uploads whose link is not in the draft yet), oldest first.
+    func composerRows(account: String?, channelId: String, parentId: String?) -> [DriveUploadRow] {
+        ComposerDrive.rows(batches, account: account, composer: DriveUploadComposer(channelId: channelId, parentId: parentId))
+    }
+
+    /// CF5: the job's link went into the draft (or its row was taken out of the composer). Until the mark is on disk,
+    /// `takeLink` answers false for it, so a change said meanwhile does not put the link in twice.
+    func markLinked(_ row: DriveUploadRow) {
+        linking.insert(row.job.id)
+        Task { await processor?.markLinked(batchId: row.batch.id, jobId: row.job.id) }
+    }
+
+    /// CF5: whether this process may put the job's link into its draft now (once).
+    func takeLink(_ row: DriveUploadRow) -> Bool { linking.insert(row.job.id).inserted }
+    @ObservationIgnored private var linking: Set<String> = []
 
     func answer(_ question: DriveUploadQuestion, _ choice: DriveConflictChoice, all: Bool) {
         Task { await processor?.answer(batchId: question.batchId, jobId: question.jobId, choice: choice, all: all) }
@@ -613,5 +633,109 @@ enum PhotoTranscode {
         let options: [CFString: Any] = [kCGImageDestinationLossyCompressionQuality: quality]
         CGImageDestinationAddImageFromSource(out, image, 0, options as CFDictionary)
         return CGImageDestinationFinalize(out)
+    }
+}
+
+// MARK: CF5 — files over the attachment limit from the composer (docs/CHANNEL_FILES.md §12.4)
+
+/// The question for files over the attachment limit (「ドライブにアップロードしてリンクを投稿」): where they would go, and
+/// the picks that joined it.
+struct ComposerDriveOffer: Identifiable {
+    let id = UUID()
+    let resolved: ComposerDrive.Resolved
+    private(set) var sources: [DriveUploadSource] = []
+    private(set) var names: [String] = []
+    private(set) var bytes: Int64 = 0
+    /// Library videos among them (temporary copies): 「画質を下げて添付」 is offered when every file is one.
+    private(set) var videos: [URL] = []
+
+    init(resolved: ComposerDrive.Resolved) { self.resolved = resolved }
+
+    mutating func add(_ source: DriveUploadSource, name: String, size: Int64, video: URL?) {
+        sources.append(source)
+        names.append(name)
+        bytes += size
+        if let video { videos.append(video) }
+    }
+
+    var allVideos: Bool { !videos.isEmpty && videos.count == sources.count }
+
+    /// The names (one a line) with 「（1.8 GB）」, and where they go.
+    var message: String {
+        tr("\(names.joined(separator: "\n"))（\(formatSize(bytes))）") + "\n" + ComposerDrive.explanation(resolved.destination)
+    }
+
+    /// Turned down: the videos' temporary copies go.
+    func discardCopies() {
+        for url in videos { try? FileManager.default.removeItem(at: url.deletingLastPathComponent()) }
+    }
+}
+
+/// Above the waiting attachments: the conversation's files going up into a drive (progress, cancel, retry). They are
+/// not part of the message: sending goes on meanwhile, and each link comes into the draft when its file is done.
+struct ComposerDriveUploadsView: View {
+    let controller: AppController
+    let channelId: String
+    let parentId: String?
+    private var center: DriveUploadCenter { .shared }
+
+    var body: some View {
+        let rows = center.composerRows(account: controller.activeWorkspace?.account, channelId: channelId, parentId: parentId)
+        if !rows.isEmpty {
+            VStack(alignment: .leading, spacing: 6) {
+                ForEach(rows) { row in
+                    ComposerDriveUploadRow(row: row, sent: center.sent(row.job))
+                }
+                Text("アップロード中も送信できます。終わるとリンクが入力欄に入ります。")
+                    .font(.caption2).foregroundStyle(.secondary).fixedSize(horizontal: false, vertical: true)
+            }
+            .padding(.horizontal, 12)
+            .padding(.top, 8)
+            // Links of uploads that ended while this conversation was not open (or in another workspace).
+            .task { controller.linkComposerUploads(center.batches) }
+        }
+    }
+}
+
+private struct ComposerDriveUploadRow: View {
+    let row: DriveUploadRow
+    let sent: Int64
+    private var center: DriveUploadCenter { .shared }
+    private var failed: Bool { row.job.state == .failed }
+
+    var body: some View {
+        HStack(spacing: 10) {
+            Image(systemName: failed ? "exclamationmark.triangle" : "externaldrive")
+                .foregroundStyle(failed ? Color.orange : Color.secondary)
+                .frame(width: 22)
+            VStack(alignment: .leading, spacing: 3) {
+                Text(row.job.name).font(.footnote).lineLimit(1).truncationMode(.middle)
+                if row.job.size > 0, row.job.state.isActive {
+                    ProgressView(value: min(1, Double(sent) / Double(row.job.size)))
+                }
+                Text("\(DriveUploadTexts.status(row.job, sent: sent)) · \(row.batch.target.label)")
+                    .font(.caption2).foregroundStyle(failed ? Color.red : .secondary).lineLimit(1).monospacedDigit()
+            }
+            Spacer(minLength: 0)
+            if failed {
+                Button { center.retry(row) } label: { Image(systemName: "arrow.clockwise.circle.fill").foregroundStyle(Color.accentColor) }
+                    .buttonStyle(.plain)
+                    .accessibilityLabel(tr("\(row.job.name) をもう一度アップロード"))
+                Button {
+                    center.markLinked(row)
+                    center.discard(row)
+                } label: { Image(systemName: "xmark.circle.fill").foregroundStyle(.secondary) }
+                    .buttonStyle(.plain)
+                    .accessibilityLabel(tr("\(row.job.name) を外す"))
+            } else if row.job.state.isActive || row.job.state == .asking {
+                Button { center.cancel(row) } label: { Image(systemName: "xmark.circle.fill").foregroundStyle(.secondary) }
+                    .buttonStyle(.plain)
+                    .accessibilityLabel(tr("\(row.job.name) のアップロードを取りやめる"))
+            }
+        }
+        .padding(.horizontal, 10)
+        .padding(.vertical, 7)
+        .overlay(RoundedRectangle(cornerRadius: 10).strokeBorder(Color.secondary.opacity(0.3), lineWidth: 0.5))
+        .accessibilityElement(children: .contain)
     }
 }

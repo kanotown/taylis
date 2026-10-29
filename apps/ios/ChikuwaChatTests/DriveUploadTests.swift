@@ -360,6 +360,90 @@ final class DriveUploadProcessorTests: XCTestCase {
         XCTAssertFalse(FileManager.default.fileExists(atPath: store.partsFolder("b1", "j0").path), "a done job's slices go")
     }
 
+    /// CF5 (docs/CHANNEL_FILES.md §12.4): a composer's upload names the month's folder below 「投稿のファイル」
+    /// (`relative_dir`), keeps both on a name taken, and is marked once its link is in the draft.
+    func testAComposersUploadGoesIntoTheMonthFolderAndIsMarkedLinked() async throws {
+        let transport = FakeDriveTransport(server: server)
+        var made = try batch("b9", [("seminar.mov", "0123456789")])
+        made.target = DriveUploadTarget(parentId: "posts-1", locationId: "loc-c", label: "#m2 › 投稿のファイル › 2026-10", relativeDir: "2026-10")
+        made.composer = DriveUploadComposer(channelId: "c1", parentId: nil)
+        made.jobs[0].onConflict = "rename"
+        try store.save(made)
+        let processor = processor(transport)
+        await processor.run("b9")
+        var done = try await settled("b9")
+        XCTAssertEqual(done.jobs[0].state, .done)
+        let create = try XCTUnwrap(server.creates.first)
+        XCTAssertEqual(create["parent_id"] as? String, "posts-1")
+        XCTAssertEqual(create["relative_dir"] as? String, "2026-10")
+        XCTAssertEqual(create["on_conflict"] as? String, "rename")
+        XCTAssertNil(done.jobs[0].linked)
+        XCTAssertEqual(ComposerDrive.finished([done], account: account).map(\.job.id), ["j0"])
+
+        await processor.markLinked(batchId: "b9", jobId: "j0")
+        done = try XCTUnwrap(store.load("b9"))
+        XCTAssertEqual(done.jobs[0].linked, true)
+        XCTAssertEqual(done.composer, DriveUploadComposer(channelId: "c1", parentId: nil))
+        XCTAssertTrue(ComposerDrive.finished([done], account: account).isEmpty)
+    }
+
+    /// CF5: a file shared into a conversation over the limit is posted as a link message once done — with the job's id
+    /// as `client_msg_id`, once (a later run does not post again).
+    func testASharedLargeFileIsPostedAsALinkMessageOnce() async throws {
+        let transport = FakeDriveTransport(server: server)
+        var posts: [[String: Any]] = []
+        let server = server!
+        StubProtocol.handler = { request in
+            if request.url?.path == "/api/v1/channels/c1/messages" {
+                let data = request.httpBodyStream.map { stream -> Data in
+                    stream.open()
+                    defer { stream.close() }
+                    var data = Data()
+                    var buffer = [UInt8](repeating: 0, count: 4096)
+                    while stream.hasBytesAvailable { let n = stream.read(&buffer, maxLength: 4096); if n <= 0 { break }; data.append(buffer, count: n) }
+                    return data
+                } ?? request.httpBody ?? Data()
+                posts.append((try? JSONSerialization.jsonObject(with: data)) as? [String: Any] ?? [:])
+                return (201, Data(#"{"id":"m-1"}"#.utf8))
+            }
+            return server.handle(request)
+        }
+        var made = try batch("b11", [("big.mov", "0123456789")])
+        made.composer = DriveUploadComposer(channelId: "c1", parentId: nil, send: true)
+        try store.save(made)
+        let processor = processor(transport)
+        await processor.run("b11")
+        let done = try await settled("b11") { $0.jobs[0].linked == true }
+        XCTAssertEqual(done.jobs[0].state, .done)
+        XCTAssertEqual(posts.count, 1)
+        XCTAssertEqual(posts.first?["client_msg_id"] as? String, "j0")
+        XCTAssertEqual(posts.first?["body"] as? String, "http://drive.test/d/item-up-1")
+        XCTAssertTrue(done.unposted.isEmpty)
+        await processor.resumeAll()
+        XCTAssertEqual(posts.count, 1, "posted once")
+    }
+
+    /// A batch a build before CF5 left on disk (no target folder path, composer or link mark) still reads, and its
+    /// session is made without `relative_dir`.
+    func testABatchFromBeforeCF5StillReads() async throws {
+        let made = try batch("b10", [("old.txt", "abc")])
+        let encoder = JSONEncoder()
+        encoder.dateEncodingStrategy = .iso8601
+        var object = try XCTUnwrap(JSONSerialization.jsonObject(with: try encoder.encode(made)) as? [String: Any])
+        object["composer"] = nil
+        var target = try XCTUnwrap(object["target"] as? [String: Any])
+        target["relativeDir"] = nil
+        object["target"] = target
+        object["jobs"] = (object["jobs"] as? [[String: Any]])?.map { job in var job = job; job["linked"] = nil; return job }
+        try JSONSerialization.data(withJSONObject: object).write(to: store.folder("b10").appendingPathComponent("batch.json"))
+        let read = try XCTUnwrap(store.load("b10"))
+        XCTAssertNil(read.composer)
+        XCTAssertNil(read.target.relativeDir)
+        await processor(FakeDriveTransport(server: server)).run("b10")
+        _ = try await settled("b10")
+        XCTAssertNil(try XCTUnwrap(server.creates.first)["relative_dir"])
+    }
+
     func testANameTakenAsksAndTheAnswerMakesTheSessionAgainWithTheSameKey() async throws {
         server.taken = ["議事録.docx": "file", "資料": "folder"]
         let transport = FakeDriveTransport(server: server)
