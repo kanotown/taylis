@@ -44,7 +44,9 @@ export type AdminWorkspaceSettingsOut = Omit<ServerAdminWorkspaceSettings, CallS
  * M118: a server before it sends no `dm_pins` (no pins, and the pin actions are not offered); M130: one before it no
  * `active_calls`.
  */
-export type BootstrapOut = Omit<components["schemas"]["BootstrapOut"], "dm_pins" | "closed_dms" | "workspace_settings" | "active_calls" | "me"> & {
+export type BootstrapOut = Omit<components["schemas"]["BootstrapOut"], "dm_pins" | "closed_dms" | "workspace_settings" | "active_calls" | "me" | "channel_files_timezone"> & {
+  /** CF5 (docs/CHANNEL_FILES.md §26): the zone of the 「投稿のファイル」 month folders; none before it (Asia/Tokyo). */
+  channel_files_timezone?: string;
   /** M142: UserMe with `capabilities` optional (older servers). */
   me: UserMe;
   dm_pins?: string[];
@@ -638,6 +640,8 @@ export interface CalendarAlarmUpdated {
 
 // --- the drive (M160–M161, docs/DRIVE.md) ------------------------------------------------------------------------
 export type DriveLocationOut = components["schemas"]["DriveLocationOut"];
+/** CF5 (docs/CHANNEL_FILES.md §26): POST /drive/channel-posts — a channel's 「投稿のファイル › 2026-10」 (null with its switch off). */
+export type DriveChannelPostsOut = components["schemas"]["DriveChannelPostsOut"];
 export type DriveLocationListOut = components["schemas"]["DriveLocationListOut"];
 export type DriveItemOut = components["schemas"]["DriveItemOut"];
 export type DriveFileOut = components["schemas"]["DriveFileOut"];

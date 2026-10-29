@@ -170,10 +170,10 @@ export function Composer({
   const [pollForm, setPollForm] = useState<{ question?: string; options?: string[]; multiple?: boolean } | null>(null);
   // M165 (docs/DRIVE.md §13.1): 「ドライブから」.
   const [drivePicker, setDrivePicker] = useState(false);
-  // CF5: big files waiting for 「ドライブにアップロードしてリンクを投稿」, and the ones going up (sending waits for them).
+  // CF5: big files waiting for 「ドライブにアップロードしてリンクを投稿」, and the ones going up (sending does not wait, §26).
   const [bigOffer, setBigOffer] = useState<BigFileOfferState | null>(null);
   const bigKey = composerKey(channel.id, parentId);
-  const { items: bigItems, holding: bigHolding } = useBigUploads(controller, bigKey, (itemId) => appendDriveLink(itemId));
+  const { items: bigItems } = useBigUploads(controller, bigKey, (itemId) => appendDriveLink(itemId));
   // An offer belongs to its conversation: another one opened here (or the composer gone) lets its files go.
   const bigOfferNow = useRef(bigOffer);
   bigOfferNow.current = bigOffer;
@@ -234,7 +234,6 @@ export function Composer({
     }
     const body = encodeMentions(text.trim(), store.users.values(), store.groups.values());
     if ((!body && pending.length === 0) || !controller.engine || uploading > 0) return;
-    if (bigHolding) { controller.setNotice(t("composer.bigFile.waitToSend")); return; }
     if (pending.length > 10 || body.length > MAX_LENGTH) { controller.setError(t("composer.tooLong")); return; }
     const ids = pending.map((a) => a.id);
     setText("");
@@ -260,7 +259,6 @@ export function Composer({
   const schedule = async (sendAt: Date) => {
     const body = encodeMentions(text.trim(), store.users.values(), store.groups.values());
     if ((!body && pending.length === 0) || uploading > 0 || scheduling) return;
-    if (bigHolding) { controller.setNotice(t("composer.bigFile.waitToSend")); return; }
     if (Number.isNaN(sendAt.getTime()) || sendAt.getTime() < Date.now() + 60_000) { controller.setError(t("composer.pickLater")); return; }
     const ids = pending.map((a) => a.id);
     const what = JSON.stringify([channel.id, parentId, body, ids]);
@@ -287,7 +285,8 @@ export function Composer({
     if (!api || all.length === 0) { whole(); return; }
     // CF5 (docs/CHANNEL_FILES.md §12.4): files over the attachment limit are offered to the drive instead of refused
     // (not where there is no drive queue: no account). The rest are attached as before.
-    const bigs = controller.accountKey ? all.filter((file) => isBigFile(file.size)) : [];
+    const limit = store.attachmentMaxBytes ?? ATTACHMENT_MAX_BYTES;
+    const bigs = controller.accountKey ? all.filter((file) => isBigFile(file.size, limit)) : [];
     const files = bigs.length > 0 ? all.filter((file) => !bigs.includes(file)) : all;
     let release = whole;
     if (bigs.length > 0) {
@@ -300,7 +299,7 @@ export function Composer({
       if (!hold) big();
     }
     if (files.length === 0) { release(); return; }
-    const refusal = refusePicked(files, { maxFiles: ATTACHMENT_MAX_COUNT - pending.length - uploading, maxBytes: ATTACHMENT_MAX_BYTES });
+    const refusal = refusePicked(files, { maxFiles: ATTACHMENT_MAX_COUNT - pending.length - uploading, maxBytes: limit });
     if (refusal) { release(); controller.setError(refusal); return; }
     const channelId = channel.id;
     store.trackUpload(channelId, parentId, files.length);
@@ -435,7 +434,7 @@ export function Composer({
     const release = () => offer.releases.forEach((done) => done());
     const started = await startBigUploads(controller, channel, bigKey, offer.files, release);
     const first = offer.files[0];
-    if (!started && first) controller.setError(t("attach.tooLarge", { name: first.name, max: formatMegabytes(ATTACHMENT_MAX_BYTES) }));
+    if (!started && first) controller.setError(t("attach.tooLarge", { name: first.name, max: formatMegabytes(store.attachmentMaxBytes ?? ATTACHMENT_MAX_BYTES) }));
   };
   const dismissBigOffer = () => {
     bigOffer?.releases.forEach((done) => done());
@@ -896,7 +895,7 @@ export function Composer({
           <ComposerDriveHint controller={controller} channel={channel} shown={pending.length > 0 || uploading > 0} />
           <BigUploadChips controller={controller} items={bigItems} />
         </div>
-        {bigOffer && <BigFileOffer offer={bigOffer} where={bigFileWhere(channel, store.workspaceSettings, canRestorePosted(channel, controller.can?.("channels.moderate") ?? false))} onUpload={() => void uploadBigOffer()} onDismiss={dismissBigOffer} />}
+        {bigOffer && <BigFileOffer offer={bigOffer} where={bigFileWhere(channel, store.workspaceSettings, canRestorePosted(channel, controller.can?.("channels.moderate") ?? false))} limit={store.attachmentMaxBytes} onUpload={() => void uploadBigOffer()} onDismiss={dismissBigOffer} />}
         <input
           ref={fileInput}
           type="file"
@@ -1091,12 +1090,12 @@ export function Composer({
             </span>
             {/* 「送信」 and its ▾ with 「後で送信」, as Slack's schedule dropdown. */}
             <div className="flex items-center">
-              <Button size="sm" className="rounded-r-none" onClick={send} disabled={uploading > 0 || bigHolding || (!text.trim() && pending.length === 0)}>
+              <Button size="sm" className="rounded-r-none" onClick={send} disabled={uploading > 0 || (!text.trim() && pending.length === 0)}>
                 <SendHorizontal size={14} /> {t("composer.send")}
               </Button>
               <PopoverRoot open={scheduleOpen} onOpenChange={setScheduleOpen}>
                 <PopoverTrigger asChild>
-                  <button type="button" aria-label={t("composer.sendLater")} title={t("composer.sendLater")} disabled={uploading > 0 || bigHolding || scheduling || (!text.trim() && pending.length === 0)} className="inline-flex h-7 w-6 items-center justify-center rounded-r-md border-l border-white/30 bg-accent-solid text-white shadow-sm transition-colors hover:bg-accent-solid/90 disabled:pointer-events-none disabled:opacity-50">
+                  <button type="button" aria-label={t("composer.sendLater")} title={t("composer.sendLater")} disabled={uploading > 0 || scheduling || (!text.trim() && pending.length === 0)} className="inline-flex h-7 w-6 items-center justify-center rounded-r-md border-l border-white/30 bg-accent-solid text-white shadow-sm transition-colors hover:bg-accent-solid/90 disabled:pointer-events-none disabled:opacity-50">
                     <ChevronDown size={14} />
                   </button>
                 </PopoverTrigger>

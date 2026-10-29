@@ -2,7 +2,8 @@
  * CF5 (docs/CHANNEL_FILES.md §12.4, §23): the composer's offer for files over the attachment limit 「ドライブに
  * アップロードしてリンクを投稿」, and a chip per such file with its progress, where it goes and a cancel button. The
  * upload is the drive's (its panel shows it too, with pause / resume / try again); the link goes into the draft when it
- * is done, and sending waits until then.
+ * is done. Sending does not wait for it (§26): a message sent meanwhile goes without the link, which then goes into the
+ * emptied draft.
  */
 import { AlertCircle, CloudUpload, Loader2, X } from "lucide-react";
 import { useCallback, useEffect, useRef, useSyncExternalStore } from "react";
@@ -26,16 +27,18 @@ export interface BigFileOfferState {
   releases: (() => void)[];
 }
 
+const OFFER_WHERE = { posts: "composer.bigFile.toChannel", channel: "composer.bigFile.toChannelTop", me: "composer.bigFile.toMine" } as const;
+
 /** The offer that takes the place of 「大きすぎます」 (§12.4). */
-export function BigFileOffer({ offer, where, onUpload, onDismiss }: { offer: BigFileOfferState; where: "channel" | "me"; onUpload: () => void; onDismiss: () => void }) {
-  const max = formatMegabytes(ATTACHMENT_MAX_BYTES);
+export function BigFileOffer({ offer, where, limit, onUpload, onDismiss }: { offer: BigFileOfferState; where: "posts" | "channel" | "me"; limit?: number | null; onUpload: () => void; onDismiss: () => void }) {
+  const max = formatMegabytes(limit ?? ATTACHMENT_MAX_BYTES);
   const first = offer.files[0];
   const title = offer.files.length === 1 && first ? t("composer.bigFile.tooLargeOne", { name: first.name, max }) : t("composer.bigFile.tooLargeMany", { count: offer.files.length, max });
   return (
     <div data-big-file-offer="" role="group" aria-label={t("composer.bigFile.offer")} className="mx-2 mt-2 rounded-lg border border-line bg-panel px-3 py-2 text-xs">
       <p className="flex items-start gap-1.5">
         <CloudUpload size={13} className="mt-px shrink-0 text-muted" aria-hidden />
-        <span>{title} {where === "channel" ? t("composer.bigFile.toChannel") : t("composer.bigFile.toMine")}</span>
+        <span>{title} {t(OFFER_WHERE[where])}</span>
       </p>
       <div className="mt-1.5 flex flex-wrap gap-2">
         <Button size="sm" className="h-7 text-xs" onClick={onUpload}>{t("composer.bigFile.upload")}</Button>
@@ -91,7 +94,7 @@ export async function startBigUploads(controller: AppController, channel: Channe
   }
   let place;
   try {
-    place = await resolveBigFilePlace(api, channel, controller.store.workspaceSettings);
+    place = await resolveBigFilePlace(api, channel, controller.store.workspaceSettings, new Date(), controller.store.channelFilesTimeZone);
   } catch {
     release();
     return false;
