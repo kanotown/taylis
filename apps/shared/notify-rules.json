@@ -29,5 +29,25 @@
       { "name": "system line at level mentions with a keyword hit", "type": "system", "level": "mentions", "reply": "none", "follower": false, "unfollowed": false, "mentioned": false, "mention_all": false, "keyword": true, "expect": { "notify": false } },
       { "name": "system line naming me", "type": "system", "level": "all", "reply": "none", "follower": false, "unfollowed": false, "mentioned": true, "mention_all": false, "keyword": false, "expect": { "notify": false } }
     ]
+  },
+  "levels": {
+    "_comment": "PUSH_NOTIFICATIONS.md §4 (M35, 2026-10-30): the level a conversation notifies me of (`level` in the cases above), resolved from its own level and my settings. own: the conversation's own level (null = follows the defaults). dm: a DM or group DM. others_times: someone else's times. overall: users.notification_default. times_default: users.times_notification_default (\"mentions\" | \"all\"; a `me` from an older server has none: \"mentions\"). Its own level wins; else \"none\" when overall is \"none\"; \"all\" in a DM; times_default in someone else's times; overall elsewhere. The server's push_level and the three clients follow it.",
+    "cases": [
+      { "name": "others' times, overall all, times default mentions", "own": null, "dm": false, "others_times": true, "overall": "all", "times_default": "mentions", "expect": { "level": "mentions" } },
+      { "name": "others' times, overall all, times default all", "own": null, "dm": false, "others_times": true, "overall": "all", "times_default": "all", "expect": { "level": "all" } },
+      { "name": "others' times, overall mentions, times default mentions", "own": null, "dm": false, "others_times": true, "overall": "mentions", "times_default": "mentions", "expect": { "level": "mentions" } },
+      { "name": "others' times, overall mentions, times default all", "own": null, "dm": false, "others_times": true, "overall": "mentions", "times_default": "all", "expect": { "level": "all" } },
+      { "name": "others' times, overall none, times default mentions", "own": null, "dm": false, "others_times": true, "overall": "none", "times_default": "mentions", "expect": { "level": "none" } },
+      { "name": "others' times, overall none, times default all", "own": null, "dm": false, "others_times": true, "overall": "none", "times_default": "all", "expect": { "level": "none" } },
+      { "name": "channel, overall all, times default all", "own": null, "dm": false, "others_times": false, "overall": "all", "times_default": "all", "expect": { "level": "all" } },
+      { "name": "channel, overall mentions, times default all", "own": null, "dm": false, "others_times": false, "overall": "mentions", "times_default": "all", "expect": { "level": "mentions" } },
+      { "name": "channel, overall none, times default all", "own": null, "dm": false, "others_times": false, "overall": "none", "times_default": "all", "expect": { "level": "none" } },
+      { "name": "dm, overall mentions, times default all", "own": null, "dm": true, "others_times": false, "overall": "mentions", "times_default": "all", "expect": { "level": "all" } },
+      { "name": "dm, overall none", "own": null, "dm": true, "others_times": false, "overall": "none", "times_default": "mentions", "expect": { "level": "none" } },
+      { "name": "others' times with its own level mentions, times default all", "own": "mentions", "dm": false, "others_times": true, "overall": "all", "times_default": "all", "expect": { "level": "mentions" } },
+      { "name": "others' times with its own level all, times default mentions", "own": "all", "dm": false, "others_times": true, "overall": "all", "times_default": "mentions", "expect": { "level": "all" } },
+      { "name": "others' times with its own level none, times default all", "own": "none", "dm": false, "others_times": true, "overall": "all", "times_default": "all", "expect": { "level": "none" } },
+      { "name": "channel with its own level none", "own": "none", "dm": false, "others_times": false, "overall": "all", "times_default": "mentions", "expect": { "level": "none" } }
+    ]
   }
 }
