@@ -2265,3 +2265,12 @@ converter の上限（`PREVIEW_MAX_INPUT_BYTES`、50 MB）を超えてプレビ�
   で確かめた。Android の通知（進み具合・待機・同じ名前・失敗・完了）は、アプリを起動させた通知では保存したワークスペースをまだ読んで
   おらず、別のワークスペースのアップロードの一覧が開いていた。メッセージの通知と同じ「待っているワークスペース」を通して、そのワーク
   スペースに替えてから一覧を開く（ChikuwaChat_Pixel_9 で、実際の完了の通知・起動中・裏・止めてからの起動を確かめた）。
+
+## 31. REVIEW-v0.1.82 の対応（2026-10-30）
+
+- **送り直しの答え**（#3 と同じ種類）：`POST /drive/folders` と「ドライブに保存」（`POST /drive/save-attachment` の
+  `client_op_id`）を送り直したとき、作った項目を今の GET と同じ規則で読めるときだけ返す（`service.made_before`。ゴミ箱・読めない
+  場所へ移されたなら `404 drive_item_not_found`）。アップロードの完了（REVIEW-v0.1.70 #3）と同じ考え。アルバムは ALBUMS.md §24.2。
+- **別のフォルダへの同じキーの同時の作成**（#7 と同じ種類）：`drive_items_client_op_uniq` の衝突をロールバックして探し直し、
+  作られたフォルダを 200 で返す（今までは 500）。
+- **`DriveItemOut.posted`**：見る人が読めるメッセージだけで決める（`items_out(..., viewer=)`、CHANNEL_FILES.md §27.2）。
