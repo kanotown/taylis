@@ -237,6 +237,24 @@ async def readable_item(
     return item, (await acl.access(db, actor, location)).require_read()
 
 
+async def made_before(db: AsyncSession, actor: User, client_op_id: uuid.UUID) -> DriveItem | None:
+    """The item the actor's `client_op_id` made (the same request again), checked as a GET
+    would be now: None when it made nothing; 404 drive_item_not_found when it is in the trash or
+    has moved where the actor cannot read it (REVIEW-v0.1.82 #3: a name, a description or a count
+    changed after that must never be answered)."""
+    found = (
+        await db.execute(
+            select(DriveItem.id).where(
+                DriveItem.created_by == actor.id, DriveItem.client_op_id == client_op_id
+            )
+        )
+    ).scalar_one_or_none()
+    if found is None:
+        return None
+    item, _ = await readable_item(db, actor, found)
+    return item
+
+
 async def items_out(db: AsyncSession, rows: list[DriveItem], *, viewer: User) -> list[DriveItemOut]:
     """`viewer`: whom the answer is for (`posted` counts only the messages they can read now,
     REVIEW-v0.1.82 #6)."""
@@ -682,20 +700,31 @@ async def create_folder(
             return await item_out(db, existing, viewer=actor), False
         raise name_taken(existing)
     if data.client_op_id is not None:
-        # The same request again after the folder was renamed or moved: the same folder.
-        found = (
-            await db.execute(
-                select(DriveItem).where(
-                    DriveItem.created_by == actor.id, DriveItem.client_op_id == data.client_op_id
-                )
-            )
-        ).scalar_one_or_none()
+        # The same request again after the folder was renamed or moved: the same folder, while
+        # the actor can still read it (REVIEW-v0.1.82 #3).
+        found = await made_before(db, actor, data.client_op_id)
         if found is not None:
             await db.commit()
             return await item_out(db, found, viewer=actor), False
     if await depth_of(db, parent.id) + 1 > names.MAX_DEPTH:
         raise depth_exceeded()
-    folder = await new_folder_in_tx(db, actor, parent, name, client_op_id=data.client_op_id)
+    actor_id = actor.id
+    try:
+        folder = await new_folder_in_tx(db, actor, parent, name, client_op_id=data.client_op_id)
+    except IntegrityError:
+        # REVIEW-v0.1.82 #7: the same client_op_id made by a request that was faster (in another
+        # folder: the same folder's lock already lets the second one see the first).
+        await db.rollback()
+        user = await db.get(User, actor_id)
+        again = (
+            await made_before(db, user, data.client_op_id)
+            if user is not None and data.client_op_id is not None
+            else None
+        )
+        if user is None or again is None:
+            raise
+        await db.commit()
+        return await item_out(db, again, viewer=user), False
     location = await lock_location(db, parent.location_id)
     location.item_count += 1
     location.updated_at = utcnow()

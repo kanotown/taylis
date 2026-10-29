@@ -94,15 +94,6 @@ async def attach_copy(
 # --- saving an attachment -------------------------------------------------------------------------
 
 
-async def _made_before(
-    db: AsyncSession, actor_id: uuid.UUID, derived: uuid.UUID
-) -> DriveItem | None:
-    stmt = select(DriveItem).where(
-        DriveItem.created_by == actor_id, DriveItem.client_op_id == derived
-    )
-    return (await db.execute(stmt)).scalar_one_or_none()
-
-
 async def save_attachment(
     db: AsyncSession,
     actor: User,
@@ -132,7 +123,9 @@ async def save_attachment(
     actor_id = actor.id
     derived = op_id(data.client_op_id, source.id) if data.client_op_id else None
     if derived is not None:
-        done = await _made_before(db, actor_id, derived)
+        # The same request again: the file it made, while the actor can still read it
+        # (REVIEW-v0.1.82 #3, as POST /drive/albums).
+        done = await service.made_before(db, actor, derived)
         if done is not None:
             return await service.item_out(db, done, viewer=actor), False
     # A first look at the quota (and the name, when it must be free) before copying any byte.
@@ -164,10 +157,16 @@ async def save_attachment(
     except IntegrityError:
         await db.rollback()
         await drop_objects(blobs, clone.keys)
-        found = await _made_before(db, actor_id, derived) if derived is not None else None
-        if found is None:
+        # The rollback expired the actor: read again.
+        user = await db.get(User, actor_id)
+        found = (
+            await service.made_before(db, user, derived)
+            if derived is not None and user is not None
+            else None
+        )
+        if user is None or found is None:
             raise
-        return await service.item_out(db, found, viewer=actor), False
+        return await service.item_out(db, found, viewer=user), False
     except BaseException:
         await db.rollback()
         await drop_objects(blobs, clone.keys)
