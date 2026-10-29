@@ -136,6 +136,10 @@ private struct ShareForm: View {
                     if model.tooMany, model.mode == .conversation {
                         Text("ファイルは\(model.limits.maxAttachmentsPerMessage)件までです。減らしてください").foregroundStyle(.red)
                     }
+                    // CF5 (docs/CHANNEL_FILES.md §12.4): they go up into the conversation's drive and come as links.
+                    if !model.tooLarge.isEmpty, model.mode == .conversation {
+                        Text("上限を超えるファイルはドライブにアップロードし、終わったものからリンクを投稿します")
+                    }
                 }
             }
             if model.mode == .conversation {
@@ -174,7 +178,7 @@ private struct FileRow: View {
             VStack(alignment: .leading, spacing: 2) {
                 Text(file.filename).lineLimit(1).truncationMode(.middle)
                 if tooLarge {
-                    Text("大きすぎます（上限 \(ShareModel.formatSize(limit))）").font(.caption).foregroundStyle(.red)
+                    Text("\(ShareModel.formatSize(file.size)) · ドライブにアップロードしてリンクを投稿").font(.caption).foregroundStyle(.secondary)
                 } else {
                     Text(ShareModel.formatSize(file.size)).font(.caption).foregroundStyle(.secondary)
                 }

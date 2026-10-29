@@ -205,7 +205,7 @@ actor DriveUploadProcessor {
     /// Every batch nobody drives (the app at start, back in front, the network back).
     func resumeAll() async {
         retryAt.removeAll()
-        for batch in store.all() where !batch.isFinished {
+        for batch in store.all() where !batch.isFinished || !batch.unposted.isEmpty {
             await run(batch.id)
         }
     }
@@ -268,6 +268,12 @@ actor DriveUploadProcessor {
         retryAt[jobId] = nil
         authFailures[jobId] = nil
         await advance(batchId)
+    }
+
+    /// CF5: the job's link is in the composer's draft (or the composer let it go): it is not put there again.
+    func markLinked(batchId: String, jobId: String) {
+        update(batchId, jobId) { $0.linked = true }
+        notify()
     }
 
     /// Takes a finished (or failed) job out of the list, with its slices.
@@ -384,6 +390,7 @@ actor DriveUploadProcessor {
             return
         }
         if batch.isFinished {
+            if !batch.unposted.isEmpty, let api = makeApi(batch) { await postLinks(id, api: api) }
             finishBatch(id)
             return
         }
@@ -395,7 +402,35 @@ actor DriveUploadProcessor {
         for jobId in batch.jobs.map(\.id) {
             await stepJob(id, jobId, api: api)
         }
+        await postLinks(id, api: api)
         if store.load(id)?.isFinished == true { finishBatch(id) }
+    }
+
+    /// CF5 (docs/CHANNEL_FILES.md §12.4): a file shared into a conversation over the attachment limit, once done, is
+    /// posted as a message of its own with its `/d/` link. The job's id is the `client_msg_id`, so a retry (a lost answer,
+    /// a restart) answers the same message. A temporary failure is tried again on the next run; a refusal (no longer a
+    /// member, archived) gives up — the file stays in the drive.
+    private func postLinks(_ batchId: String, api: ShareApi) async {
+        guard let batch = store.load(batchId), let composer = batch.composer, composer.send == true else { return }
+        for job in batch.unposted {
+            guard let itemId = job.itemId, let base = URL(string: batch.serverUrl) else {
+                update(batchId, job.id) { $0.linked = true }
+                continue
+            }
+            var link = base.absoluteString
+            while link.hasSuffix("/") { link.removeLast() }
+            link += "/d/" + itemId
+            do {
+                _ = try await api.postMessage(channelId: composer.channelId, clientMsgId: job.id, body: link,
+                                              parentId: composer.parentId, attachmentIds: [])
+                update(batchId, job.id) { $0.linked = true }
+            } catch ShareFailure.refused {
+                update(batchId, job.id) { $0.linked = true; $0.error = "post_refused" }
+            } catch {
+                continue  // offline, a server briefly unwell, a session to renew: the next run posts it
+            }
+        }
+        notify()
     }
 
     private func isRunning(_ batchId: String, _ jobId: String) -> Bool {
@@ -446,10 +481,12 @@ actor DriveUploadProcessor {
 
     /// POST /drive/uploads. Returns whether the job goes on now.
     private func createSession(_ batch: DriveUploadBatch, _ job: DriveUploadJob, api: ShareApi) async throws -> Bool {
-        let body: [String: Any] = [
+        var body: [String: Any] = [
             "client_upload_id": job.clientUploadId, "parent_id": batch.target.parentId, "name": job.name, "size_bytes": job.size,
             "on_conflict": job.onConflict, "content_modified_ms": job.modifiedMs.map { $0 as Any } ?? NSNull(),
         ]
+        // CF5: the month's folder under 「投稿のファイル」, found or made by the server on completion.
+        if let dir = batch.target.relativeDir, !dir.isEmpty { body["relative_dir"] = dir }
         let (data, status) = try await api.driveCall("POST", "/api/v1/drive/uploads", json: body)
         if (200..<300).contains(status), let session = try? JSON.snakeDecoder.decode(DriveUploadSessionOut.self, from: data) {
             return take(batch.id, job.id, session)

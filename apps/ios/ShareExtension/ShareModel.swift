@@ -69,11 +69,12 @@ final class ShareModel {
         workspace.flatMap { SharedContainer.limits(account: $0.account) } ?? .fallback
     }
 
-    /// The files over the server's size limit.
+    /// The files over the server's size limit: into a conversation they go up into its drive and are posted as links
+    /// (CF5, docs/CHANNEL_FILES.md §12.4); they do not count among the message's attachments.
     var tooLarge: [StagedFile] { files.filter { $0.size > limits.maxAttachmentBytes } }
-    var tooMany: Bool { files.count > limits.maxAttachmentsPerMessage }
+    var tooMany: Bool { files.count - tooLarge.count > limits.maxAttachmentsPerMessage }
     var isEmpty: Bool { files.isEmpty && text.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty }
-    var canSend: Bool { phase == .editing && mode == .conversation && destination != nil && !isEmpty && tooLarge.isEmpty && !tooMany }
+    var canSend: Bool { phase == .editing && mode == .conversation && destination != nil && !isEmpty && !tooMany }
     /// The drive takes files only (no text), of any size the server allows (it says so per file).
     var canSave: Bool { phase == .editing && mode == .drive && driveTarget != nil && !files.isEmpty }
 
@@ -144,6 +145,20 @@ final class ShareModel {
     func send() async {
         guard canSend, let store, let workspace, let destination, let processor = ShareProcessor.shared else { return }
         phase = .sending
+        let large = tooLarge
+        if !large.isEmpty {
+            guard await sendLargeFiles(large, workspace: workspace, destination: destination) else { return }
+            files.removeAll { file in large.contains { $0.id == file.id } }
+            // Only large files and no text: nothing else to post now (their links come as they finish).
+            if isEmpty {
+                releaseStaging()
+                progress = 1
+                phase = .sent
+                try? await Task.sleep(nanoseconds: 700_000_000)
+                finish(true)
+                return
+            }
+        }
         let share = PendingShare(
             id: shareId, clientMsgId: UUID().uuidString.lowercased(), serverUrl: workspace.serverUrl, account: workspace.account,
             generation: generations[workspace.account] ?? AccountSessions.shared.generation(account: workspace.account),

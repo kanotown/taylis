@@ -37872,6 +37872,198 @@
           }
         }
       }
+    },
+    "終わるとリンクが入力欄に入ります。" : {
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "When it finishes, its link goes into the message box. "
+          }
+        },
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "完成后，链接会放入输入框。"
+          }
+        }
+      }
+    },
+    "ほかの人はリンクのファイルを開けません（ドライブで共有してください）。" : {
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Others cannot open the linked file (share it in the drive)."
+          }
+        },
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "其他人无法打开链接的文件（请在云盘中共享）。"
+          }
+        }
+      }
+    },
+    "#%@ のドライブの「投稿のファイル」にアップロードします。" : {
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Uploads to Posted files in the drive of #%@. "
+          }
+        },
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "将上传到 #%@ 的云盘的“帖子中的文件”。"
+          }
+        }
+      }
+    },
+    "#%@ のドライブにアップロードします。" : {
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Uploads to the drive of #%@. "
+          }
+        },
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "将上传到 #%@ 的云盘。"
+          }
+        }
+      }
+    },
+    "このチャンネルのドライブには書き込めないため、マイドライブにアップロードします。" : {
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "You cannot write to this channel's drive, so it uploads to My Drive. "
+          }
+        },
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "你无法写入此频道的云盘，因此将上传到我的云盘。"
+          }
+        }
+      }
+    },
+    "マイドライブにアップロードします。" : {
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Uploads to My Drive. "
+          }
+        },
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "将上传到我的云盘。"
+          }
+        }
+      }
+    },
+    "「%@」はアップロードしましたが、リンクを作れませんでした" : {
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "“%@” was uploaded, but its link could not be made"
+          }
+        },
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "已上传“%@”，但无法生成链接"
+          }
+        }
+      }
+    },
+    "添付の上限を超えるファイルです" : {
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "The file is over the attachment limit"
+          }
+        },
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "文件超过了附件上限"
+          }
+        }
+      }
+    },
+    "ドライブにアップロードしてリンクを投稿" : {
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Upload to the drive and post a link"
+          }
+        },
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "上传到云盘并发布链接"
+          }
+        }
+      }
+    },
+    "画質を下げて添付" : {
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Attach at a lower quality"
+          }
+        },
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "降低画质后附加"
+          }
+        }
+      }
+    },
+    "アップロード中も送信できます。終わるとリンクが入力欄に入ります。" : {
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "You can send while it uploads. When it finishes, its link goes into the message box."
+          }
+        },
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "上传期间也可以发送。完成后，链接会放入输入框。"
+          }
+        }
+      }
+    },
+    "%@ を外す" : {
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Remove %@"
+          }
+        },
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "移除 %@"
+          }
+        }
+      }
     }
   },
   "version" : "1.0"

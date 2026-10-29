@@ -13,6 +13,8 @@ final class FakeDriveApi: DriveApi {
     var pageSize = 2
     var items: [String: DriveItemDetailOut] = [:]
     var itemError: Error?
+    /// CF5: the drives `resolveDrive` answers as writable (a channel's id, or "me").
+    var writable: Set<String> = []
     private(set) var calls: [String] = []
 
     func driveLocations() async throws -> [DriveLocationOut] {
@@ -24,7 +26,8 @@ final class FakeDriveApi: DriveApi {
     func resolveDrive(channelId: String?) async throws -> DriveLocationOut {
         calls.append("resolve \(channelId ?? "me")")
         return DriveLocationOut(id: "loc-\(channelId ?? "me")", kind: channelId == nil ? "user" : "channel", channelId: channelId,
-                                rootId: "root-\(channelId ?? "me")", name: channelId == nil ? "マイドライブ" : "ゼミ")
+                                rootId: "root-\(channelId ?? "me")", name: channelId == nil ? "マイドライブ" : "ゼミ",
+                                canWrite: writable.contains(channelId ?? "me"))
     }
 
     func driveChildren(folderId: String, sort: DriveSort, descending: Bool, cursor: String?) async throws -> DriveChildrenOut {
@@ -783,5 +786,167 @@ final class ChannelFilesTests: XCTestCase {
                 try data.write(to: URL(fileURLWithPath: dir).appendingPathComponent("channel-files-\(style == .dark ? "dark" : "light").png"))
             }
         }
+    }
+}
+
+/// CF5 (docs/CHANNEL_FILES.md §12.4): files over the attachment limit from the composer go up into a drive and their
+/// `/d/` links come into the draft.
+@MainActor
+final class ComposerDriveTests: XCTestCase {
+    private func channel(_ type: String, own: Bool? = nil, archived: Bool = false) -> ChannelOut {
+        ChannelOut(id: "c", type: type, name: "m2-seminar", topic: nil, purpose: nil, archived: archived, createdBy: nil, lastSeq: 0,
+                   lastMessageAt: nil, createdAt: "", updatedAt: "", membership: nil, dmUserIds: nil, filesToDrive: own)
+    }
+
+    private func date(_ iso: String) -> Date { ISO8601DateFormatter().date(from: iso)! }
+
+    func testWhereAFileOverTheLimitMayGo() {
+        let on = WorkspaceSettings(channelFilesToDrive: true), off = WorkspaceSettings(channelFilesToDrive: false)
+        XCTAssertEqual(ComposerDrive.plan(channel("public"), settings: on, driveAvailable: true), .channel(posts: true))
+        XCTAssertEqual(ComposerDrive.plan(channel("private"), settings: on, driveAvailable: true), .channel(posts: true))
+        XCTAssertEqual(ComposerDrive.plan(channel("public", own: true), settings: off, driveAvailable: true), .channel(posts: true))
+        // The switch off: the channel drive's top (its members open the link there), not 「投稿のファイル」.
+        XCTAssertEqual(ComposerDrive.plan(channel("public", own: false), settings: on, driveAvailable: true), .channel(posts: false))
+        XCTAssertEqual(ComposerDrive.plan(channel("public"), settings: off, driveAvailable: true), .channel(posts: false))
+        XCTAssertEqual(ComposerDrive.plan(channel("dm"), settings: on, driveAvailable: true), .myDrive)
+        XCTAssertEqual(ComposerDrive.plan(channel("group_dm"), settings: off, driveAvailable: true), .myDrive)
+        XCTAssertNil(ComposerDrive.plan(channel("public"), settings: on, driveAvailable: false), "no drive on the server")
+        XCTAssertNil(ComposerDrive.plan(channel("dm"), settings: on, driveAvailable: false))
+        XCTAssertNil(ComposerDrive.plan(channel("public", archived: true), settings: on, driveAvailable: true))
+        // A server before CF1 files nothing into channel drives (their top, then); a DM still has マイドライブ.
+        XCTAssertEqual(ComposerDrive.plan(channel("public"), settings: WorkspaceSettings(), driveAvailable: true), .channel(posts: false))
+        XCTAssertEqual(ComposerDrive.plan(channel("dm"), settings: WorkspaceSettings(), driveAvailable: true), .myDrive)
+    }
+
+    func testTheMonthIsTheServersInTokyo() {
+        XCTAssertEqual(ComposerDrive.monthName(date("2026-10-31T14:59:00Z")), "2026-10")
+        XCTAssertEqual(ComposerDrive.monthName(date("2026-10-31T15:00:00Z")), "2026-11")
+        XCTAssertEqual(ComposerDrive.monthName(date("2026-12-31T15:00:00Z")), "2027-01")
+        XCTAssertEqual(ComposerDrive.monthName(date("2026-10-31T15:00:00Z"), zone: TimeZone(identifier: "UTC")!), "2026-10")
+    }
+
+    func testAWritableChannelDriveTakesItIntoThePostsFolderByItsRole() async throws {
+        let api = FakeDriveApi()
+        api.writable = ["c"]
+        var albums = api.folder("albums-1", parent: "root-c")
+        albums.systemRole = "albums"
+        var named = api.folder("named", parent: "root-c")  // a plain folder under the stored name is not it
+        named = DriveItemOut(id: named.id, locationId: named.locationId, parentId: named.parentId, kind: "folder", name: ChannelFiles.storedName)
+        var posts = api.folder("posts-1", parent: "root-c")
+        posts.systemRole = "channel_posts"
+        api.children["root-c"] = [albums, named, api.folder("a"), posts]  // the special folder on the second page
+        let resolved = try await ComposerDrive.resolve(.channel(posts: true), channel: channel("public"), api: api, now: date("2026-10-29T03:00:00Z"))
+        XCTAssertEqual(resolved.destination, .channelPosts(channelName: "m2-seminar"))
+        XCTAssertEqual(resolved.target, DriveUploadTarget(parentId: "posts-1", locationId: "loc-c",
+                                                         label: "#m2-seminar › \(tr("投稿のファイル")) › 2026-10", relativeDir: "2026-10"))
+        XCTAssertEqual(api.calls, ["resolve c", "children root-c name asc -", "children root-c name asc 2"])
+    }
+
+    /// No 「投稿のファイル」 yet (no file posted): the client cannot make the special folder, so the drive's top.
+    func testWithoutThePostsFolderTheChannelDrivesTop() async throws {
+        let api = FakeDriveApi()
+        api.writable = ["c"]
+        api.children["root-c"] = [api.folder("a")]
+        let resolved = try await ComposerDrive.resolve(.channel(posts: true), channel: channel("private"), api: api)
+        XCTAssertEqual(resolved.destination, .channelRoot(channelName: "m2-seminar"))
+        XCTAssertEqual(resolved.target.parentId, "root-c")
+        XCTAssertNil(resolved.target.relativeDir)
+    }
+
+    /// The switch off: the channel drive's top, without looking for 「投稿のファイル」.
+    func testWithTheSwitchOffTheChannelDrivesTopUnlisted() async throws {
+        let api = FakeDriveApi()
+        api.writable = ["c"]
+        var posts = api.folder("posts-1", parent: "root-c")
+        posts.systemRole = "channel_posts"
+        api.children["root-c"] = [posts]
+        let resolved = try await ComposerDrive.resolve(.channel(posts: false), channel: channel("public", own: false), api: api)
+        XCTAssertEqual(resolved.destination, .channelRoot(channelName: "m2-seminar"))
+        XCTAssertEqual(resolved.target, DriveUploadTarget(parentId: "root-c", locationId: "loc-c", label: "#m2-seminar"))
+        XCTAssertEqual(api.calls, ["resolve c"])
+    }
+
+    func testMyDriveForADmAndAChannelDriveINeedNotWrite() async throws {
+        let api = FakeDriveApi()
+        let readOnly = try await ComposerDrive.resolve(.channel(posts: true), channel: channel("public"), api: api)
+        XCTAssertEqual(readOnly.destination, .myDrive(fromChannel: true))
+        XCTAssertEqual(readOnly.target, DriveUploadTarget(parentId: "root-me", locationId: "loc-me", label: tr("マイドライブ")))
+        XCTAssertEqual(api.calls, ["resolve c", "resolve me"], "a drive I cannot write to is not listed")
+        let dmApi = FakeDriveApi()
+        let dm = try await ComposerDrive.resolve(.myDrive, channel: channel("dm"), api: dmApi)
+        XCTAssertEqual(dm.destination, .myDrive(fromChannel: false))
+        XCTAssertEqual(dmApi.calls, ["resolve me"])
+        XCTAssertTrue(ComposerDrive.explanation(dm.destination).contains(tr("ほかの人はリンクのファイルを開けません（ドライブで共有してください）。")))
+        XCTAssertFalse(ComposerDrive.explanation(.channelPosts(channelName: "m2")).contains(tr("ほかの人はリンクのファイルを開けません（ドライブで共有してください）。")))
+    }
+
+    private func batch(_ id: String, account: String = "srv|me", composer: DriveUploadComposer?, jobs: [(String, DriveUploadState, String?, Bool?)]) -> DriveUploadBatch {
+        DriveUploadBatch(id: id, serverUrl: "http://127.0.0.1:18766/", account: account, generation: 0,
+                         target: DriveUploadTarget(parentId: "p", locationId: "l", label: "#m2"), createdAt: Date(),
+                         jobs: jobs.map { name, state, item, linked in
+                             var job = DriveUploadJob(id: "\(id)-\(name)", clientUploadId: "k-\(name)", name: name, size: 200_000_000, partsTotal: 12)
+                             job.state = state
+                             job.itemId = item
+                             job.linked = linked
+                             return job
+                         },
+                         composer: composer)
+    }
+
+    func testTheComposersRowsAndItsFinishedUploads() {
+        let here = DriveUploadComposer(channelId: "c", parentId: nil)
+        let batches = [
+            batch("b1", composer: here, jobs: [("a.mov", .uploading, nil, nil), ("b.mov", .done, "i-b", nil), ("c.mov", .done, "i-c", true),
+                                                ("d.mov", .cancelled, nil, nil), ("e.mov", .failed, nil, nil)]),
+            batch("b2", composer: DriveUploadComposer(channelId: "c", parentId: "m1"), jobs: [("thread.mov", .done, "i-t", nil)]),
+            batch("b3", composer: nil, jobs: [("drive.pdf", .done, "i-d", nil)]),
+            batch("b4", account: "other|me", composer: here, jobs: [("theirs.mov", .done, "i-x", nil)]),
+            // The share sheet's: posted by the processor, never put into a draft.
+            batch("b5", composer: DriveUploadComposer(channelId: "c", parentId: nil, send: true), jobs: [("shared.mov", .done, "i-s", nil)]),
+        ]
+        XCTAssertEqual(ComposerDrive.rows(batches, account: "srv|me", composer: here).map(\.job.name), ["a.mov", "b.mov", "e.mov"])
+        XCTAssertEqual(ComposerDrive.rows(batches, account: "srv|me", composer: DriveUploadComposer(channelId: "c", parentId: "m1")).map(\.job.name),
+                       ["thread.mov"])
+        XCTAssertTrue(ComposerDrive.rows(batches, account: nil, composer: here).isEmpty)
+        XCTAssertEqual(ComposerDrive.finished(batches, account: "srv|me").map(\.job.name), ["b.mov", "thread.mov"])
+    }
+
+    func testTheLinkGoesAtTheEndOfTheDraftOnce() {
+        let link = "http://127.0.0.1:18766/d/01a16063-9d83-753d-a072-1f33464eecfe"
+        XCTAssertEqual(ComposerDrive.inserting(link, into: ""), link)
+        XCTAssertEqual(ComposerDrive.inserting(link, into: "ゼミの録画です"), "ゼミの録画です\n" + link)
+        XCTAssertEqual(ComposerDrive.inserting(link, into: "ゼミの録画です\n"), "ゼミの録画です\n" + link)
+        XCTAssertEqual(ComposerDrive.inserting(link, into: "既に \(link) あり"), "既に \(link) あり")
+    }
+
+    func testFinishedUploadsPutTheirLinksIntoTheirDrafts() {
+        let store = Store()
+        store.setDraft("c") { $0.text = "録画を置きました" }
+        let batches = [
+            batch("b1", composer: DriveUploadComposer(channelId: "c", parentId: nil),
+                  jobs: [("a.mov", .done, "01a16063-9d83-753d-a072-1f33464eecfe", nil), ("gone.mov", .done, nil, nil)]),
+            batch("b2", composer: DriveUploadComposer(channelId: "c", parentId: "m1"), jobs: [("t.mov", .done, "00000000-0000-0000-0000-000000000001", nil)]),
+        ]
+        let unlinked = ComposerDrive.link(ComposerDrive.finished(batches, account: "srv|me"), store: store)
+        XCTAssertEqual(unlinked, ["gone.mov"])
+        XCTAssertEqual(store.draft("c").text, "録画を置きました\nhttp://127.0.0.1:18766/d/01a16063-9d83-753d-a072-1f33464eecfe")
+        XCTAssertTrue(store.draft("c").isDirty, "the draft syncs to my other devices")
+        XCTAssertEqual(store.draft("c", parentId: "m1").text, "http://127.0.0.1:18766/d/00000000-0000-0000-0000-000000000001")
+        // Said again (another change before the mark is on disk): the link is not doubled.
+        _ = ComposerDrive.link(ComposerDrive.finished(batches, account: "srv|me"), store: store)
+        XCTAssertEqual(store.draft("c", parentId: "m1").text, "http://127.0.0.1:18766/d/00000000-0000-0000-0000-000000000001")
+    }
+
+    func testTheQuestionNamesTheFilesAndOffersTheSmallerCopyOnlyForVideos() {
+        let resolved = ComposerDrive.Resolved(target: DriveUploadTarget(parentId: "p", locationId: "l", label: "#m2"),
+                                              destination: .channelPosts(channelName: "m2"))
+        var offer = ComposerDriveOffer(resolved: resolved)
+        offer.add(.file(URL(fileURLWithPath: "/tmp/a.mov")), name: "a.mov", size: 150_000_000, video: URL(fileURLWithPath: "/tmp/x/a.mov"))
+        XCTAssertTrue(offer.allVideos)
+        offer.add(.file(URL(fileURLWithPath: "/tmp/b.zip")), name: "b.zip", size: 50_000_000, video: nil)
+        XCTAssertFalse(offer.allVideos)
+        XCTAssertEqual(offer.sources.count, 2)
+        XCTAssertTrue(offer.message.contains("a.mov\nb.zip"))
+        XCTAssertTrue(offer.message.contains(ComposerDrive.explanation(resolved.destination)))
     }
 }
