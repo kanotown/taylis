@@ -18,7 +18,7 @@ the stored ones (photo_probed_at IS NULL), a bounded number a run.
 from collections.abc import Sequence
 
 import sqlalchemy as sa
-from alembic import op
+from alembic import context, op
 from sqlalchemy.dialects import postgresql
 
 revision: str = "0127"
@@ -98,7 +98,36 @@ def upgrade() -> None:
     )
 
 
+def _revoke_or_refuse() -> None:
+    """REVIEW-v0.1.82 #2: a server before 0127 has no `originals` and hands out every original
+    file (a photo's EXIF location too) through a link made with originals=false. Refuses the
+    downgrade while such a link is not revoked, unless `alembic -x album_links=revoke`: then those
+    links are revoked (their people make new ones after the downgrade, knowing what they hand
+    out). Expired links count too: an older server reads the same expiry, but it is simpler and
+    safer not to keep any."""
+    found = op.get_bind().execute(
+        sa.text(
+            "SELECT count(*) FROM drive_share_links WHERE originals = false AND revoked_at IS NULL"
+        )
+    )
+    count = int(found.scalar_one())
+    if count == 0:
+        return
+    if context.get_x_argument(as_dictionary=True).get("album_links") != "revoke":
+        raise RuntimeError(
+            f"0127 downgrade refused: {count} share link(s) hand out no original files, and a "
+            "server before 0127 would hand out the originals (with their EXIF location) through "
+            "them. Run `alembic -x album_links=revoke downgrade <rev>` to revoke those links "
+            "first (docs/ALBUMS.md §24)."
+        )
+    op.execute(
+        "UPDATE drive_share_links SET revoked_at = now(), updated_at = now() "
+        "WHERE originals = false AND revoked_at IS NULL"
+    )
+
+
 def downgrade() -> None:
+    _revoke_or_refuse()
     op.drop_column("drive_share_links", "originals")
     op.drop_index("drive_items_taken_idx", table_name="drive_items")
     op.drop_column("drive_items", "taken_at")
