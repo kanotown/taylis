@@ -801,8 +801,8 @@ struct AlbumCreateSheet: View {
                 Section {
                     Toggle("日付を指定", isOn: $dated)
                     if dated {
-                        DatePicker("始まり", selection: $starts, displayedComponents: .date)
-                        DatePicker("終わり", selection: $ends, in: starts..., displayedComponents: .date)
+                        DatePicker("開始日", selection: $starts, displayedComponents: .date)
+                        DatePicker("終了日", selection: $ends, in: starts..., displayedComponents: .date)
                     }
                 } footer: {
                     Text("指定しなければ、写真の撮影日の範囲を出します。")
@@ -893,7 +893,7 @@ struct AlbumPickerSheet: View {
                     }
                     .disabled(adding != nil || hub?.writableLocations.isEmpty != false)
                 } footer: {
-                    Text(tr("この投稿の写真・動画 \(media.count) 件をアルバムに入れます。"))
+                    Text(tr("この投稿の写真・動画（\(media.count) 件）を追加するアルバムを選んでください。"))
                 }
                 if let failure {
                     Section { Text(failure).foregroundStyle(.red) }

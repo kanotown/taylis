@@ -198,7 +198,7 @@ describe("the rest", () => {
 
   it("checks the settings' dates and sums an add", () => {
     expect(datesProblem("", "")).toBeNull();
-    expect(datesProblem("2026-09-19", "2026-09-16")).toContain("前");
+    expect(datesProblem("2026-09-19", "2026-09-16")).toContain("終了日は開始日より後");
     expect(datesProblem("2026-9-1", "")).toContain("日付");
     expect(addSummary([{ ok: true }, { ok: false, error: "drive_read_only" }, { ok: true }])).toEqual({ done: 2, failed: 1, error: "drive_read_only" });
   });

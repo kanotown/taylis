@@ -23,7 +23,7 @@ import { type DragEvent, type KeyboardEvent, type ReactNode, useCallback, useEff
 import { ApiError, describeError } from "../api/errors";
 import type { DriveCrumb, DriveItemOut, DriveLocationOut, DriveSearchHitOut, DriveTrashEntryOut } from "../api/types";
 import type { AppController } from "../state/app";
-import { appendPage, breadcrumbs, clickAction, clickSelection, type DriveIconKind, driveColumns, type DriveOrder, type DriveSort, type DriveViewMode, driveTime, exactTime, formatBytes, iconKind, itemTime, locationName, nextSort, pathLine, readViewMode, sortLabel, thumbnailPath, viewable, viewerKind, writeViewMode } from "../drive/listing";
+import { appendPage, breadcrumbs, checkAll, checkSelection, clickAction, clickSelection, headerCheck, type DriveIconKind, driveColumns, type DriveOrder, type DriveSort, type DriveViewMode, driveTime, exactTime, formatBytes, iconKind, itemTime, locationName, nextSort, pathLine, readViewMode, sortLabel, thumbnailPath, viewable, viewerKind, writeViewMode } from "../drive/listing";
 import { openPage } from "../drive/snippet";
 import { afterPaste, type DriveClipboard, downloadPlan, pasteAction } from "../drive/actions";
 import { canRearrange, isSystemFolder, itemName, localizedPath, rememberSystemFolders } from "../drive/channelFiles";
@@ -514,7 +514,10 @@ export function DriveBrowser({ controller, location, folderId, onFolder, mode = 
   // --- keyboard -------------------------------------------------------------------------------------------------------
 
   const onKeyDown = (event: KeyboardEvent<HTMLDivElement>) => {
-    if ((event.target as HTMLElement).closest("input, textarea")) return;
+    // Text fields keep their keys; a focused check box only its own Space (⌘A, arrows, Esc still reach the list).
+    const target = event.target as HTMLElement;
+    if (target.closest("input:not([type=checkbox]), textarea, select")) return;
+    if (event.key === " " && target.closest("input[type=checkbox]")) return;
     const mod = event.metaKey || event.ctrlKey;
     const at = focusId ? order.indexOf(focusId) : -1;
     const focus = (index: number, extend: boolean) => {
@@ -584,10 +587,18 @@ export function DriveBrowser({ controller, location, folderId, onFolder, mode = 
     else select(item, event);
     if (action !== "select") open(item);
   };
-  /** The row's check box: adds or removes the item (Shift: the range), never opens it. */
+  /** The row's check box: adds or removes the item (Shift: the run from the last box, set to its state), never opens it. */
   const checkItem = (item: DriveItemOut, event: { stopPropagation: () => void; metaKey: boolean; ctrlKey: boolean; shiftKey: boolean }) => {
     event.stopPropagation();
-    select(item, event, true);
+    const next = checkSelection(order, selected, anchor, item.id, event.shiftKey);
+    setSelected(next.selected);
+    setAnchor(next.anchor);
+    setFocusId(item.id);
+  };
+  /** §27.7: the header's box, over the rows loaded so far. */
+  const checkEvery = () => {
+    setSelected(checkAll(order, selected));
+    setAnchor(null);
   };
 
   // --- rows: drag to move, drop files into a folder --------------------------------------------------------------------
@@ -892,7 +903,7 @@ export function DriveBrowser({ controller, location, folderId, onFolder, mode = 
     <table className="w-full table-fixed border-collapse text-[13.5px]" data-drive-columns={[columns.modified && "modified", columns.by && "by", columns.size && "size"].filter(Boolean).join(" ")}>
       <thead className="sticky top-0 z-10 bg-canvas text-left text-xs text-muted">
         <tr className="border-b border-line">
-          <th className="w-10 pl-4" aria-label={t("drive.select")} />
+          <th className="w-10 pl-4" aria-label={t("drive.select")}><HeaderCheck order={order} selected={selected} onCheck={checkEvery} /></th>
           <SortHeader label={t("drive.column.name")} sort="name" current={sort} onSort={setSort} disabled={!!hits} />
           {columns.modified && <SortHeader label={t("drive.column.modified")} sort="modified" current={sort} onSort={setSort} disabled={!!hits} className="w-36" />}
           {columns.by && <th className="w-32 px-2 py-2 font-medium">{t("drive.column.by")}</th>}
@@ -1140,6 +1151,33 @@ function ItemCheck({ item, checked, shown, onCheck, tile = false }: {
         checked || shown ? "opacity-100" : "opacity-0 focus-visible:opacity-100 group-hover/row:opacity-100 [@media(hover:none)]:opacity-100",
         tile && "rounded shadow-sm",
       )}
+    />
+  );
+}
+
+/** The list's header box (§27.7): checked when every loaded row is selected, a dash when some are. */
+function HeaderCheck({ order, selected, onCheck }: { order: readonly string[]; selected: ReadonlySet<string>; onCheck: () => void }) {
+  const state = headerCheck(order, selected);
+  const box = useRef<HTMLInputElement>(null);
+  useEffect(() => {
+    if (box.current) box.current.indeterminate = state === "some";
+  }, [state]);
+  return (
+    <input
+      ref={box}
+      type="checkbox"
+      data-drive-check-all={state}
+      checked={state === "all"}
+      disabled={order.length === 0}
+      aria-checked={state === "some" ? "mixed" : state === "all"}
+      aria-label={state === "all" ? t("drive.selectNone") : t("drive.selectAll")}
+      title={state === "all" ? t("drive.selectNone") : t("drive.selectAll")}
+      onClick={(event) => {
+        event.stopPropagation();
+        onCheck();
+      }}
+      onChange={() => undefined}
+      className="block h-4 w-4 cursor-pointer accent-[var(--accent)] disabled:cursor-default disabled:opacity-40"
     />
   );
 }

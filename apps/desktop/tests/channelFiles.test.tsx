@@ -138,7 +138,7 @@ describe("the rules (drive/channelFiles.ts)", () => {
     const name = (id: string) => (id === "ch" ? "m2-seminar" : null);
     expect(impactLines(impact, "move", name)).toEqual([
       "このファイルは #m2-seminar の 2 件のメッセージに付いています。",
-      "移すと、#m2-seminar のメンバーのうち 3 人（ゲスト 2 人を含む）がメッセージの中でこのファイルを見られなくなります。",
+      "移動すると、#m2-seminar のメンバーのうち 3 人（ゲスト 2 人を含む）がメッセージの中でこのファイルを見られなくなります。",
       "ほかに、見る権限の無い会話の 1 件のメッセージにも付いています。",
     ]);
     const trash = impactLines({ posted_messages: 2, channels: [{ channel_id: "ch", messages: 2, unreadable_after: 5, unreadable_guests: 0 }] }, "trash", name);

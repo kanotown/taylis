@@ -4,7 +4,7 @@ import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import type { AttachmentOut } from "../src/api/types";
 import type { AppController } from "../src/state/app";
 import { AttachmentList, VideoViewer } from "../src/ui/Attachments";
-import { expectsPicture, playbackProblem, showsNoPicture, STREAM_STALL_MS, STREAM_TICKET_STALE_MS } from "../src/ui/videoPlayback";
+import { expectsPicture, PICTURE_JUDGE_SECONDS, PictureCheck, playbackProblem, showsNoPicture, STREAM_STALL_MS, STREAM_TICKET_STALE_MS, type WatchedVideo } from "../src/ui/videoPlayback";
 import { fitBox, formatDuration, groupAttachments, loadsInlineVideo, mediaKind, photoLayout, VIDEO_INLINE_MAX_BYTES, VIDEO_TILE_MAX } from "../src/ui/attachmentLayout";
 import { acquireVideo, resetVideoCache, VIDEO_RELEASE_DELAY_MS } from "../src/ui/videoSource";
 
@@ -146,6 +146,8 @@ describe("in a message", () => {
       return element;
     });
     expect(player.getAttribute("src")).toBe("blob:media-1");
+    expect(player.controls).toBe(false); // §12.2: only under the mouse or the keyboard focus
+    fireEvent.pointerEnter(player, { pointerType: "mouse" });
     expect(player.controls).toBe(true);
     expect(within(dialog).getByText(/1080×1920/)).toBeTruthy();
     expect(fetchBlob).toHaveBeenCalledTimes(1); // the tile's bytes, not a second download
@@ -281,26 +283,150 @@ describe("when a clip does not play (2026-10-27)", () => {
     expect(expectsPicture({ width: 1920, duration_ms: 4000 })).toBe(true);
     expect(expectsPicture({ width: null, duration_ms: null })).toBe(true); // never looked at
     expect(expectsPicture({ width: null, duration_ms: 4000, has_poster: false })).toBe(false); // sound only
-    const frames = (totalVideoFrames: number) => () => ({ totalVideoFrames });
-    expect(showsNoPicture({ videoWidth: 0, videoHeight: 0, currentTime: 0 }, served)).toBe(true);
-    expect(showsNoPicture({ videoWidth: 1920, videoHeight: 1080, currentTime: 0.5, getVideoPlaybackQuality: frames(0) }, served)).toBe(false);
-    expect(showsNoPicture({ videoWidth: 1920, videoHeight: 1080, currentTime: 2, getVideoPlaybackQuality: frames(0) }, served)).toBe(true);
-    expect(showsNoPicture({ videoWidth: 1920, videoHeight: 1080, currentTime: 2, getVideoPlaybackQuality: frames(60) }, served)).toBe(false);
-    expect(showsNoPicture({ videoWidth: 0, videoHeight: 0, currentTime: 2 }, { width: null, duration_ms: 4000 })).toBe(false);
+    // The tile's quick look: 0×0 once loaded puts the poster back; a size, or a sound-only file, never.
+    expect(showsNoPicture({ videoWidth: 0, videoHeight: 0 }, served)).toBe(true);
+    expect(showsNoPicture({ videoWidth: 1920, videoHeight: 1080 }, served)).toBe(false);
+    expect(showsNoPicture({ videoWidth: 0, videoHeight: 0 }, { width: null, duration_ms: 4000 })).toBe(false);
   });
 
-  it("says a clip this device cannot decode cannot be played here, with the download (Chromium's silent black box)", async () => {
+  describe("the viewer's picture check (2026-10-31: no more misfires on clips that play)", () => {
+    type Fake = { -readonly [K in keyof WatchedVideo]: WatchedVideo[K] };
+    const fake = (over: Partial<Fake> = {}): Fake => ({ videoWidth: 0, videoHeight: 0, currentTime: 0, paused: false, seeking: false, readyState: 4, duration: 60, ...over });
+    const frames = (totalVideoFrames: number) => () => ({ totalVideoFrames });
+    /** Plays `seconds` in steps of 0.25 s, looking at each step (as `timeupdate` does). */
+    const play = (check: PictureCheck, video: Fake, seconds: number, visible = true) => {
+      let verdict = check.observe(video, visible);
+      for (let i = 0; i < seconds * 4; i++) {
+        video.currentTime += 0.25;
+        verdict = check.observe(video, visible);
+      }
+      return verdict;
+    };
+
+    it("never calls a clip with a size unplayable, even with 0 frames counted (WebKit while paused)", () => {
+      // Measured in Playwright WebKit: a clip sought to 2 s / 4 s while paused, or resumed paused at 3 s, reports
+      // totalVideoFrames 0 with its size known: the old rule said "cannot be played".
+      const check = new PictureCheck(true);
+      const paused = fake({ videoWidth: 1280, videoHeight: 720, currentTime: 4, paused: true, getVideoPlaybackQuality: frames(0) });
+      expect(check.observe(paused)).toBe("picture");
+      expect(play(check, fake({ videoWidth: 1280, videoHeight: 720, getVideoPlaybackQuality: frames(0) }), 5)).toBe("picture");
+    });
+
+    it("waits while the size is not known yet (0×0 at loadeddata), and a size arriving later answers it", () => {
+      const check = new PictureCheck(true);
+      const video = fake({ readyState: 2, paused: true });
+      expect(check.observe(video)).toBeNull(); // loadeddata: 0×0, not playing
+      video.videoWidth = 1920;
+      video.videoHeight = 1080;
+      expect(check.observe(video)).toBe("picture"); // resize
+    });
+
+    it("does not count paused, sought, buffering or hidden time", () => {
+      const check = new PictureCheck(true);
+      const video = fake();
+      expect(play(check, { ...video, paused: true } as Fake, 10)).toBeNull(); // autoplay blocked / paused
+      const seeking = fake({ seeking: true });
+      expect(play(check, seeking, 10)).toBeNull();
+      const buffering = fake({ readyState: 2 });
+      expect(play(check, buffering, 10)).toBeNull();
+      expect(play(check, fake(), 10, false)).toBeNull(); // a hidden tab / minimised window
+      // Jumps (a seek forward while paused, then play): only the small steps count.
+      const jumpy = fake();
+      check.observe(jumpy);
+      jumpy.currentTime = 30;
+      expect(check.observe(jumpy)).toBeNull();
+      jumpy.currentTime = 45;
+      expect(check.observe(jumpy)).toBeNull();
+    });
+
+    it("says there is no picture only after real playback without one (Chromium's dropped track)", () => {
+      const check = new PictureCheck(true);
+      const video = fake({ getVideoPlaybackQuality: frames(0) });
+      expect(play(check, video, PICTURE_JUDGE_SECONDS - 0.5)).toBeNull();
+      expect(play(check, video, 0.5)).toBe("none");
+      // Frames starting later clear it.
+      video.getVideoPlaybackQuality = frames(3);
+      expect(check.observe(video)).toBe("picture");
+    });
+
+    it("takes a frame callback as proof, judges a short clip on most of it, and leaves sound-only files alone", () => {
+      const called = new PictureCheck(true);
+      called.frame();
+      expect(called.observe(fake())).toBe("picture");
+      expect(play(new PictureCheck(true), fake({ duration: 1 }), 0.75)).toBe("none");
+      expect(play(new PictureCheck(false), fake(), 10)).toBe("picture");
+      const again = new PictureCheck(true);
+      expect(play(again, fake(), 3)).toBe("none");
+      again.reset(); // a renewed ticket / a retry: judged afresh
+      expect(again.observe(fake())).toBeNull();
+    });
+  });
+
+  it("says a clip shows no picture here only once it played without one, keeps the sound, and takes it back when frames come", async () => {
     const { controller, downloadAttachment } = controllerWith(vi.fn(async () => new Blob()));
     const { dialog, player } = await openPlayer(served, controller);
     sized(player, 0, 0); // the video track dropped, the sound playing
+    Object.defineProperty(player, "paused", { value: false, configurable: true });
+    Object.defineProperty(player, "readyState", { value: 4, configurable: true });
     fireEvent.loadedMetadata(player);
     fireEvent.loadedData(player);
-    expect(within(dialog).getByText("この動画はこの端末では再生できません。ダウンロードして開いてください")).toBeTruthy();
-    expect(dialog.querySelector("video[data-video-player]")).toBeNull();
+    // Not at loadeddata any more: nothing has played yet.
+    expect(dialog.querySelector("[data-video-no-picture]")).toBeNull();
+    for (let at = 0.25; at <= PICTURE_JUDGE_SECONDS + 0.25; at += 0.25) {
+      player.currentTime = at;
+      fireEvent.timeUpdate(player);
+    }
+    expect(within(dialog).getByText("この端末では映像を表示できません（音だけが流れます）。ダウンロードして開いてください")).toBeTruthy();
+    expect(dialog.querySelector("video[data-video-player]")).toBe(player); // the sound goes on
     expect(within(dialog).queryByRole("button", { name: "再試行" })).toBeNull();
     const buttons = within(dialog).getAllByRole("button", { name: "ダウンロード" });
     fireEvent.click(buttons[buttons.length - 1]!);
     expect(downloadAttachment).toHaveBeenCalledWith(served);
+    // The picture arrives after all (a late size): the notice goes.
+    sized(player, 1920, 1080);
+    fireEvent(player, new Event("resize"));
+    expect(dialog.querySelector("[data-video-no-picture]")).toBeNull();
+  });
+
+  it("does not call a paused clip sought past 1.5 s unplayable (the WebKit misfire)", async () => {
+    const { controller } = controllerWith(vi.fn(async () => new Blob()));
+    const { dialog, player } = await openPlayer(served, controller);
+    sized(player, 1920, 1080);
+    Object.defineProperty(player, "getVideoPlaybackQuality", { value: () => ({ totalVideoFrames: 0 }), configurable: true });
+    fireEvent.loadedMetadata(player);
+    fireEvent.loadedData(player);
+    player.currentTime = 4;
+    fireEvent.timeUpdate(player);
+    player.currentTime = 30;
+    fireEvent.timeUpdate(player);
+    expect(dialog.querySelector("[data-video-no-picture], [data-video-problem]")).toBeNull();
+    expect(dialog.querySelector("video[data-video-player]")).toBe(player);
+  });
+
+  it("shows the controls (and their dim) only under the mouse or the keyboard focus, paused or playing", async () => {
+    const { controller } = controllerWith(vi.fn(async () => new Blob()));
+    const { player } = await openPlayer(served, controller);
+    expect(player.hasAttribute("controls")).toBe(false);
+    fireEvent.pointerEnter(player, { pointerType: "mouse" });
+    expect(player.hasAttribute("controls")).toBe(true);
+    // A click focuses it: that alone does not hold the controls once the mouse leaves.
+    fireEvent.pointerDown(player, { pointerType: "mouse" });
+    fireEvent.focus(player);
+    fireEvent.pointerLeave(player, { pointerType: "mouse" });
+    expect(player.hasAttribute("controls")).toBe(false);
+    // Tab (or a key on it) keeps them.
+    fireEvent.blur(player);
+    fireEvent.focus(player);
+    expect(player.hasAttribute("controls")).toBe(true);
+    fireEvent.blur(player);
+    expect(player.hasAttribute("controls")).toBe(false);
+    // Dragging the time bar out of the video: hidden on release, not on leaving.
+    fireEvent.pointerEnter(player, { pointerType: "mouse" });
+    fireEvent.pointerLeave(player, { pointerType: "mouse", buttons: 1 });
+    expect(player.hasAttribute("controls")).toBe(true);
+    act(() => { window.dispatchEvent(new Event("pointerup")); });
+    expect(player.hasAttribute("controls")).toBe(false);
+    expect(player.tabIndex).toBe(0);
   });
 
   it("offers a retry, not 'cannot be played', when the bytes stop after the clip loaded", async () => {

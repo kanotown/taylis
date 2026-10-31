@@ -172,7 +172,7 @@ export function useFolderRows(controller: AppController, folderId: string | null
 /** The dialogs' list of locations on the left. */
 export function DialogLocations({ locations, current, onPick }: { locations: readonly DriveLocationOut[]; current: DriveLocationOut | null; onPick: (location: DriveLocationOut) => void }) {
   return (
-    <ul aria-label={t("drive.locations")} className="w-44 shrink-0 space-y-0.5 max-sm:w-full">
+    <ul aria-label={t("drive.locations")} className="w-44 shrink-0 space-y-0.5 overflow-y-auto max-sm:max-h-40 max-sm:w-full">
       {locations.map((loc) => (
         <li key={loc.id}>
           <button
@@ -188,6 +188,15 @@ export function DialogLocations({ locations, current, onPick }: { locations: rea
     </ul>
   );
 }
+
+/**
+ * The pickers' two columns (2026-10-31, docs/DRIVE.md §27.8): one fixed height on a wide screen, the locations scrolling
+ * on the left and the rows filling the box on the right. Before, the rows had a fixed height while the box stretched to
+ * a long locations column (a lab with many channels), which left an empty band under the list.
+ */
+export const DIALOG_COLUMNS = "flex gap-3 sm:h-80 max-sm:flex-col";
+/** The rows under the breadcrumbs: the rest of the box (a fixed height when the columns stack on a phone). */
+export const DIALOG_LIST = "min-h-0 flex-1 overflow-y-auto p-1 max-sm:h-72 max-sm:flex-none";
 
 /** The dialogs' breadcrumbs over a folder's rows (the root named after the location). */
 export function DialogCrumbs({ path, location, onPick }: { path: readonly DriveCrumb[]; location: DriveLocationOut | null; onPick: (folderId: string) => void }) {
@@ -248,11 +257,11 @@ export function FolderPicker({ controller, start, pickStart, disabledIds, onChan
   const location = place?.location ?? null;
   return (
     <>
-      <div className="mt-4 flex gap-3 max-sm:flex-col">
+      <div data-dialog-columns="" className={cn("mt-4", DIALOG_COLUMNS)}>
         <DialogLocations locations={locations ?? []} current={location} onPick={(loc) => setPlace({ location: loc, folderId: loc.root_id })} />
-        <div className="min-w-0 flex-1 rounded-xl border border-line">
+        <div className="flex min-h-0 min-w-0 flex-1 flex-col rounded-xl border border-line">
           <DialogCrumbs path={path} location={location} onPick={(folderId) => location && setPlace({ location, folderId })} />
-          <ul className="h-64 overflow-y-auto p-1" aria-label={t("drive.folders")}>
+          <ul className={DIALOG_LIST} aria-label={t("drive.folders")}>
             {folders === null ? (
               <li className="flex h-full items-center justify-center text-muted"><Loader2 size={18} className="animate-spin" /></li>
             ) : folders.length === 0 ? (

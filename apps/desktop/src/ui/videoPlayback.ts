@@ -28,21 +28,76 @@ export function expectsPicture(attachment: Partial<Pick<AttachmentOut, "width" |
 }
 
 /**
- * The "black box": Chromium (WebView2, Chrome) drops a video track it cannot decode and plays the sound alone, with
- * no error, so the size stays 0×0 (and no frame is ever painted). Measured on Chrome with an MPEG-4 Part 2 clip, the
- * same path as HEVC on a Windows PC without the HEVC decoder.
+ * The tile's quick look (a clip loaded for its first frame, never played): 0×0 at `loadeddata` while the server says
+ * there is a picture. Only puts the poster back on the tile; whether the clip plays is the viewer's `PictureCheck`.
  */
 export function showsNoPicture(
-  video: Pick<HTMLVideoElement, "videoWidth" | "videoHeight" | "currentTime"> & { getVideoPlaybackQuality?: () => { totalVideoFrames: number } },
+  video: Pick<HTMLVideoElement, "videoWidth" | "videoHeight">,
   attachment: Parameters<typeof expectsPicture>[0],
 ): boolean {
-  if (!expectsPicture(attachment)) return false;
-  if (video.videoWidth === 0 && video.videoHeight === 0) return true;
-  // Playing for a while without a single frame decoded.
-  if (video.currentTime >= 1.5 && typeof video.getVideoPlaybackQuality === "function") {
-    return video.getVideoPlaybackQuality().totalVideoFrames === 0;
+  return expectsPicture(attachment) && video.videoWidth === 0 && video.videoHeight === 0;
+}
+
+/** Seconds the clip must have actually played (time advancing while shown) with no picture before the viewer says so. */
+export const PICTURE_JUDGE_SECONDS = 2;
+/** A `currentTime` step longer than this between two looks is a seek (or a jump after a stall), not playback. */
+const PLAYBACK_STEP_MAX = 1;
+
+/** What the viewer's check reads off the `<video>` element. */
+export type WatchedVideo = Pick<HTMLVideoElement, "videoWidth" | "videoHeight" | "currentTime" | "paused" | "readyState"> &
+  Partial<Pick<HTMLVideoElement, "seeking" | "duration" | "ended">> & {
+    getVideoPlaybackQuality?: () => { totalVideoFrames: number };
+  };
+
+/**
+ * The viewer's "black box" check (2026-10-27, made robust 2026-10-31; docs/PREVIEWS.md §12, §12.1): Chromium (WebView2,
+ * Chrome) drops a video track it cannot decode and plays the sound alone, with no error: the size stays 0×0 and no frame
+ * is painted. The first rule ("0×0 at `loadeddata`, or 0 frames once `currentTime` passed 1.5 s") misfired on clips
+ * that play: WebKit (the macOS app) counts `totalVideoFrames` only while playing, so a clip sought or resumed past
+ * 1.5 s while paused had 0 frames and was called unplayable. Now:
+ * - a picture is proven by any of: a size (`videoWidth` / `videoHeight`), a decoded frame, or a frame callback
+ *   (`requestVideoFrameCallback`, fed through `frame()`); then the verdict is `"picture"`, which also clears an earlier
+ *   `"none"` (frames that start late);
+ * - `"none"` only after the clip has really played `PICTURE_JUDGE_SECONDS` (or most of a shorter clip) with none of
+ *   those: time counted only between looks where it advanced by a small step while playing, not seeking, with data,
+ *   on a visible page (paused, autoplay blocked, buffering, a hidden tab or a seek never count);
+ * - `null` while it cannot tell yet; and always `"picture"` when the server found no picture (a sound-only file).
+ */
+export class PictureCheck {
+  private played = 0;
+  private last: number | null = null;
+  private sawFrame = false;
+
+  constructor(private readonly expects: boolean) {}
+
+  /** A frame was presented (a `requestVideoFrameCallback` call). */
+  frame(): void {
+    this.sawFrame = true;
   }
-  return false;
+
+  /** A new source (a renewed ticket, a retry): judge it afresh. */
+  reset(): void {
+    this.played = 0;
+    this.last = null;
+    this.sawFrame = false;
+  }
+
+  observe(video: WatchedVideo, visible = pageVisible()): "picture" | "none" | null {
+    if (!this.expects || this.sawFrame || video.videoWidth > 0 || video.videoHeight > 0) return "picture";
+    if (typeof video.getVideoPlaybackQuality === "function" && video.getVideoPlaybackQuality().totalVideoFrames > 0) return "picture";
+    const at = video.currentTime;
+    const step = this.last === null ? 0 : at - this.last;
+    this.last = at;
+    // HAVE_FUTURE_DATA (3): not stalled waiting for bytes.
+    if (!video.paused && !video.seeking && visible && video.readyState >= 3 && step > 0 && step <= PLAYBACK_STEP_MAX) this.played += step;
+    const duration = video.duration && Number.isFinite(video.duration) && video.duration > 0 ? video.duration : Infinity;
+    const needed = Math.min(PICTURE_JUDGE_SECONDS, duration * 0.75);
+    return this.played >= needed ? "none" : null;
+  }
+}
+
+function pageVisible(): boolean {
+  return typeof document === "undefined" || document.visibilityState !== "hidden";
 }
 
 /**

@@ -455,7 +455,7 @@ struct MessageActionsSheet: View {
                 // AL3 (docs/ALBUMS.md §9): the message's photos and videos into an album (where the server has albums).
                 if controller.drive?.available == true, controller.drive?.albumsAvailable != false, !message.deleted,
                    !AlbumRules.messageMedia(message.attachments).isEmpty {
-                    row(tr("この投稿の写真をアルバムに"), "photo.on.rectangle.angled") { then(.addToAlbum) }
+                    row(tr("この投稿の写真をアルバムに追加"), "photo.on.rectangle.angled") { then(.addToAlbum) }
                 }
                 row(tr("別のチャンネルに共有…"), "arrowshape.turn.up.right") { then(.share) }
                 row(message.pinnedAt != nil ? tr("ピン留めを外す") : tr("チャンネルにピン留め"), message.pinnedAt != nil ? "pin.slash" : "pin") {

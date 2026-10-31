@@ -21,7 +21,7 @@ import { defaultSaveLocation, reachWarning } from "../drive/conversation";
 import { formatBytes, locationName, pathLine } from "../drive/listing";
 import { ATTACHMENT_MAX_BYTES } from "../platform/pickedFiles";
 import { DriveIcon } from "./DriveBrowser";
-import { DialogCrumbs, DialogLocations, FolderPicker, newOpId, useDriveLocations, useFolderRows } from "./DriveDialogs";
+import { DIALOG_COLUMNS, DIALOG_LIST, DialogCrumbs, DialogLocations, FolderPicker, newOpId, useDriveLocations, useFolderRows } from "./DriveDialogs";
 import { hitPath } from "./DriveSearch";
 import { FileName } from "./FileName";
 import { driveLink, driveLinksIn } from "./permalink";
@@ -128,11 +128,11 @@ export function DrivePickerDialog({ controller, channel, onLink, onCopy, onClose
         <Search size={14} className="pointer-events-none absolute left-2.5 top-1/2 -translate-y-1/2 text-muted" />
         <Input value={query} onChange={(event) => setQuery(event.target.value)} placeholder={t("driveLink.searchPlaceholder")} aria-label={t("driveLink.searchPlaceholder")} className="pl-8" />
       </div>
-      <div className="mt-3 flex gap-3 max-sm:flex-col">
+      <div data-dialog-columns="" className={cn("mt-3", DIALOG_COLUMNS)}>
         <DialogLocations locations={locations ?? []} current={words ? null : (place?.location ?? null)} onPick={(loc) => { setQuery(""); setSelected(null); setPlace({ location: loc, folderId: loc.root_id }); }} />
-        <div className="min-w-0 flex-1 rounded-xl border border-line">
+        <div className="flex min-h-0 min-w-0 flex-1 flex-col rounded-xl border border-line">
           {words ? <div className="border-b border-line px-3 py-1.5 text-xs text-muted">{t("driveLink.searchAll")}</div> : <DialogCrumbs path={path} location={place?.location ?? null} onPick={(folderId) => place && setPlace({ location: place.location, folderId })} />}
-          <ul className="h-72 overflow-y-auto p-1" aria-label={t("driveLink.items")} data-drive-picker="">
+          <ul className={DIALOG_LIST} aria-label={t("driveLink.items")} data-drive-picker="">
             {loading ? (
               <li className="flex h-full items-center justify-center text-muted"><Loader2 size={18} className="animate-spin" /></li>
             ) : listed.length === 0 ? (

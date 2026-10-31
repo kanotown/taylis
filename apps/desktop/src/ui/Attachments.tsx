@@ -8,7 +8,8 @@ import { documentPreviewState, fitBox, formatDuration, formatSize, groupAttachme
 import { scrollParent } from "./LinkPreviewCard";
 import { Button, cn } from "./primitives";
 import { knownVideoSize, rememberVideoSize, subscribeVideoSizes } from "./videoSource";
-import { type PlaybackProblem, playbackProblem, showsNoPicture, STREAM_RENEWALS_MAX, STREAM_STALL_MS, STREAM_TICKET_STALE_MS } from "./videoPlayback";
+import { expectsPicture, PictureCheck, type PlaybackProblem, playbackProblem, showsNoPicture, STREAM_RENEWALS_MAX, STREAM_STALL_MS, STREAM_TICKET_STALE_MS } from "./videoPlayback";
+import { useHoverControls } from "./useHoverControls";
 import { t } from "../i18n";
 import { FileName } from "./FileName";
 import { VIEWER_BUTTON, ViewerBody, ViewerCloseButton, ViewerFrame } from "./ViewerHeader";
@@ -593,10 +594,39 @@ export function VideoViewer({ attachment, controller, onClose, stream }: { attac
     if (stall.current) clearTimeout(stall.current);
     stall.current = null;
   }, []);
+  // §12.1: whether a picture comes, judged only on real playback; a late picture takes the notice away again.
+  const pictures = useRef<PictureCheck | null>(null);
+  pictures.current ??= new PictureCheck(expectsPicture(attachment));
+  const [noPicture, setNoPicture] = useState(false);
+  const judge = (video: HTMLVideoElement) => {
+    const verdict = pictures.current!.observe(video);
+    if (verdict === "picture") setNoPicture(false);
+    else if (verdict === "none") {
+      clearStall();
+      setNoPicture(true);
+    }
+  };
+  const player = useRef<HTMLVideoElement | null>(null);
+  const hover = useHoverControls();
   useEffect(() => {
     if (!url) return;
     playback.current.played = false;
     playback.current.urlAt = Date.now();
+    pictures.current!.reset();
+    setNoPicture(false);
+    // One presented frame proves the picture (Chromium's dropped track never calls back).
+    const video = player.current;
+    if (!video || typeof video.requestVideoFrameCallback !== "function") return;
+    let live = true;
+    const handle = video.requestVideoFrameCallback(() => {
+      if (!live) return;
+      pictures.current!.frame();
+      setNoPicture(false);
+    });
+    return () => {
+      live = false;
+      video.cancelVideoFrameCallback?.(handle);
+    };
   }, [url]);
   useEffect(() => clearStall, [clearStall]);
   const again = (automatic: boolean) => {
@@ -626,21 +656,18 @@ export function VideoViewer({ attachment, controller, onClose, stream }: { attac
       if (Date.now() - state.urlAt >= STREAM_TICKET_STALE_MS && state.renewals < STREAM_RENEWALS_MAX) again(true);
     }, STREAM_STALL_MS);
   };
-  const checkPicture = (video: HTMLVideoElement) => {
-    if (showsNoPicture(video, attachment)) {
-      clearStall();
-      setProblem("unsupported");
-    }
-  };
   const shown: PlaybackProblem | null = problem ?? (failed ? "network" : null);
   return (
     <ViewerShell attachment={attachment} description={t("attach.videoPreview")} shape={shape} controller={controller} onClose={onClose}>
       {url && !problem ? (
+        <>
         <video
+          ref={player}
           data-video-player=""
           src={url}
           poster={poster ?? undefined}
-          controls
+          controls={hover.controls}
+          {...hover.props}
           autoPlay
           playsInline
           data-viewer-content=""
@@ -653,11 +680,13 @@ export function VideoViewer({ attachment, controller, onClose, stream }: { attac
             state.resume = null;
             if (resume && resume.at > 0) video.currentTime = resume.at;
             if (resume && !resume.playing) video.pause();
+            judge(video);
           }}
-          onLoadedData={(e) => checkPicture(e.currentTarget)}
+          onLoadedData={(e) => judge(e.currentTarget)}
+          onResize={(e) => judge(e.currentTarget)}
           onTimeUpdate={(e) => {
             playback.current.at = e.currentTarget.currentTime;
-            checkPicture(e.currentTarget);
+            judge(e.currentTarget);
           }}
           onPlay={(e) => {
             claimPlayback(e.currentTarget); // §13: a sound playing in a message stops
@@ -673,8 +702,16 @@ export function VideoViewer({ attachment, controller, onClose, stream }: { attac
           onProgress={clearStall}
           onCanPlay={clearStall}
           onError={(e) => onError(e.currentTarget)}
-          className="m-auto min-h-0 min-w-0 max-h-full max-w-full rounded-md bg-black object-contain shadow-2xl"
+          className="m-auto min-h-0 min-w-0 max-h-full max-w-full rounded-md bg-black object-contain shadow-2xl focus:outline-none focus-visible:ring-2 focus-visible:ring-white/60"
         />
+        {noPicture && (
+          // The sound may go on: the clip stays, with why there is no picture and the download over it.
+          <div data-video-no-picture="" className="absolute inset-x-0 bottom-6 mx-auto flex w-fit max-w-[90%] flex-wrap items-center justify-center gap-3 rounded-xl bg-black/80 px-4 py-3 text-center text-sm text-white shadow-lg">
+            <p role="status">{t("attach.noPicture")}</p>
+            <button type="button" className="rounded-lg border border-white/50 px-3 py-1.5 hover:bg-white/15" onClick={() => void controller.downloadAttachment(attachment)}>{t("attach.download")}</button>
+          </div>
+        )}
+        </>
       ) : shown ? (
         <div data-video-problem={shown} className="m-auto flex max-w-md flex-col items-center gap-3 px-4 text-center text-white">
           <p role="status">{shown === "unsupported" ? t("attach.unplayable") : t("attach.videoFailed")}</p>

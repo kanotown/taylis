@@ -6,7 +6,7 @@ import { describe, expect, it, vi } from "vitest";
 
 import type { DriveItemOut } from "../src/api/types";
 import { browserDownload, downloadRoute, pipeToSink, ticketUrl } from "../src/drive/download";
-import { appendPage, asAttachment, breadcrumbs, clickAction, clickSelection, documentSource, driveColumns, driveFileOf, driveTime, exactTime, formatBytes, iconKind, isOffice, isPdf, itemTime, locationName, nextSort, orderLocations, pathLine, stepItem, thumbnailPath, viewable, viewerKind } from "../src/drive/listing";
+import { appendPage, asAttachment, breadcrumbs, checkAll, checkSelection, clickAction, clickSelection, headerCheck, documentSource, driveColumns, driveFileOf, driveTime, exactTime, formatBytes, iconKind, isOffice, isPdf, itemTime, locationName, nextSort, orderLocations, pathLine, stepItem, thumbnailPath, viewable, viewerKind } from "../src/drive/listing";
 import { dirOf, emptyFolders, foldersOf, treeFromEntries, treeFromInput } from "../src/platform/driveFiles";
 import { coalesce, DriveHub, type DriveSignal } from "../src/sync/drive";
 import { setLocale } from "../src/i18n";
@@ -281,5 +281,31 @@ describe("times (§27)", () => {
     expect(driveTime(at(new Date(2026, 9, 3, 9, 0)), now)).toMatch(/^10月3日/);
     expect(driveTime(at(new Date(2025, 9, 3, 9, 0)), now)).toMatch(/^2025年10月3日/);
     expect(exactTime(at(new Date(2026, 9, 22, 14, 5)))).toMatch(/^2026年10月22日.* 14:05$/);
+  });
+});
+
+describe("the check boxes (2026-10-31, §27.7)", () => {
+  const order = ["a", "b", "c", "d", "e"];
+  it("a box toggles its row; Shift gives the run from the anchor the anchor's state", () => {
+    let state = checkSelection(order, new Set(), null, "b", false);
+    expect([...state.selected]).toEqual(["b"]);
+    state = checkSelection(order, state.selected, state.anchor, "d", true);
+    expect([...state.selected].sort()).toEqual(["b", "c", "d"]);
+    expect(state.anchor).toBe("b");
+    // Clear one, then Shift back: the run is cleared, the rest kept.
+    state = checkSelection(order, new Set([...state.selected, "e"]), state.anchor, "c", false);
+    expect(state.anchor).toBe("c");
+    state = checkSelection(order, state.selected, state.anchor, "a", true);
+    expect([...state.selected].sort()).toEqual(["d", "e"]);
+    // No anchor (or one no longer listed): a plain toggle.
+    expect([...checkSelection(order, new Set(), "gone", "e", true).selected]).toEqual(["e"]);
+  });
+  it("the header box: all / some / none of the loaded rows", () => {
+    expect(headerCheck(order, new Set())).toBe("none");
+    expect(headerCheck(order, new Set(["a"]))).toBe("some");
+    expect(headerCheck(order, new Set(order))).toBe("all");
+    expect(headerCheck([], new Set())).toBe("none");
+    expect([...checkAll(order, new Set(["a"]))]).toEqual(order);
+    expect([...checkAll(order, new Set(order))]).toEqual([]);
   });
 });
