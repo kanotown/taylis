@@ -1196,11 +1196,12 @@ final class AppController {
     // MARK: scheduled messages (M12d)
 
     /// 「後で送信」: the server posts the draft at `sendAt`; the row shows up under 下書き.
-    func scheduleMessage(channelId: String, parentId: String?, body: String, attachmentIds: [String], sendAt: Date) async -> Bool {
+    func scheduleMessage(channelId: String, parentId: String?, body: String, attachmentIds: [String], sendAt: Date,
+                         options: SendOptions = SendOptions()) async -> Bool {
         guard let api else { return false }
         do {
             let row = try await api.scheduleMessage(channelId: channelId, clientMsgId: UUID().uuidString.lowercased(), body: body,
-                                                    parentId: parentId, attachmentIds: attachmentIds, sendAt: sendAt)
+                                                    parentId: parentId, attachmentIds: attachmentIds, sendAt: sendAt, options: options)
             store.applyScheduled(row)
             notice = tr("\(Schedule.label(sendAt)) に送信します")
             return true

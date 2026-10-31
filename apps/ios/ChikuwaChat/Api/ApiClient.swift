@@ -486,12 +486,17 @@ final class ApiClient: SyncApi, DraftApi, ChannelLinksApi, ActivityApi, CanvasAp
 
     // MARK: scheduled messages (M12d)
 
-    func scheduleMessage(channelId: String, clientMsgId: String, body: String, parentId: String?, attachmentIds: [String], sendAt: Date) async throws -> ScheduledOut {
+    /// The composer's options go with it (Functional review v0.1.84 #1); an older server ignores them.
+    func scheduleMessage(channelId: String, clientMsgId: String, body: String, parentId: String?, attachmentIds: [String], sendAt: Date,
+                         options: SendOptions = SendOptions()) async throws -> ScheduledOut {
         try await request("POST", "/api/v1/channels/\(channelId)/scheduled", body: .object([
             "client_msg_id": .string(clientMsgId), "body": .string(body),
             "parent_id": parentId.map(JSONValue.string) ?? .null,
             "attachment_ids": .array(attachmentIds.map(JSONValue.string)),
             "send_at": .string(ISO8601DateFormatter().string(from: sendAt)),
+            "also_in_channel": .bool(options.alsoInChannel),
+            "priority": options.priority.map(JSONValue.string) ?? .null,
+            "ack_requested": .bool(options.ackRequested),
         ]))
     }
     func listScheduled() async throws -> [ScheduledOut] { try await request("GET", "/api/v1/scheduled") }

@@ -1536,6 +1536,10 @@ struct ScheduledOut: Codable, Identifiable, Equatable {
     let error: String?
     let sentMessageId: String?
     let createdAt: String
+    /// Functional review v0.1.84 #1: the composer's options, applied when it is posted (nil from an older server).
+    var alsoInChannel: Bool? = nil
+    var priority: String? = nil
+    var ackRequested: Bool? = nil
 }
 
 /// GET /mentions (M11h): messages that mention me or everyone, newest first.
