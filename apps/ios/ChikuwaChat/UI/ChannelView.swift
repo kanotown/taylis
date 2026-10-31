@@ -1567,6 +1567,8 @@ struct ComposerView: View {
     var controller: AppController? = nil
     /// A line of the composer's own above the input (the thread's 「#… にも送信」), inside its top edge.
     var accessory: AnyView? = nil
+    /// The thread's 「#… にも送信」 (its `accessory`), read when the reply is scheduled and cleared after.
+    var alsoInChannel: Binding<Bool>? = nil
     let onSend: (String, [String], SendOptions) -> Void
     private var text: String { controller?.store.draft(channelId, parentId: parentId).text ?? "" }
     private var pending: [AttachmentOut] { controller?.store.draft(channelId, parentId: parentId).attachments ?? [] }
@@ -1766,11 +1768,24 @@ struct ComposerView: View {
         guard at.timeIntervalSinceNow >= 60 else { controller.error = tr("1 分以上先の時刻を選んでください"); return }
         let body = Mentions.encode(BodyTokenizer.straightenCode(trimmed), users: users, groups: Array(controller.store.groups.values))
         let ids = pending.map(\.id)
+        // Functional review v0.1.84 #1: the same options as a send now (they were dropped), cleared once scheduled.
+        let options = scheduleOptions
         Task {
-            if await controller.scheduleMessage(channelId: channelId, parentId: parentId, body: body, attachmentIds: ids, sendAt: at) {
+            if await controller.scheduleMessage(channelId: channelId, parentId: parentId, body: body, attachmentIds: ids, sendAt: at,
+                                                options: options) {
                 controller.store.setDraft(channelId, parentId: parentId) { $0 = Draft() }
+                priority = nil
+                ackRequested = false
+                alsoInChannel?.wrappedValue = false
             }
         }
+    }
+
+    /// What 「後で送信」 carries: priority and acknowledgement on a top-level post, 「にも送信」 on a reply.
+    private var scheduleOptions: SendOptions {
+        SendOptions(alsoInChannel: parentId != nil && (alsoInChannel?.wrappedValue ?? false),
+                    priority: parentId == nil ? priority : nil,
+                    ackRequested: parentId == nil && ackRequested)
     }
 
     /// M15e: what the next post will carry, with a way to clear it.

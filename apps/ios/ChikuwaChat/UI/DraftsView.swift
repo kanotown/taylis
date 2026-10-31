@@ -20,6 +20,11 @@ struct DraftsView: View {
                             HStack(spacing: 6) {
                                 Text(store.channel(row.channelId).map { channelTitle($0, store: store) } ?? "?").font(.footnote).fontWeight(.semibold)
                                 if row.parentId != nil { Text("· スレッド").font(.footnote).foregroundStyle(.secondary) }
+                                // Functional review v0.1.84 #1: what the post will carry.
+                                if row.alsoInChannel == true { Text("· チャンネルにも送信").font(.footnote).foregroundStyle(.secondary) }
+                                if row.priority == "urgent" { Text("· 緊急").font(.footnote).foregroundStyle(.red) }
+                                if row.priority == "important" { Text("· 重要").font(.footnote).foregroundStyle(.secondary) }
+                                if row.ackRequested == true { Text("· 確認を求める").font(.footnote).foregroundStyle(.secondary) }
                                 if row.status == "failed" {
                                     Text("· 送信に失敗").font(.footnote).foregroundStyle(.red)
                                 } else {

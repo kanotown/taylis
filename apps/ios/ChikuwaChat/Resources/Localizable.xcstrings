@@ -9854,6 +9854,70 @@
         }
       }
     },
+    "· チャンネルにも送信" : {
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "· Also to the channel"
+          }
+        },
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "· 同时发送到频道"
+          }
+        }
+      }
+    },
+    "· 確認を求める" : {
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "· Asks for acknowledgement"
+          }
+        },
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "· 请求确认"
+          }
+        }
+      }
+    },
+    "· 重要" : {
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "· Important"
+          }
+        },
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "· 重要"
+          }
+        }
+      }
+    },
+    "· 緊急" : {
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "· Urgent"
+          }
+        },
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "· 紧急"
+          }
+        }
+      }
+    },
     "· 未読 %lld 件" : {
       "localizations" : {
         "en" : {

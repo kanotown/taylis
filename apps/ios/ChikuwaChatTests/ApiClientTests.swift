@@ -336,6 +336,54 @@ final class ApiClientTests: XCTestCase {
         XCTAssertEqual(ApiClient.pathWithQuery("/api/v1/files", [URLQueryItem(name: "q", value: "a+b")]), "/api/v1/files?q=a%2Bb")
     }
 
+    /// Functional review v0.1.84 #1: 「後で送信」 carries the composer's options; an older server's row (without them) still reads.
+    func testScheduledMessagesCarryTheComposersOptions() async throws {
+        var bodies: [JSONValue] = []
+        let reply = #"{"id":"s1","channel_id":"c1","parent_id":null,"client_msg_id":"k","body":"x","attachments":[],"send_at":"2026-10-01T00:00:00Z","status":"pending","error":null,"sent_message_id":null,"created_at":"2026-09-27T00:00:00Z","also_in_channel":false,"priority":"urgent","ack_requested":true}"#
+        StubProtocol.handler = { request in
+            if let stream = request.httpBodyStream {
+                stream.open()
+                var data = Data()
+                var buffer = [UInt8](repeating: 0, count: 4096)
+                while stream.hasBytesAvailable {
+                    let read = stream.read(&buffer, maxLength: buffer.count)
+                    if read <= 0 { break }
+                    data.append(buffer, count: read)
+                }
+                stream.close()
+                if let body = try? JSONDecoder().decode(JSONValue.self, from: data) { bodies.append(body) }
+            } else if let data = request.httpBody, let body = try? JSONDecoder().decode(JSONValue.self, from: data) {
+                bodies.append(body)
+            }
+            return (201, Data(reply.utf8))
+        }
+        let client = makeClient()
+        client.accessToken = "a"
+        let at = Date(timeIntervalSince1970: 1_790_000_000)
+        let row = try await client.scheduleMessage(channelId: "c1", clientMsgId: "k", body: "x", parentId: nil, attachmentIds: [], sendAt: at,
+                                                   options: SendOptions(priority: "urgent", ackRequested: true))
+        XCTAssertEqual(row.priority, "urgent")
+        XCTAssertEqual(row.ackRequested, true)
+        _ = try await client.scheduleMessage(channelId: "c1", clientMsgId: "k2", body: "x", parentId: "p1", attachmentIds: [], sendAt: at,
+                                             options: SendOptions(alsoInChannel: true))
+        _ = try await client.scheduleMessage(channelId: "c1", clientMsgId: "k3", body: "x", parentId: nil, attachmentIds: [], sendAt: at)
+        func options(_ body: JSONValue) -> [JSONValue?] {
+            guard case .object(let fields) = body else { return [] }
+            return [fields["also_in_channel"], fields["priority"], fields["ack_requested"]]
+        }
+        XCTAssertEqual(bodies.map(options), [
+            [.bool(false), .string("urgent"), .bool(true)],
+            [.bool(true), .null, .bool(false)],
+            [.bool(false), .null, .bool(false)],
+        ])
+        // A row from a server before the options.
+        let old = #"{"id":"s1","channel_id":"c1","parent_id":null,"client_msg_id":"k","body":"x","attachments":[],"send_at":"2026-10-01T00:00:00Z","status":"pending","error":null,"sent_message_id":null,"created_at":"2026-09-27T00:00:00Z"}"#
+        let decoded = try JSON.snakeDecoder.decode(ScheduledOut.self, from: Data(old.utf8))
+        XCTAssertNil(decoded.priority)
+        XCTAssertNil(decoded.alsoInChannel)
+        XCTAssertNil(decoded.ackRequested)
+    }
+
     func testRefreshOnlyWhenNeededAndRetriedQuicklyAfterANetworkFailure() async throws {  // SYNC_PROTOCOL.md §7.2
         var attempts = 0
         StubProtocol.handler = { [self] _ in
