@@ -26,6 +26,7 @@ import { DriveIcon } from "./DriveBrowser";
 import { FileName } from "./FileName";
 import { cn } from "./primitives";
 import { useTransparentBackdrop } from "./transparency";
+import { useHoverControls } from "./useHoverControls";
 import { useMediaSource } from "./useMediaSource";
 import { VIEWER_BUTTON, ViewerBody, ViewerCloseButton, ViewerFrame } from "./ViewerHeader";
 import { t } from "../i18n";
@@ -91,13 +92,16 @@ function AlbumVideo({ controller, item, slideshow = false, onEnded }: { controll
   const api = controller.api;
   const stream = useMemo(() => (isWeb() && api ? async () => ticketUrl(api.baseUrl, (await api.driveDownloadTicket(item.id)).url) : undefined), [api, item.id]);
   const { url, failed } = useMediaSource(controller, attachment!, !!attachment, stream);
+  // PREVIEWS.md §12.2: the controls (and their dark scrim) only under the mouse or the keyboard focus.
+  const hover = useHoverControls();
   if (failed) return <p role="status" className="m-auto text-sm text-white/80">{t("attach.videoFailed")}</p>;
   if (!url) return <span role="status" aria-label={t("common.loading")} className="m-auto h-8 w-8 animate-spin rounded-full border-2 border-white/30 border-t-white" />;
   return (
     <video
       data-album-video={item.id}
       src={url}
-      controls={!slideshow}
+      controls={!slideshow && hover.controls}
+      {...(slideshow ? {} : hover.props)}
       autoPlay
       muted={slideshow}
       playsInline

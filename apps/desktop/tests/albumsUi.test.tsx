@@ -365,12 +365,12 @@ describe("「アルバムに追加」 from a message", () => {
     fireEvent.click(screen.getByRole("button", { name: "追加" }));
     await waitFor(() => expect(addToDriveAlbum).toHaveBeenCalledWith("mine", expect.objectContaining({ attachment_ids: ["x1", "x2"], mode: "auto" })));
     expect(driveImpact).not.toHaveBeenCalled();
-    expect(controller.setNotice).toHaveBeenCalledWith("2 個を「#学会 の写真」に追加しました", expect.objectContaining({ label: "アルバムを開く" }));
+    expect(controller.setNotice).toHaveBeenCalledWith("2 件を「#学会 の写真」に追加しました", expect.objectContaining({ label: "アルバムを開く" }));
     cleanup();
     render(<AddToAlbumDialog controller={controller} attachments={[attachment("x1", true)]} channel={channel} postedAt="2026-09-16T01:00:00Z" onClose={vi.fn()} />);
     await waitFor(() => expect(document.querySelector("[data-album-choice='lab']")).toBeTruthy());
     fireEvent.click(document.querySelector("[data-album-choice='lab']")!);
-    fireEvent.click(screen.getByLabelText("移す"));
+    fireEvent.click(screen.getByLabelText("移動する（元のファイルはアルバムに移ります）"));
     fireEvent.click(screen.getByRole("button", { name: "追加" }));
     await waitFor(() => expect(driveImpact).toHaveBeenCalledWith(["item-x1"], "lab"));
     await waitFor(() => expect(addToDriveAlbum).toHaveBeenLastCalledWith("lab", expect.objectContaining({ mode: "move" })));

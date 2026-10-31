@@ -232,6 +232,42 @@ export function clickSelection(order: readonly string[], selected: ReadonlySet<s
   return { selected: new Set([id]), anchor: id };
 }
 
+/**
+ * A row's check box pressed (2026-10-31, docs/DRIVE.md §27.7): alone it adds or removes that row; with Shift it gives
+ * every row from the last box pressed (the anchor) to this one the anchor's state, so a Shift+click checks a run of rows
+ * or clears one, as file managers do. Rows outside the run keep their state.
+ */
+export function checkSelection(order: readonly string[], selected: ReadonlySet<string>, anchor: string | null, id: string, range: boolean): { selected: Set<string>; anchor: string } {
+  const from = anchor ? order.indexOf(anchor) : -1;
+  const to = order.indexOf(id);
+  if (range && anchor && from >= 0 && to >= 0) {
+    const on = selected.has(anchor);
+    const next = new Set(selected);
+    const [lo, hi] = from <= to ? [from, to] : [to, from];
+    for (const key of order.slice(lo, hi + 1)) {
+      if (on) next.add(key);
+      else next.delete(key);
+    }
+    return { selected: next, anchor };
+  }
+  const next = new Set(selected);
+  if (next.has(id)) next.delete(id);
+  else next.add(id);
+  return { selected: next, anchor: id };
+}
+
+/** The list's header box: whether all, some or none of the loaded rows are selected. */
+export function headerCheck(order: readonly string[], selected: ReadonlySet<string>): "all" | "some" | "none" {
+  const count = order.filter((id) => selected.has(id)).length;
+  if (count === 0) return "none";
+  return count === order.length ? "all" : "some";
+}
+
+/** The header box pressed: all the loaded rows, or none when all were selected already. */
+export function checkAll(order: readonly string[], selected: ReadonlySet<string>): Set<string> {
+  return headerCheck(order, selected) === "all" ? new Set() : new Set(order);
+}
+
 const SORT_LABELS: Readonly<Record<DriveSort, MessageKey>> = { name: "drive.sort.name", modified: "drive.sort.modified", size: "drive.sort.size" };
 
 export function sortLabel(sort: DriveSort): string {

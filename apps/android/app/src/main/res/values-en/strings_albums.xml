@@ -43,12 +43,12 @@
     <string name="album_order_asc">Oldest first</string>
     <string name="album_order_desc">Newest first</string>
     <string name="album_dates">Dates (optional)</string>
-    <string name="album_starts_on">First day</string>
-    <string name="album_ends_on">Last day</string>
+    <string name="album_starts_on">Start date</string>
+    <string name="album_ends_on">End date</string>
     <string name="album_dates_clear">Clear the dates</string>
-    <string name="album_remove">Stop being an album</string>
-    <string name="album_remove_note">It becomes a plain folder again. The photos stay.</string>
-    <string name="album_remove_confirm">Stop</string>
+    <string name="album_remove">Turn back into a folder</string>
+    <string name="album_remove_note">It becomes an ordinary folder again. Its photos and videos are not deleted.</string>
+    <string name="album_remove_confirm">Turn back</string>
     <string name="album_add_from_post">Add this post\'s photos to an album</string>
     <string name="album_card_named">Album %1$s</string>
     <string name="album_slideshow_close">Close the slideshow</string>

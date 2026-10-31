@@ -47,7 +47,7 @@
     <string name="album_ends_on">结束日期</string>
     <string name="album_dates_clear">清除日期</string>
     <string name="album_remove">取消相册</string>
-    <string name="album_remove_note">将恢复为普通文件夹，照片会保留。</string>
+    <string name="album_remove_note">将恢复为普通文件夹。其中的照片和视频不会被删除。</string>
     <string name="album_remove_confirm">取消相册</string>
     <string name="album_add_from_post">将此帖子的照片加入相册</string>
     <string name="album_card_named">相册 %1$s</string>

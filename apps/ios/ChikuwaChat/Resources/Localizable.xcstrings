@@ -766,7 +766,7 @@
         }
       }
     },
-    "この投稿の写真をアルバムに" : {
+    "この投稿の写真をアルバムに追加" : {
       "localizations" : {
         "en" : {
           "stringUnit" : {
@@ -782,18 +782,18 @@
         }
       }
     },
-    "この投稿の写真・動画 %lld 件をアルバムに入れます。" : {
+    "この投稿の写真・動画（%lld 件）を追加するアルバムを選んでください。" : {
       "localizations" : {
         "en" : {
           "stringUnit" : {
             "state" : "translated",
-            "value" : "Puts this post's %lld photos and videos into an album."
+            "value" : "Choose an album for this post's %lld photos and videos."
           }
         },
         "zh-Hans" : {
           "stringUnit" : {
             "state" : "translated",
-            "value" : "将此帖子的 %lld 张照片和视频放入相册。"
+            "value" : "为此帖子的照片和视频（%lld 项）选择相册。"
           }
         }
       }
@@ -37325,22 +37325,6 @@
           "stringUnit" : {
             "state" : "translated",
             "value" : "失败：%@"
-          }
-        }
-      }
-    },
-    "始まり" : {
-      "localizations" : {
-        "en" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "Starts"
-          }
-        },
-        "zh-Hans" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "开始"
           }
         }
       }

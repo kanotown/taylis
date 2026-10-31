@@ -23,7 +23,7 @@ import { addSummary, albumLine, albumNameFor, type AlbumOrder, type AlbumSort, d
 import { locationName, pathLine, thumbnailPath } from "../drive/listing";
 import { itemName, localizedPath } from "../drive/channelFiles";
 import { DriveIcon, useThumbnail } from "./DriveBrowser";
-import { DialogCrumbs, DialogLocations, ImpactDialog, newOpId, useDriveLocations, useFolderRows, useImpactCheck } from "./DriveDialogs";
+import { DIALOG_COLUMNS, DIALOG_LIST, DialogCrumbs, DialogLocations, ImpactDialog, newOpId, useDriveLocations, useFolderRows, useImpactCheck } from "./DriveDialogs";
 import { FileName } from "./FileName";
 import { Button, cn, Field, Input, Modal, Textarea } from "./primitives";
 import { t } from "../i18n";
@@ -346,11 +346,12 @@ export function AddFromDriveDialog({ controller, album, onClose, onAdded }: {
   const location = place?.location ?? null;
   return (
     <Modal onClose={onClose} title={t("albums.add.fromDrive")} description={t("albums.add.fromDriveDescription", { name: album.name })} growsDown className="w-[680px]">
-      <div className="mt-4 flex gap-3 max-sm:flex-col">
+      {/* One height for both columns (REVIEW 2026-10-31): the list fills its box down to the bottom. */}
+      <div data-dialog-columns="" className={cn("mt-4", DIALOG_COLUMNS)}>
         <DialogLocations locations={locations ?? []} current={location} onPick={(loc) => setPlace({ location: loc, folderId: loc.root_id })} />
-        <div className="min-w-0 flex-1 rounded-xl border border-line">
+        <div className="flex min-h-0 min-w-0 flex-1 flex-col rounded-xl border border-line">
           <DialogCrumbs path={path} location={location} onPick={(folderId) => location && setPlace({ location, folderId })} />
-          <ul className="h-72 overflow-y-auto p-1" aria-label={t("albums.add.files")}>
+          <ul className={DIALOG_LIST} aria-label={t("albums.add.files")}>
             {rows === null ? (
               <li className="flex h-full items-center justify-center text-muted"><Loader2 size={18} className="animate-spin" /></li>
             ) : folders.length === 0 && media.length === 0 ? (

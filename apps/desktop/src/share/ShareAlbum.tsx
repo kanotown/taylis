@@ -14,6 +14,7 @@ import { albumCount, albumDates, durationLabel, publicSave, swipeStep, webpName 
 import { formatBytes } from "../drive/listing";
 import { t } from "../i18n";
 import { cn } from "../ui/primitives";
+import { useHoverControls } from "../ui/useHoverControls";
 import { VIEWER_BUTTON, ViewerBody, ViewerCloseButton, ViewerFrame } from "../ui/ViewerHeader";
 import type { ShareApi } from "./api";
 
@@ -213,7 +214,7 @@ export function ShareMediaViewer({ api, items, startId, originals, onClose }: { 
       >
         <ViewerBody onClose={onClose} fill>
           {video ? (
-            <video key={item.id} src={api.contentUrl(item.id, true)} controls autoPlay playsInline data-share-video="" className="m-auto max-h-full max-w-full rounded-md bg-black object-contain" />
+            <ShareVideo key={item.id} src={api.contentUrl(item.id, true)} />
           ) : (
             <img key={item.id} src={src} alt={item.name} data-share-image="" data-share-source={item.has_display ? "display" : originals ? "original" : "thumbnail"} className="m-auto max-h-full max-w-full object-contain" />
           )}
@@ -227,4 +228,10 @@ export function ShareMediaViewer({ api, items, startId, originals, onClose }: { 
       </div>
     </ViewerFrame>
   );
+}
+
+/** A video of a shared album: its controls only under the mouse or the keyboard focus (docs/PREVIEWS.md §12.2). */
+function ShareVideo({ src }: { src: string }) {
+  const hover = useHoverControls();
+  return <video src={src} controls={hover.controls} {...hover.props} autoPlay playsInline data-share-video="" className="m-auto max-h-full max-w-full rounded-md bg-black object-contain focus:outline-none" />;
 }

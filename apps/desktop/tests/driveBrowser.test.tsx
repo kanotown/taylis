@@ -259,6 +259,47 @@ describe("the selection bar, the row actions and the locations column (§27)", (
     expect(outer).not.toHaveBeenCalled();
   });
 
+  it("§27.7: the header box selects every loaded row or none, a dash when some; Shift on the boxes checks or clears a run; ⌘A from a box", async () => {
+    const rows = [FOLDER, file("a", "a.pdf", "application/pdf"), file("b", "b.txt", "text/plain"), file("c", "c.txt", "text/plain"), file("d", "d.txt", "text/plain")];
+    const onFolder = vi.fn();
+    const controller = controllerWith({ driveChildren: listing(rows), searchDrive: vi.fn() });
+    render(<DriveBrowser controller={controller} location={LOCATION} folderId="root" onFolder={onFolder} />);
+    await screen.findByTitle("d.txt");
+    const all = document.querySelector<HTMLInputElement>("[data-drive-check-all]")!;
+    const box = (name: string) => screen.getByRole("checkbox", { name: `${name} を選ぶ` }) as HTMLInputElement;
+    const picked = () => [...document.querySelectorAll("[data-drive-item][aria-selected=true]")].map((el) => el.getAttribute("data-drive-item"));
+    expect(all.getAttribute("data-drive-check-all")).toBe("none");
+    expect(all.getAttribute("aria-label")).toBe("すべて選択");
+    fireEvent.click(all);
+    expect(picked()).toEqual(["f1", "a", "b", "c", "d"]);
+    expect(all.checked).toBe(true);
+    expect(all.getAttribute("aria-label")).toBe("選択を解除");
+    fireEvent.click(all);
+    expect(picked()).toEqual([]);
+    // One row: the header shows a dash.
+    fireEvent.click(box("a.pdf"));
+    expect(all.getAttribute("data-drive-check-all")).toBe("some");
+    expect(all.indeterminate).toBe(true);
+    // Shift on a box: the run from the last box pressed takes its state.
+    fireEvent.click(box("d.txt"), { shiftKey: true });
+    expect(picked()).toEqual(["a", "b", "c", "d"]);
+    fireEvent.click(box("c.txt")); // cleared: the anchor now off
+    fireEvent.click(box("a.pdf"), { shiftKey: true });
+    expect(picked()).toEqual(["d"]);
+    // A dash pressed selects all.
+    fireEvent.click(all);
+    expect(picked()).toEqual(["f1", "a", "b", "c", "d"]);
+    fireEvent.click(all);
+    // ⌘A with the focus on a box (it is an input, but not a text field).
+    box("b.txt").focus();
+    fireEvent.keyDown(box("b.txt"), { key: "a", metaKey: true });
+    expect(picked()).toEqual(["f1", "a", "b", "c", "d"]);
+    expect(onFolder).not.toHaveBeenCalled(); // nothing opened on the way
+    // A plain click on a row still opens it.
+    fireEvent.click(document.querySelector('[data-drive-item="f1"]')!);
+    expect(onFolder).toHaveBeenCalledWith("f1");
+  });
+
   it("a row's download button downloads that file only (the row does not open)", async () => {
     const a = file("a", "a.pdf", "application/pdf");
     const fetchBlob = vi.fn();
@@ -270,5 +311,18 @@ describe("the selection bar, the row actions and the locations column (§27)", (
     expect(screen.queryByRole("dialog")).toBeNull();
     expect(fetchBlob).not.toHaveBeenCalled();
     expect(document.querySelector('[data-drive-item="a"] [data-drive-icon]')!.getAttribute("data-drive-icon")).toBe("pdf");
+  });
+});
+
+describe("the pickers' columns (2026-10-31, §27.8)", () => {
+  it("give both columns one height, so the rows fill their box (no band under the list beside a long locations column)", async () => {
+    const { DIALOG_COLUMNS, DIALOG_LIST } = await import("../src/ui/DriveDialogs");
+    const columns = DIALOG_COLUMNS.split(" ");
+    const list = DIALOG_LIST.split(" ");
+    expect(columns).toContain("sm:h-80");
+    expect(list).toEqual(expect.arrayContaining(["flex-1", "min-h-0", "overflow-y-auto"]));
+    // A fixed height only where the columns stack (a phone).
+    expect(list.filter((name) => /^h-/.test(name))).toEqual([]);
+    expect(list).toContain("max-sm:h-72");
   });
 });
