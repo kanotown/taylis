@@ -8670,6 +8670,99 @@
         "title": "Crumb",
         "type": "object"
       },
+      "CsvExportIn": {
+        "additionalProperties": false,
+        "description": "POST /wiki/databases/{id}/export.csv: the rows the reader sees, as CSV (WIKI.md §5.6).\nWhat is left out comes from the saved view (`view_id`), as in RowQuery: a sort, filter,\ngroups or columns not saved yet are given here (Functional review v0.1.84 #2). `grouped`\nfalse: no groups; otherwise the given `group_by` (or the view's), and the rows of its\nhidden groups are not written. A row in several groups is written once.",
+        "properties": {
+          "columns": {
+            "anyOf": [
+              {
+                "items": {
+                  "$ref": "#/components/schemas/ViewColumn"
+                },
+                "maxItems": 80,
+                "type": "array"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Columns"
+          },
+          "filter": {
+            "anyOf": [
+              {
+                "$ref": "#/components/schemas/FilterGroup"
+              },
+              {
+                "type": "null"
+              }
+            ]
+          },
+          "group_by": {
+            "anyOf": [
+              {
+                "$ref": "#/components/schemas/GroupBy"
+              },
+              {
+                "type": "null"
+              }
+            ]
+          },
+          "grouped": {
+            "anyOf": [
+              {
+                "type": "boolean"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Grouped"
+          },
+          "sort": {
+            "anyOf": [
+              {
+                "items": {
+                  "$ref": "#/components/schemas/SortKey"
+                },
+                "maxItems": 5,
+                "type": "array"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Sort"
+          },
+          "tz": {
+            "anyOf": [
+              {
+                "maxLength": 64,
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Tz"
+          },
+          "view_id": {
+            "anyOf": [
+              {
+                "maxLength": 24,
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "View Id"
+          }
+        },
+        "title": "CsvExportIn",
+        "type": "object"
+      },
       "CustomEmojiOut": {
         "properties": {
           "color": {
@@ -22505,6 +22598,16 @@
       },
       "ScheduledCreate": {
         "properties": {
+          "ack_requested": {
+            "default": false,
+            "title": "Ack Requested",
+            "type": "boolean"
+          },
+          "also_in_channel": {
+            "default": false,
+            "title": "Also In Channel",
+            "type": "boolean"
+          },
           "attachment_ids": {
             "items": {
               "format": "uuid",
@@ -22537,6 +22640,21 @@
             ],
             "title": "Parent Id"
           },
+          "priority": {
+            "anyOf": [
+              {
+                "enum": [
+                  "important",
+                  "urgent"
+                ],
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Priority"
+          },
           "send_at": {
             "format": "date-time",
             "title": "Send At",
@@ -22552,6 +22670,16 @@
       },
       "ScheduledOut": {
         "properties": {
+          "ack_requested": {
+            "default": false,
+            "title": "Ack Requested",
+            "type": "boolean"
+          },
+          "also_in_channel": {
+            "default": false,
+            "title": "Also In Channel",
+            "type": "boolean"
+          },
           "attachments": {
             "items": {
               "$ref": "#/components/schemas/AttachmentOut"
@@ -22605,6 +22733,21 @@
               }
             ],
             "title": "Parent Id"
+          },
+          "priority": {
+            "anyOf": [
+              {
+                "enum": [
+                  "important",
+                  "urgent"
+                ],
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Priority"
           },
           "send_at": {
             "format": "date-time",
@@ -49525,7 +49668,7 @@
     },
     "/api/v1/wiki/databases/{database_id}/export.csv": {
       "get": {
-        "description": "The view's rows and columns as CSV (WIKI.md §5.6).",
+        "description": "The saved view's rows and columns as CSV, without the rows of its hidden groups (WIKI.md\n§5.6). `tz`: the reader's zone for groups by the day of a time.",
         "operationId": "export_csv_api_v1_wiki_databases__database_id__export_csv_get",
         "parameters": [
           {
@@ -49554,6 +49697,23 @@
               ],
               "title": "View Id"
             }
+          },
+          {
+            "in": "query",
+            "name": "tz",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "maxLength": 64,
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Tz"
+            }
           }
         ],
         "responses": {
@@ -49580,6 +49740,59 @@
           }
         ],
         "summary": "Export Csv",
+        "tags": [
+          "wiki"
+        ]
+      },
+      "post": {
+        "description": "The rows as the reader's view shows them, a sort, filter, groups or columns not saved yet\nincluded (WIKI.md §5.6, Functional review v0.1.84 #2).",
+        "operationId": "export_csv_as_shown_api_v1_wiki_databases__database_id__export_csv_post",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "database_id",
+            "required": true,
+            "schema": {
+              "format": "uuid",
+              "title": "Database Id",
+              "type": "string"
+            }
+          }
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/CsvExportIn"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "content": {
+              "text/csv": {}
+            },
+            "description": "UTF-8 with a BOM"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "security": [
+          {
+            "HTTPBearer": []
+          }
+        ],
+        "summary": "Export Csv As Shown",
         "tags": [
           "wiki"
         ]

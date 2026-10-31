@@ -446,6 +446,27 @@ class RowQuery(BaseModel):
     _tz = field_validator("tz")(_valid_zone)
 
 
+class CsvExportIn(BaseModel):
+    """POST /wiki/databases/{id}/export.csv: the rows the reader sees, as CSV (WIKI.md §5.6).
+    What is left out comes from the saved view (`view_id`), as in RowQuery: a sort, filter,
+    groups or columns not saved yet are given here (Functional review v0.1.84 #2). `grouped`
+    false: no groups; otherwise the given `group_by` (or the view's), and the rows of its
+    hidden groups are not written. A row in several groups is written once."""
+
+    model_config = ConfigDict(extra="forbid")
+
+    view_id: str | None = Field(default=None, max_length=24)
+    sort: list[SortKey] | None = Field(default=None, max_length=5)
+    filter: FilterGroup | None = None
+    grouped: bool | None = None
+    group_by: GroupBy | None = None
+    columns: list[ViewColumn] | None = Field(default=None, max_length=80)
+    # The reader's IANA zone: the day of a time when grouping by date (UTC when left out).
+    tz: str | None = Field(default=None, max_length=64)
+
+    _tz = field_validator("tz")(_valid_zone)
+
+
 class RowGroup(BaseModel):
     """A group of the answer (clients name it: the option, the person, 「なし」 for "")."""
 

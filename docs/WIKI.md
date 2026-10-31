@@ -333,6 +333,20 @@ merge         = 相手ごとに強い方の段階
 
 CSV の書き出し：ビューの今の並べ替え・絞り込み・列で、UTF-8（BOM 付き、Excel のため）。人は表示名、セレクトは名前、日付は ISO 8601。
 
+**画面に見えている行だけ（機能レビュー v0.1.84 #2、2026-10-31）**：以前はビューの絞り込みと並べ替えだけを当て、まとめ（group by、§22.4）で
+**隠したグループの行も CSV に入っていた**（画面は「1 行」なのに CSV は 2 行）。今は通常の問い合わせと同じまとめを当てる。
+
+- 隠したグループの行は書かない。並びはグループの順（グループの中はビューの並べ替え）。すべてのグループを隠すと見出しだけ。
+- 複数のグループに入る行（複数選択・人）は **1 行だけ**、最初に見えているグループの位置に書く（古いクライアント向けの
+  `in_group_order()` と同じ。CSV で同じ行が繰り返されると集計を誤るため）。
+- 画面の保存していない並べ替え・絞り込み・まとめ・列も CSV に入れるため、`POST /wiki/databases/{id}/export.csv`
+  （本文 `CsvExportIn {view_id?, sort?, filter?, grouped?, group_by?, columns?, tz?}`、`RowQuery` と同じく省いたものは保存したビューのもの。
+  `grouped: false` はまとめない、`group_by` を送るとそれでまとめる。`tz` は日時をその日でまとめるときのゾーン）を足した。
+  Desktop / Web は問い合わせと同じ下書きを送る。`GET …/export.csv?view_id=&tz=` は保存したビューで、隠したグループも同じく除く。
+- カレンダーのビューは表示中の月ではなく、絞り込みに合う全行（以前のまま）。
+- 表計算が数式と読む値（`=`・`+`・`-`・`@`・タブ・CR で始まる）と `'` で始まる値は前に `'` を付ける（備品の CSV と同じ
+  `lending/csvio.cell`、LENDING.md §17.7・§18）。数の列はそのまま（`-5` は数）。
+
 ### 5.7 関係（relation、M123 で v1 に入れた）
 
 利用者の Notion のデータベースは関係を使っている（2026-10-07、Q8）。Notion と同じ形にする。
@@ -725,7 +739,7 @@ ALTER TABLE attachments ADD COLUMN page_id uuid REFERENCES wiki_pages(id);
 | GET | /wiki/databases/{id}/rows?view_id=&sort=&filter=&cursor=&limit= | 行（本文なし） | view |
 | POST | /wiki/databases/{id}/rows | 行の作成 `{title, props, client_save_id}` | edit |
 | PATCH | /wiki/rows/{id}/props | `{set, client_op_id}` | edit |
-| GET | /wiki/databases/{id}/export.csv?view_id= | CSV | view |
+| GET / POST | /wiki/databases/{id}/export.csv?view_id=&tz=（POST は `CsvExportIn`、§5.6） | CSV（画面に見えている行だけ） | view |
 | GET | /search/pages | 検索（§8.1） | — |
 | GET / POST | /admin/wiki/pages、/admin/wiki/pages/{id}/takeover | 管理者の一覧と引き取り（§4.3） | admin |
 | GET | /p/{page_id} | ブラウザ向けの案内ページ | — |
@@ -1042,6 +1056,7 @@ bootstrap に `wiki: {change_seq}`。アクティビティは `include=page_ment
   題名・ゴミ箱・復元・スキーマ・ビューで出す。双方向のつながりや題名が変わると、それを表示しているデータベースにも出す。行のページには
   `wiki.page.updated`（`change: "props"`）。`wiki.changed` は行では出さない。
 - **CSV**：`GET /wiki/databases/{id}/export.csv?view_id=`。見出しと「アクセスできないページ」は読む人の言語（ja / en / zh-Hans）。
+  2026-10-31 から隠したグループの行を除き、保存していないビューの内容は `POST` で送る（§5.6）。
 
 ### 18.2 API（M124 のスマホが使うもの。すべて `/api/v1`）
 
@@ -1056,7 +1071,7 @@ bootstrap に `wiki: {change_seq}`。アクティビティは `include=page_ment
 | GET | `/wiki/rows/{id}` | `RowDetailOut {row, database, database_title, refs, referenced_by}`（行のページのプロパティ。本文は `GET /wiki/pages/{id}`） |
 | PATCH | `/wiki/rows/{id}/props` | `{set: {prop_id \| "title": value}, client_op_id}` → `RowWithRefs`。422 `wiki_invalid_property_value` |
 | GET | `/wiki/databases/{id}/properties/{prop_id}/candidates?q=` | 関係のマスに入れられる行（相手のデータベースの読める行だけ） |
-| GET | `/wiki/databases/{id}/export.csv?view_id=` | CSV（BOM 付き UTF-8） |
+| GET | `/wiki/databases/{id}/export.csv?view_id=` | CSV（BOM 付き UTF-8。隠したグループの行は除く、§5.6） |
 
 `RowOut = {id, database_id, title, icon, position, version, head_rev_id, props, relations: {prop_id: [row id]}, hidden_relations:
 [prop_id], created_at, created_by, updated_at, updated_by}`。値の形：テキスト・URL・セレクトの選択肢 id は文字、数、チェックは true

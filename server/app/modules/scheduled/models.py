@@ -1,7 +1,7 @@
 import uuid
 from datetime import datetime
 
-from sqlalchemy import DateTime, ForeignKey, Index, String, Text, Uuid, func
+from sqlalchemy import Boolean, DateTime, ForeignKey, Index, String, Text, Uuid, func, text
 from sqlalchemy.dialects.postgresql import ARRAY
 from sqlalchemy.orm import Mapped, mapped_column
 
@@ -23,6 +23,15 @@ class ScheduledMessage(Base):
     client_msg_id: Mapped[uuid.UUID] = mapped_column(unique=True)
     body: Mapped[str] = mapped_column(Text)
     attachment_ids: Mapped[list[uuid.UUID] | None] = mapped_column(ARRAY(Uuid))
+    # The composer's options, applied when the row is posted (Functional review v0.1.84 #1: they
+    # used to be dropped): a reply's 「チャンネルにも送信」, a top-level post's priority and ack.
+    also_in_channel: Mapped[bool] = mapped_column(
+        Boolean, default=False, server_default=text("false")
+    )
+    priority: Mapped[str | None] = mapped_column(String(16))
+    ack_requested: Mapped[bool] = mapped_column(
+        Boolean, default=False, server_default=text("false")
+    )
     send_at: Mapped[datetime] = mapped_column(DateTime(timezone=True))
     status: Mapped[str] = mapped_column(String(16), default="pending", server_default="pending")
     error: Mapped[str | None] = mapped_column(Text)

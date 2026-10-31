@@ -14,7 +14,8 @@ from pydantic import ValidationError
 from sqlalchemy.exc import IntegrityError
 from sqlalchemy.ext.asyncio import AsyncSession
 
-from app.core.errors import AppError, bad_request, conflict, not_found
+from app.core.errors import AppError, bad_request, conflict, forbidden, not_found
+from app.core.roles import has_capability
 from app.core.time import utcnow
 from app.events.outbox import write_outbox
 from app.modules.attachments import service as attachments
@@ -48,6 +49,9 @@ async def to_out(db: AsyncSession, row: ScheduledMessage) -> ScheduledOut:
         body=row.body,
         attachments=[to_attachment_out(a) for a in rows],
         send_at=row.send_at,
+        also_in_channel=row.also_in_channel,
+        priority=row.priority,  # type: ignore[arg-type]
+        ack_requested=row.ack_requested,
         status=row.status,  # type: ignore[arg-type]
         error=row.error,
         sent_message_id=row.sent_message_id,
@@ -73,8 +77,16 @@ async def create(
     existing = await repo.get_by_client_msg_id(db, data.client_msg_id)
     if existing is not None:
         return await _retried(db, actor, channel_id, existing)
-    channel, _ = await channels.require_member(db, actor.id, channel_id)
+    channel, membership = await channels.require_member(db, actor.id, channel_id)
     channels.require_writable(channel)
+    if (
+        channel.posting_policy == "owners"  # the same rule as the post itself (M15a / M15c)
+        and (data.parent_id is None or data.also_in_channel)
+        and not has_capability(actor, "channels.moderate")
+        and actor.role != "bot"
+        and membership.role != "owner"
+    ):
+        raise forbidden("posting_restricted", "Only owners and administrators can post here")
     now = utcnow()
     if data.send_at < now + MIN_LEAD:
         raise bad_request("send_at_too_soon", "Pick a time at least a minute ahead")
@@ -98,6 +110,9 @@ async def create(
         body=data.body,
         attachment_ids=list(data.attachment_ids),
         send_at=data.send_at,
+        also_in_channel=data.also_in_channel,
+        priority=data.priority,
+        ack_requested=data.ack_requested,
     )
     db.add(row)
     try:
@@ -166,6 +181,9 @@ async def _send(db: AsyncSession, row: ScheduledMessage, user: User) -> Message:
             body=row.body,
             parent_id=row.parent_id,
             attachment_ids=list(row.attachment_ids or []),
+            also_in_channel=row.also_in_channel,
+            priority=row.priority,  # type: ignore[arg-type]  # checked again here
+            ack_requested=row.ack_requested,
         )
     except ValidationError as exc:
         # A row from before the body was checked at creation: failed like any other row, not a

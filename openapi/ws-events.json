@@ -8065,6 +8065,16 @@
           },
           "ScheduledOut": {
             "properties": {
+              "ack_requested": {
+                "default": false,
+                "title": "Ack Requested",
+                "type": "boolean"
+              },
+              "also_in_channel": {
+                "default": false,
+                "title": "Also In Channel",
+                "type": "boolean"
+              },
               "attachments": {
                 "items": {
                   "$ref": "#/$defs/AttachmentOut"
@@ -8118,6 +8128,22 @@
                   }
                 ],
                 "title": "Parent Id"
+              },
+              "priority": {
+                "anyOf": [
+                  {
+                    "enum": [
+                      "important",
+                      "urgent"
+                    ],
+                    "type": "string"
+                  },
+                  {
+                    "type": "null"
+                  }
+                ],
+                "default": null,
+                "title": "Priority"
               },
               "send_at": {
                 "format": "date-time",

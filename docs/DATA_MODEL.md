@@ -384,6 +384,9 @@ CREATE TABLE scheduled_messages (
   body             text NOT NULL,
   attachment_ids   uuid[],
   send_at          timestamptz NOT NULL,
+  also_in_channel  boolean NOT NULL DEFAULT false,       -- 返信の「チャンネルにも送信」(0130)
+  priority         varchar(16),                          -- important | urgent (トップレベルだけ、0130)
+  ack_requested    boolean NOT NULL DEFAULT false,       -- 「確認を求める」(トップレベルだけ、0130)
   status           varchar(16) NOT NULL DEFAULT 'pending', -- pending | sent | failed | cancelled
   error            text,                                 -- failed の理由 (エラーコード)
   sent_message_id  uuid REFERENCES messages(id),
@@ -404,6 +407,15 @@ CREATE INDEX scheduled_messages_user_idx ON scheduled_messages (user_id, send_at
   (制御文字だけ) が送信時に例外になり、時刻順に取るワーカーがその行で毎回止まって以降の全員の予約が送られなかった (M28a)。
   同じ `client_msg_id` の同時再送は一意制約で片方が負け、先に入った行を返す。
 - 1 人あたり pending + failed は 100 件まで (`409 too_many_scheduled`)。
+- **入力欄の選択を保つ (機能レビュー v0.1.84 #1、2026-10-31、マイグレーション 0130)**：以前は「重要 / 緊急」「確認を求める」と返信の
+  「チャンネルにも送信」が予約の API・行・送信のどこにも無く、予約は成功するのに投稿からは黙って落ちていた。今は `ScheduledCreate` と
+  `ScheduledOut` に `also_in_channel` / `priority` / `ack_requested` (省略可、既定は false / null / false。古いクライアントは今までどおり
+  ふつうの投稿を予約する) があり、行に保存し、時刻の送信と「今すぐ送信」で `MessageCreate` にそのまま渡す。検証は通常の送信と同じ
+  (`also_in_channel` は返信だけ、重要度と確認はトップレベルだけ、不正な組み合わせは 422)。お知らせチャンネル (`posting_policy = owners`)
+  でオーナー・管理者以外がトップレベルか「チャンネルにも送信」の返信を予約すると、時刻に失敗するのではなく予約の時点で
+  `403 posting_restricted`。3 端末は通常の送信と同じ選択を予約にも送り、予約が成功したら選択を外す。「下書き」の予約の行には
+  スレッド・添付と並べて「チャンネルにも送信」「重要 / 緊急」「確認を求める」を出す。Desktop / Web は選択も再送キーの内容に含める
+  (選択を変えた予約は別の予約)。
 - 添付は予約時に `attachments.status = 'scheduled'` に予約し、未送信アップロードの GC から外す。取消 / 失敗で
   `deleted` に戻し、GC が実体を消す。
 
