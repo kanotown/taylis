@@ -8,6 +8,7 @@ import type { DbProperty, DbRow, DbView } from "../src/api/types";
 import {
   agenda,
   cellText,
+  csvExportOf,
   clampWidth,
   databaseRights,
   columnsOf,
@@ -180,5 +181,34 @@ describe("who may do what with a database (M144)", () => {
     expect(databaseRights("full", false)).toEqual({ canEdit: true, canShape: true, canDestroy: true });
     expect(databaseRights("full", true)).toEqual({ canEdit: true, canShape: false, canDestroy: false });
     expect(databaseRights(undefined, false)).toEqual({ canEdit: false, canShape: false, canDestroy: false });
+  });
+});
+
+describe("「CSV で書き出し」 asks for what the view shows (Functional review v0.1.84 #2)", () => {
+  const draft = {
+    name: "",
+    type: "board" as const,
+    columns: [{ prop_id: "title", width: 260, hidden: false }, { prop_id: "p1", width: 180, hidden: true }],
+    sort: [{ prop_id: "p2", direction: "desc" as const }],
+    filter: { combinator: "and" as const, conditions: [{ prop_id: "p2", op: "lte" as const, value: 2 }, { prop_id: "p3", op: "contains" as const, value: "" }] },
+    group_by: { prop_id: "status", date_unit: null, hidden: ["opt-hidden"], hide_empty: false },
+  };
+
+  it("sends the draft's sort, filled-in filter, groups with their hidden keys and columns", () => {
+    const body = csvExportOf("v1", draft as never, true, "Asia/Tokyo");
+    expect(body).toEqual({
+      view_id: "v1",
+      sort: draft.sort,
+      filter: { combinator: "and", conditions: [draft.filter.conditions[0]] },
+      grouped: true,
+      group_by: draft.group_by,
+      columns: draft.columns,
+      tz: "Asia/Tokyo",
+    });
+  });
+
+  it("no groups when the screen shows none (a calendar, no group_by); the saved view without a draft", () => {
+    expect(csvExportOf("v1", { ...draft, type: "calendar" } as never, false, "UTC")).toMatchObject({ grouped: false, group_by: null });
+    expect(csvExportOf(null, null, false, "UTC")).toEqual({ view_id: null });
   });
 });

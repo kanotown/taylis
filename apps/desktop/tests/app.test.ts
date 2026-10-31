@@ -36,13 +36,33 @@ describe("app controller", () => {
     expect(await profileKey(`${long}|a`)).not.toBe(await profileKey(`${long}|b`));
   });
 
+  it("schedules a message with the composer's options (Functional review v0.1.84 #1)", async () => {
+    const controller = new AppController();
+    const sent: unknown[] = [];
+    controller.api = {
+      scheduleMessage: async (_channelId: string, body: Record<string, unknown>) => {
+        sent.push(body);
+        return { id: "s1", channel_id: "c1", parent_id: null, client_msg_id: body.client_msg_id, body: body.body, attachments: [], send_at: "2026-10-01T00:00:00Z", also_in_channel: false, priority: body.priority, ack_requested: body.ack_requested, status: "pending", error: null, sent_message_id: null, created_at: "2026-09-27T00:00:00Z" };
+      },
+    } as unknown as ApiClient;
+    const at = new Date("2026-10-01T00:00:00Z");
+    expect(await controller.scheduleMessage("c1", null, "重要なお知らせ", [], at, "k1", { priority: "urgent", ackRequested: true })).toBe(true);
+    expect(await controller.scheduleMessage("c1", "p1", "返信", [], at, "k2", { alsoInChannel: true })).toBe(true);
+    expect(await controller.scheduleMessage("c1", null, "ふつう", [], at, "k3")).toBe(true);
+    expect(sent.map((b) => { const { also_in_channel, priority, ack_requested } = b as Record<string, unknown>; return { also_in_channel, priority, ack_requested }; })).toEqual([
+      { also_in_channel: false, priority: "urgent", ack_requested: true },
+      { also_in_channel: true, priority: null, ack_requested: false },
+      { also_in_channel: false, priority: null, ack_requested: false },
+    ]);
+  });
+
   it("returns a cancelled scheduled message to the draft as the composer writes it, after what is already there", async () => {
     const server = new FakeServer();
     const bob = server.addUser("bob");
     const controller = new AppController();
     controller.store.upsertUser(bob);
     controller.api = { cancelScheduled: async () => {} } as unknown as ApiClient;
-    const row: ScheduledOut = { id: "s1", channel_id: "c1", parent_id: null, client_msg_id: "k1", body: `<@${bob.id}> 明日の件 <!here>`, attachments: [], send_at: "2026-10-01T00:00:00Z", status: "pending", error: null, sent_message_id: null, created_at: "2026-09-27T00:00:00Z" };
+    const row: ScheduledOut = { id: "s1", channel_id: "c1", parent_id: null, client_msg_id: "k1", body: `<@${bob.id}> 明日の件 <!here>`, attachments: [], send_at: "2026-10-01T00:00:00Z", also_in_channel: false, priority: null, ack_requested: false, status: "pending", error: null, sent_message_id: null, created_at: "2026-09-27T00:00:00Z" };
     await controller.cancelScheduled(row);
     expect(controller.store.draft("c1").text).toBe("@bob 明日の件 @here");
     controller.store.setDraft("c1", null, { text: "書きかけ" });

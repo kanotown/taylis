@@ -2447,6 +2447,7 @@ export const ja = {
   "drafts.sendFailed": "送信できませんでした",
   "drafts.sendsAt": "{when} に送信",
   "drafts.attachments": "添付 {count}",
+  "drafts.alsoInChannel": "チャンネルにも送信",
   "drafts.noText": "（本文なし）",
   "drafts.backToDraft": "下書きに戻す",
   "drafts.sendNow": "今すぐ送信",

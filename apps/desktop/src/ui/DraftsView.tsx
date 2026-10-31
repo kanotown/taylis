@@ -37,6 +37,9 @@ export function DraftsView({ controller, onOpen }: { controller: AppController; 
                       <div className="flex items-center gap-2 text-xs text-muted">
                         <span className="font-medium text-ink">{channel ? channelTitle(channel, controller) : "?"}</span>
                         {row.parent_id && <span>· {t("nav.threads")}</span>}
+                        {row.also_in_channel && <span>· {t("drafts.alsoInChannel")}</span>}
+                        {row.priority && <span className={row.priority === "urgent" ? "text-danger" : undefined}>· {t(row.priority === "urgent" ? "composer.priorityUrgent" : "composer.priorityImportant")}</span>}
+                        {row.ack_requested && <span>· {t("composer.askAck")}</span>}
                         {failed ? <span className="text-danger">· {t("drafts.sendFailed")}</span> : <span>· {t("drafts.sendsAt", { when: scheduleLabel(row.send_at) })}</span>}
                         {row.attachments.length > 0 && <span>· {t("drafts.attachments", { count: row.attachments.length })}</span>}
                       </div>

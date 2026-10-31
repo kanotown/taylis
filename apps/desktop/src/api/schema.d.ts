@@ -6707,11 +6707,17 @@ export interface paths {
         };
         /**
          * Export Csv
-         * @description The view's rows and columns as CSV (WIKI.md §5.6).
+         * @description The saved view's rows and columns as CSV, without the rows of its hidden groups (WIKI.md
+         *     §5.6). `tz`: the reader's zone for groups by the day of a time.
          */
         get: operations["export_csv_api_v1_wiki_databases__database_id__export_csv_get"];
         put?: never;
-        post?: never;
+        /**
+         * Export Csv As Shown
+         * @description The rows as the reader's view shows them, a sort, filter, groups or columns not saved yet
+         *     included (WIKI.md §5.6, Functional review v0.1.84 #2).
+         */
+        post: operations["export_csv_as_shown_api_v1_wiki_databases__database_id__export_csv_post"];
         delete?: never;
         options?: never;
         head?: never;
@@ -10510,6 +10516,28 @@ export interface components {
             readable: boolean;
             /** Title */
             title: string | null;
+        };
+        /**
+         * CsvExportIn
+         * @description POST /wiki/databases/{id}/export.csv: the rows the reader sees, as CSV (WIKI.md §5.6).
+         *     What is left out comes from the saved view (`view_id`), as in RowQuery: a sort, filter,
+         *     groups or columns not saved yet are given here (Functional review v0.1.84 #2). `grouped`
+         *     false: no groups; otherwise the given `group_by` (or the view's), and the rows of its
+         *     hidden groups are not written. A row in several groups is written once.
+         */
+        CsvExportIn: {
+            /** Columns */
+            columns?: components["schemas"]["ViewColumn"][] | null;
+            filter?: components["schemas"]["FilterGroup"] | null;
+            group_by?: components["schemas"]["GroupBy"] | null;
+            /** Grouped */
+            grouped?: boolean | null;
+            /** Sort */
+            sort?: components["schemas"]["SortKey"][] | null;
+            /** Tz */
+            tz?: string | null;
+            /** View Id */
+            view_id?: string | null;
         };
         /** CustomEmojiOut */
         CustomEmojiOut: {
@@ -15938,6 +15966,16 @@ export interface components {
         };
         /** ScheduledCreate */
         ScheduledCreate: {
+            /**
+             * Ack Requested
+             * @default false
+             */
+            ack_requested: boolean;
+            /**
+             * Also In Channel
+             * @default false
+             */
+            also_in_channel: boolean;
             /** Attachment Ids */
             attachment_ids?: string[];
             /**
@@ -15952,6 +15990,8 @@ export interface components {
             client_msg_id: string;
             /** Parent Id */
             parent_id?: string | null;
+            /** Priority */
+            priority?: ("important" | "urgent") | null;
             /**
              * Send At
              * Format: date-time
@@ -15960,6 +16000,16 @@ export interface components {
         };
         /** ScheduledOut */
         ScheduledOut: {
+            /**
+             * Ack Requested
+             * @default false
+             */
+            ack_requested: boolean;
+            /**
+             * Also In Channel
+             * @default false
+             */
+            also_in_channel: boolean;
             /** Attachments */
             attachments: components["schemas"]["AttachmentOut"][];
             /** Body */
@@ -15988,6 +16038,8 @@ export interface components {
             id: string;
             /** Parent Id */
             parent_id: string | null;
+            /** Priority */
+            priority?: ("important" | "urgent") | null;
             /**
              * Send At
              * Format: date-time
@@ -30808,6 +30860,7 @@ export interface operations {
         parameters: {
             query?: {
                 view_id?: string | null;
+                tz?: string | null;
             };
             header?: never;
             path: {
@@ -30816,6 +30869,41 @@ export interface operations {
             cookie?: never;
         };
         requestBody?: never;
+        responses: {
+            /** @description UTF-8 with a BOM */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "text/csv": unknown;
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    export_csv_as_shown_api_v1_wiki_databases__database_id__export_csv_post: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                database_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["CsvExportIn"];
+            };
+        };
         responses: {
             /** @description UTF-8 with a BOM */
             200: {

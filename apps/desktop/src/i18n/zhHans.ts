@@ -2448,6 +2448,7 @@ export const zhHans: Readonly<Record<MessageKey, string>> = {
   "drafts.sendFailed": "发送失败",
   "drafts.sendsAt": "将于 {when} 发送",
   "drafts.attachments": "附件 {count}",
+  "drafts.alsoInChannel": "同时发送到频道",
   "drafts.noText": "（无正文）",
   "drafts.backToDraft": "改回草稿",
   "drafts.sendNow": "立即发送",
