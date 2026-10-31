@@ -2066,4 +2066,51 @@ extension SyncEngineTests {
         XCTAssertNil(controller.messageFocus)
         XCTAssertEqual(controller.focusLeftByPost, w.channel.id)
     }
+
+    /// REVIEW-v0.1.84 #3: only the times setting changes (on another device: user.updated → GET /users/me). Someone
+    /// else's times with unread posts and no mention turns unread / quiet; the badge number stays, and the workspace's
+    /// saved unread dot (AppController.activeBadgeChanged, run by onBadge) must follow all the same.
+    func testTheTimesSettingAloneRefreshesTheWorkspaceUnreadDot() async throws {
+        let server = FakeServer()
+        let alice = server.addUser("alice")
+        let bob = server.addUser("bob")
+        let times = server.createChannel("times-alice", ownerId: alice.id)
+        server.join(times.id, bob.id)
+        for body in ["one", "two", "three"] { try server.post(channelId: times.id, senderId: alice.id, body: body) }
+        let store = Store()
+        var options = EngineOptions()
+        options.sleep = { _ in }
+        let engine = SyncEngine(api: server.api(for: bob.id), connect: server.connector(for: bob.id), wsUrl: URL(string: "ws://fake")!,
+                                store: store, getAccessToken: { "t" }, options: options)
+        engine.isActive = { false }
+        await engine.start()
+        await settle(engine)
+        store.channels[times.id]?.channel.timesOwnerId = alice.id  // the fake's bootstrap leaves the owner out
+        XCTAssertEqual(store.channels[times.id]?.unreadCount, 3)
+        XCTAssertEqual(store.channels[times.id]?.mentionCount, 0)
+        var dots: [Bool] = []
+        engine.onBadge = { [store] _ in dots.append(store.channels.values.contains { $0.hasUnread(me: store.me) }) }
+        XCTAssertFalse(store.channels.values.contains { $0.hasUnread(me: store.me) })
+
+        func answer(_ timesDefault: String?, after seconds: TimeInterval) throws {
+            let held = try XCTUnwrap(store.me)
+            var fresh = UserMe(id: held.id, username: held.username, displayName: held.displayName, role: held.role, deactivatedAt: nil,
+                               createdAt: held.createdAt, updatedAt: ISO8601DateFormatter().string(from: Date().addingTimeInterval(seconds)),
+                               email: nil, mustChangePassword: false)
+            fresh.timesNotificationDefault = timesDefault
+            server.meAnswers[bob.id] = fresh
+        }
+        try answer("all", after: 60)
+        await engine.refreshMe()
+        XCTAssertEqual(store.me?.timesDefault, "all")
+        XCTAssertEqual(dots, [true])
+        // Another field changed, the times setting not: nothing to recompute.
+        try answer("all", after: 120)
+        await engine.refreshMe()
+        XCTAssertEqual(dots, [true])
+        try answer("mentions", after: 180)
+        await engine.refreshMe()
+        XCTAssertEqual(dots, [true, false])
+        engine.stop()
+    }
 }

@@ -1774,9 +1774,13 @@ final class AppController {
         }
         do {
             let updated = try await api.updateProfile(fields)
+            let timesBefore = store.me?.timesDefault
             me = updated
             store.setMe(updated)
             store.upsertUser(updated.asPublic)
+            // REVIEW-v0.1.84 #3: the times setting decides whether others' times count as unread: the workspace's saved
+            // unread dot follows now (as SyncEngine.refreshMe does for a change on another device).
+            if updated.timesDefault != timesBefore { engine?.onBadge?(store.badgeCount) }
             return true
         } catch {
             // `quiet`: a background save that is tried again later (the language) shows only what will not pass then.

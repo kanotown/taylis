@@ -236,6 +236,9 @@ final class SyncEngine {
         guard let fresh = try? await api.me(), let held = store.me, held.id == fresh.id,
               !isNewer(held.updatedAt, than: fresh.updatedAt) else { return }
         store.setMe(fresh)
+        // REVIEW-v0.1.84 #3: the times setting (changed on another device) decides whether others' times count as unread;
+        // the workspace's saved unread dot follows it even when the number badge stays the same.
+        if fresh.timesDefault != held.timesDefault { onBadge?(store.badgeCount) }
     }
 
     /// M15f: the conversation's link bar; loaded when it opens and after reconnecting (not in bootstrap).

@@ -102,6 +102,7 @@ NULL) 本人の全体設定 `users.notification_default` (`all` / `mentions` / `
 全員の times を一つずつ「すべて」にしなくても、設定の「他の人の Times もすべて通知」をオンにすれば、自分の level を持たない他の人の
 times がまとめて `all` になる（あとから作られた times も同じ）。times ごとの level は今まで通りこれより優先される（`mentions`
 にした times はメンションだけ）。全体設定 `none` は今まで通りすべてを止める。`all` は静かな未読も外す（SYNC_PROTOCOL.md §10.5）。
+この設定が効くのは Desktop / Web v0.1.84・iOS ビルド 137・Android 1.0.33（versionCode 42）から（§17、REVIEW-v0.1.84 #2）。
 解決の検証ベクトルは `apps/shared/notify-rules.json` の `levels`（サーバの `push_level` と 3 端末が同じものを読む）。
 設定を変えると `user.updated` が出て、ほかの端末は `GET /users/me` で読み直す（新しいイベントは無い）。古いサーバの `UserMe` にはこの
 欄が無く、クライアントは `mentions` とみなして設定を出さない。
@@ -732,3 +733,21 @@ http(s) 以外の URL、失敗時に元の通知)、`StoreReleaseTests` (拡張�
   （規則、PNG の大きさと色、写真があればそれ・無い / 取れなければ頭文字）、Android `ConversationNotificationTest` が読む。
   シミュレータで、拡張機能と同じ `CommunicationNotification.update`（写真なし）を通したローカル通知に頭文字のアバターが出る
   ことを確かめた（`xcrun simctl push` では拡張機能が動かないため）。
+
+## 17. REVIEW-v0.1.84 の対応（2026-10-31）
+
+- **古い端末と「他の人の Times もすべて通知」（#2）**：通知（Desktop の OS 通知）と未読（太字・ホームの点）は端末が自分で
+  決める（§4 の表、SYNC_PROTOCOL.md §10.5）。`times_notification_default` を知らない端末（Desktop v0.1.83・iOS ビルド 136・
+  Android 1.0.32 まで）は、`follows_default = true` の他の人の times を今まで通り `mentions` と解くので、設定をオンにしても
+  メンションの無い投稿を通知せず、静かな未読のままにする。古い Desktop がアクティブだと、モバイルのプッシュも抑えられる
+  （サーバの「アクティブな端末がある」の判定はそのまま）。
+- サーバの側で古い端末を直す道は採らなかった。`level = all, follows_default = false` のような「古い端末にも分かる実効の
+  設定」を返すと、新しい端末にも times ごとに決めた設定に見え、オフに戻したときに残る。端末の `app_version` は iOS が
+  固定の値を送り Web は送らないので、版で配り分けることもできない。
+- 代わりに、効く最低の版を明記した：Desktop / Web **v0.1.84**、iOS **ビルド 137**、Android **1.0.33（versionCode 42）**。
+  3 つの端末の設定（「他の人の Times もすべて通知」の説明）に「古いアプリ（Desktop v0.1.83・iOS ビルド 136・Android 1.0.32
+  まで）には効かないため、各端末のアプリを更新する」を足した。Desktop は前から新しい版を「更新して再起動」のバナーで知らせる
+  （6 時間ごと）。古い端末でも効かせたい times は、その times の通知を個別に「すべて」にする（個別の level は古い端末も読む）。
+- 試験：サーバの判定（`/sync/summary`・プッシュの宛先）は `test_times.py`・`test_m35.py` のまま。出荷済みの端末のバイナリと
+  新しいサーバを組み合わせる試験は無い（レビューは旧 Desktop のコードを取り出して比べた）。
+

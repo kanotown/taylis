@@ -108,7 +108,7 @@ export const zhHans: Readonly<Record<MessageKey, string>> = {
   "settings.notifications.reactions": "表情回应横幅",
   "settings.notifications.reactionsNote": "关闭时也会显示在动态中",
   "settings.notifications.times": "他人的 Times 也通知所有帖子",
-  "settings.notifications.timesNote": "他人的 Times 有新帖子时也通知（关闭时仅限提及），并计入未读。为单个 Times 设置的通知优先。",
+  "settings.notifications.timesNote": "他人的 Times 有新帖子时也通知（关闭时仅限提及），并计入未读。为单个 Times 设置的通知优先。旧版应用（Desktop v0.1.83、iOS 版本 136、Android 1.0.32 及更早）不支持此设置，请更新各设备上的应用。",
   "settings.notifications.tasks": "任务（分配、截止日期）",
   "settings.notifications.tasksNote": "被分配时以及截止日当天早上",
   "settings.notifications.keywords": "通知关键词（可选，用逗号分隔，最多 20 个）",
