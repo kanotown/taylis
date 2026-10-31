@@ -574,6 +574,28 @@ async def attachments_out(db: AsyncSession, rows: list[Attachment]) -> list[Atta
     return [to_attachment_out(a, drive.get(a.id)) for a in rows]
 
 
+async def post_readable(db: AsyncSession, actor: User, attachment: Attachment) -> bool:
+    """Whether the actor can read the message a posted file is attached to now (its channel's
+    rule; a deleted message takes its files off, so a live drive_state means a live message)."""
+    if attachment.drive_state is None or attachment.channel_id is None:
+        return False
+    try:
+        await channels.require_readable(db, actor, attachment.channel_id)
+    except AppError:
+        return False
+    return True
+
+
+async def attachment_out_for(db: AsyncSession, actor: User, row: Attachment) -> AttachmentOut:
+    """GET /attachments/{id}: the attachment as `actor` may see it. REVIEW-v0.1.84 #4: a posted
+    file read through the drive by someone who cannot read its message shows no `drive` (that it
+    was posted, and where it is now, belongs to the conversation): like any drive version."""
+    out = (await attachments_out(db, [row]))[0]
+    if row.drive_state is not None and not await post_readable(db, actor, row):
+        out.drive = None
+    return out
+
+
 async def for_messages(
     db: AsyncSession, message_ids: list[uuid.UUID]
 ) -> dict[uuid.UUID, list[AttachmentOut]]:

@@ -22,7 +22,6 @@ op id derived from the request's and the source's ids.
 import uuid
 from dataclasses import dataclass, field
 
-from sqlalchemy import select
 from sqlalchemy.exc import IntegrityError
 from sqlalchemy.ext.asyncio import AsyncSession
 
@@ -100,9 +99,11 @@ async def copy(
                 raise conflict("drive_cycle", "A folder cannot be copied into itself")
             derived = op_id(data.client_op_id, item.id) if data.client_op_id else None
             if derived is not None:
-                done = await _made_before(db, actor_id, derived)
+                # REVIEW-v0.1.84 #5: the copy made before, checked as a GET would be now (moved
+                # where the actor cannot read it or in the trash: drive_item_not_found).
+                done = await service.made_before(db, actor, derived)
                 if done is not None:
-                    results[source_id] = DriveCopyResult(id=source_id, ok=True, new_id=done)
+                    results[source_id] = DriveCopyResult(id=source_id, ok=True, new_id=done.id)
                     continue
             try:
                 root = await tree.snapshot(db, item, cap=settings.drive_copy_max_items)
@@ -170,15 +171,6 @@ async def copy(
     return DriveCopyResultsOut(results=[results[i] for i in wanted]), copied
 
 
-async def _made_before(
-    db: AsyncSession, actor_id: uuid.UUID, derived: uuid.UUID
-) -> uuid.UUID | None:
-    stmt = select(DriveItem.id).where(
-        DriveItem.created_by == actor_id, DriveItem.client_op_id == derived
-    )
-    return (await db.execute(stmt)).scalar_one_or_none()
-
-
 async def _place(
     db: AsyncSession,
     settings: Settings,
@@ -203,6 +195,18 @@ async def _place(
     for plan in plans:
         if plan.error is not None:
             continue
+        if plan.op_id is not None:
+            # REVIEW-v0.1.84 #6 (as 「ドライブに保存」): the same request may have placed this
+            # copy while ours copied the bytes; its copy, before the name, the room and the quota
+            # could refuse ours.
+            try:
+                done = await service.made_before(db, actor, plan.op_id)
+            except AppError as exc:
+                plan.error, plan.new_id = exc.code, None
+                continue
+            if done is not None:
+                plan.new_id, plan.reused = done.id, True
+                continue
         try:
             async with db.begin_nested():
                 root = plan.root
@@ -231,11 +235,18 @@ async def _place(
             plan.error = exc.code
             plan.new_id = None
         except IntegrityError:
-            # The same client_op_id placed by a request that was faster.
-            found = await _made_before(db, actor_id, plan.op_id) if plan.op_id else None
+            # The same client_op_id placed by a request that was faster (REVIEW-v0.1.84 #5:
+            # answered only while the actor can read it, as above).
+            if plan.op_id is None:
+                raise
+            try:
+                found = await service.made_before(db, actor, plan.op_id)
+            except AppError as exc:
+                plan.error, plan.new_id = exc.code, None
+                continue
             if found is None:
                 raise
-            plan.new_id, plan.reused = found, True
+            plan.new_id, plan.reused = found.id, True
     if placed:
         await events.emit_changed(db, location.id, [target.id])
     await db.commit()

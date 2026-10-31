@@ -129,14 +129,26 @@ async def save_attachment(
         if done is not None:
             return await service.item_out(db, done, viewer=actor), False
     # A first look at the quota (and the name, when it must be free) before copying any byte.
-    location = await service.lock_location(db, folder.location_id)
-    await service.check_quota_in_tx(
-        db, settings, location, source.size_bytes, with_reservations=True
-    )
-    if data.on_conflict == "fail":
-        existing = await repo.child_by_key(db, folder.id, names.key(name))
-        if existing is not None:
-            raise service.name_taken(existing)
+    try:
+        location = await service.lock_location(db, folder.location_id)
+        await service.check_quota_in_tx(
+            db, settings, location, source.size_bytes, with_reservations=True
+        )
+        if data.on_conflict == "fail":
+            existing = await repo.child_by_key(db, folder.id, names.key(name))
+            if existing is not None:
+                raise service.name_taken(existing)
+    except AppError:
+        # REVIEW-v0.1.84 #6: the same request, faster, may have just made the file (its name
+        # and bytes are what this one finds in the way): its answer, not the refusal.
+        if derived is None:
+            raise
+        done = await service.made_before(db, actor, derived)
+        if done is None:
+            raise
+        out = await service.item_out(db, done, viewer=actor)
+        await db.commit()
+        return out, False
     folder_id = folder.id
     await db.commit()
 
@@ -151,7 +163,7 @@ async def save_attachment(
         filename=name,
     )
     try:
-        item = await _place(
+        item, made = await _place(
             db, settings, actor_id, folder_id, name, data.on_conflict, derived, clone
         )
     except IntegrityError:
@@ -171,6 +183,13 @@ async def save_attachment(
         await db.rollback()
         await drop_objects(blobs, clone.keys)
         raise
+    if not made:
+        # The same request made it meanwhile: this one's copied objects are not needed.
+        await drop_objects(blobs, clone.keys)
+        user = await db.get(User, actor_id)
+        if user is None:
+            raise item_not_found()
+        return await service.item_out(db, item, viewer=user), False
     return await service.item_out(db, item, viewer=actor), True
 
 
@@ -183,13 +202,22 @@ async def _place(
     on_conflict: str,
     derived: uuid.UUID | None,
     clone: ClonedObject,
-) -> DriveItem:
+) -> tuple[DriveItem, bool]:
     """One transaction: the folder locked (and still writable), the name settled, the depth, the
-    folder's room and the quota checked, then the item, its attachment and version 1."""
+    folder's room and the quota checked, then the item, its attachment and version 1. (the item,
+    whether it was made now: false when the same `derived` op made it meanwhile)."""
     actor = await db.get(User, actor_id)
     folder = (await repo.lock_items(db, [folder_id])).get(folder_id)
     if actor is None or folder is None or folder.trashed_at is not None:
         raise item_not_found()
+    if derived is not None:
+        # REVIEW-v0.1.84 #6: a request with the same client_op_id may have placed it while this
+        # one copied the bytes (it held the folder's lock): its file, checked as a GET would be,
+        # before the name, the room and the quota could refuse this one.
+        done = await service.made_before(db, actor, derived)
+        if done is not None:
+            await db.commit()
+            return done, False
     location = await repo.location(db, folder.location_id)
     if location is None:
         raise item_not_found()
@@ -248,7 +276,7 @@ async def _place(
     await db.flush()
     await events.emit_changed(db, location.id, [folder.id])
     await db.commit()
-    return item
+    return item, True
 
 
 # --- reach ----------------------------------------------------------------------------------------

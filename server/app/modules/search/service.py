@@ -711,6 +711,12 @@ async def search_drive(
             offset=offset,
             content=content,
             origin=origin,
+            reader=repo.PostReader(
+                user_id=actor.id,
+                public=not actor.is_guest and await channels.preview_allowed(db),
+            )
+            if origin != "all"
+            else None,
         )
         more = len(rows) > limit
         rows = rows[:limit]

@@ -117,7 +117,7 @@ async def test_unreadable_posts_are_neither_named_nor_counted(
     refused = await client.delete(f"{API}/drive/items/{hidden_id}/versions/{hidden_version}")
     assert refused.status_code == 409
     error = refused.json()["error"]
-    assert error["code"] == "drive_version_posted"
+    assert error["code"] == "drive_version_protected"  # REVIEW-v0.1.84 #4: no word of a post
     assert not error.get("details")
     assert hidden["id"] not in refused.text and secret["id"] not in refused.text
     as_user(alice)

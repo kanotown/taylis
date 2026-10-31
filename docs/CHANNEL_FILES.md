@@ -181,6 +181,7 @@ ALTER TABLE channels ADD COLUMN files_to_drive boolean;        -- NULL = ワー�
 - バージョンの整理のジョブ（DRIVE.md §10.2）は、`drive_state IN ('available', 'moved', 'trashed')` の行を持つバージョンを消さず、
   「新しい順に 10 版」の数にも入れない。
 - 古いバージョンの手での削除は 409 `drive_version_posted`（`details.message_id`）。消したいときはメッセージを先に消す。
+  その投稿を読めない人には 409 `drive_version_protected`（投稿のことを言わない。§28）。
 - 「バージョンを戻す」（DRIVE.md §10.2）は今までどおり写して新しいバージョンを作るので、メッセージには関わらない。
 - 項目のゴミ箱・完全削除は止めない（§7）。
 
@@ -333,7 +334,7 @@ message.created（attachments に drive が入った形）
 ### 7.4 バージョンの削除
 
 - `DELETE /drive/items/{id}/versions/{version_id}`：投稿が指すバージョンは 409 `drive_version_posted`（`details.message_id`、読めれば
-  `details.channel_id`）。
+  `details.channel_id`）。投稿を読めない人には 409 `drive_version_protected`（`details` なし。§28）。
 
 ### 7.5 完全削除と墓石
 
@@ -393,9 +394,9 @@ message.created（attachments に drive が入った形）
 | `DriveLocationUsageOut`（CF1 で足した） | `posted_bytes`（§8 の「うち投稿のファイル」） |
 | `ChannelOut` / `PATCH /channels/{id}` | `files_to_drive`・`files_to_drive_effective`（§9。`effective` は `GET /channels/{id}` と PATCH の応答だけ。ほかは null で、端末は `files_to_drive ?? WorkspaceSettingsOut.channel_files_to_drive`） |
 | `GET/PATCH /admin/workspace-settings` | `channel_files_to_drive`（`WorkspaceSettingsOut` にも：bootstrap と `workspace.settings_updated`） |
-| `GET /search/drive` | `origin=all\|uploads\|posts`（既定 all。§12.6。`posts` = `source = 'message'` のバージョンを持つファイル、`uploads` = それ以外（フォルダを含む）） |
+| `GET /search/drive` | `origin=all\|uploads\|posts`（既定 all。§12.6。`posts` = `source = 'message'` のバージョンを持つファイル、`uploads` = それ以外（フォルダを含む）。§28 から、見る人が今読めるメッセージが指すものだけが `posts`） |
 | `GET /files` | 変えない（`drive_state` が NULL か `available` のものだけ。項目が別の場所・ゴミ箱のものは出さない）。`FileItem.attachment.drive` で「ドライブで表示」 |
-| エラー（`apps/shared/errors.json`） | 409 `drive_folder_system`（特別なフォルダは名前の変更・移動・ゴミ箱ができない）、409 `drive_version_posted`（メッセージが指すバージョン） |
+| エラー（`apps/shared/errors.json`） | 409 `drive_folder_system`（特別なフォルダは名前の変更・移動・ゴミ箱ができない）、409 `drive_version_posted`（メッセージが指すバージョン）、409 `drive_version_protected`（同じ、投稿を読めない人へ。§28） |
 | WS | 新しいイベントは無い。`message.updated`（`change = "attachments"`、今の値）と `drive.changed` |
 
 ### 11.2 古い端末
@@ -613,6 +614,7 @@ message.created（attachments に drive が入った形）
 - **足したもの**：`DriveItemOut.posted`、`DrivePostOut.sender_id`、`DriveImpactChannelOut.unreadable_guests`、
   `DriveLocationUsageOut.posted_bytes`。`ChannelOut.files_to_drive_effective` は 1 つのチャンネルの応答だけで埋める。
 - **`origin`**：`posts` = `source = 'message'` のバージョンを持つファイル（メッセージを消した後も投稿から来たもの）。
+  REVIEW-v0.1.84 #4 で、見る人が今読めるメッセージが指すものだけに改めた（§28）。
 - **backfill** は本書では CF6 だったが CF1 で作った（CF6 は本番で流すのと手順書）。
 - **メトリクス**の仕組みが無いので、逃げ道はログの warning だけ。
 
@@ -1157,3 +1159,35 @@ CF5 の 3 つの端末（§23〜§25）で違っていた決まりを 1 つに�
 
 - メッセージの削除の `reason = "changed"`（§7.3）は「新しいバージョンがある」と「ほかのメッセージにも付いている」をまとめた値で、
   ほかのメッセージが読めない会話にあっても同じ値になる。どちらかも分からない 1 ビットなので変えていない。
+
+## 28. REVIEW-v0.1.84 の対応（2026-10-31）
+
+### 28.1 読めない投稿を明かさない、残りの道（#4）
+
+§27.2 で詳細・一覧・impact は塞いだが、そこで返る添付の ID や版から、読めない会話の投稿があることが分かった。添付を読める権利
+（ドライブで項目を読める）と、投稿との関係を知る権利（その会話を読める）を分け、後者は `channels.require_readable` で決める。
+
+- `GET /attachments/{id}`：投稿のファイルを、その会話を読めない人がドライブの権利で読むと `drive` を null にする
+  （`attachments.service.attachment_out_for`）。ふつうのドライブのバージョンと同じ形になり、`state`（`moved` など）も
+  版の番号も出ない。会話を読める人には今まで通り。メッセージの一覧・`/files` は会話を読める人にしか出ないので変えていない。
+- `GET /drive/items/{id}/versions`：`source = 'message'` は、見る人が今読めるメッセージが指す版だけ。ほかは `upload` と
+  見せる（メッセージが消された後の版も `upload`。どの会話だったかもう分からないため）。
+- `DELETE /drive/items/{id}/versions/{version_id}`：投稿が指す版を、その投稿を読めない人が消そうとしたら 409
+  `drive_version_protected`（「このバージョンは保護されているため削除できません」、`details` なし）。読める人には今まで通り
+  `drive_version_posted` と `details`。文言は `apps/shared/errors.json` から 3 つの端末に生成した（古い端末はコードを知らないので
+  409 の一般の文言になる）。
+- `GET /search/drive?origin=posts|uploads`（同じ種類で見つけたもの）：`posts` は見る人が読めるチャンネル（入っている
+  チャンネル、ゲストでなく「入る前に読む」が許されていれば公開チャンネル）の投稿が今指す版を持つファイルだけ。読めない会話の
+  投稿は `uploads` に入る。`origin=all`（既定）は変わらない。
+- 試験：`test_review_v084.py::test_unreadable_posts_leave_no_trace_in_metadata_versions_errors_or_search`（非公開チャンネルの
+  投稿を研究室ドライブへ移して版を足し、チャンネルの外の管理者・抜けた人・投稿者で、添付のメタデータ・版の一覧・検索の
+  `origin`・版の削除の答え）。`test_review_v082.py` の版の削除の期待を `drive_version_protected` に改めた。
+
+### 28.2 残したこと
+
+- 版の整理（DRIVE.md §10.2）は投稿が指す版を残すので、`DRIVE_VERSIONS_MAX` を超えても消えない古い版があることから「何かが
+  守っている」とは推せる。何に守られているかは言わない（版の一覧は `upload`、削除は `drive_version_protected`）。
+- 管理画面の使用量の `posted_bytes`（§8）は場所ごとの合計で、読めない会話の投稿も数える。管理者だけが見る集計なので変えて
+  いない。
+- §27.3 の `reason = "changed"` はそのまま。
+

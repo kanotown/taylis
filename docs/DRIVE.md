@@ -846,7 +846,7 @@ handle @driveparts {
   1 つの添付を 2 つの版が指すことを作らない（参照の数を持たずに済む。写す分の領域は要る）。
 - 版の一覧：番号・時刻・上げた人・大きさ。版ごとにダウンロードできる。プレビューは今の版だけ（§8）。
 - CF1（CHANNEL_FILES.md §4.2）：メッセージが指すバージョン（投稿したファイル）は整理で消さず「新しい 10 版」にも数えない。
-  手での削除は 409 `drive_version_posted`。
+  手での削除は 409 `drive_version_posted`（投稿を読めない人には `drive_version_protected`、CHANNEL_FILES.md §28）。
 - 版は Nextcloud から移さない（今の版だけ、§15）。
 
 ### 10.3 コピー
@@ -2274,3 +2274,21 @@ converter の上限（`PREVIEW_MAX_INPUT_BYTES`、50 MB）を超えてプレビ�
 - **別のフォルダへの同じキーの同時の作成**（#7 と同じ種類）：`drive_items_client_op_uniq` の衝突をロールバックして探し直し、
   作られたフォルダを 200 で返す（今までは 500）。
 - **`DriveItemOut.posted`**：見る人が読めるメッセージだけで決める（`items_out(..., viewer=)`、CHANNEL_FILES.md §27.2）。
+
+## 32. REVIEW-v0.1.84 の対応（2026-10-31）
+
+- **コピーの送り直し（#5）**：`POST /drive/items/copy` を同じ `client_op_id` で送り直したとき、作ったコピーを今の GET と
+  同じ規則で読めるときだけ `ok = true, new_id` を返す（`service.made_before`、§31 と同じ）。ほかの人のマイドライブへ移された・
+  ゴミ箱に入った・チャンネルを抜けたときは、その項目の結果を `ok = false, error = "drive_item_not_found"` にする（今までは
+  読めない ID を成功として返していた）。一意制約の衝突の後の探し直しも同じ。アルバムへの追加（ALBUMS.md §9）のコピーも
+  この関数を通るので同じになる。
+- **同時の送り直し（#6）**：「ドライブに保存」（`POST /drive/save-attachment`）は、保存先のフォルダをロックした後、名前・
+  フォルダの件数・容量を確かめる前に、同じキーの成果物をもう一度探す（読めるときだけ。上と同じ規則）。見つかれば、この要求が
+  写したオブジェクトを消してその項目を 200 で返す。ロックの前の「前もっての確かめ」（容量・`on_conflict = fail` の名前）で
+  断られたときも、先に同じキーで作られていればそれを返す。コピー（`/drive/items/copy`）の置く所にも同じ探し直しを入れた。
+  どちらも、同じ要求が 2 つ同時に届けば 201 と 200（同じ項目）、余分な行・オブジェクト・容量の計上は残らない。
+- 試験：`test_review_v084.py` の `test_copy_again_checks_whoever_reads_the_copy_now`（移動して改名・その場で改名・ゴミ箱・
+  チャンネルを抜けた）、`test_album_add_copy_again_checks_whoever_reads_the_copy_now`、`test_copy_twice_at_once_is_one_success`、
+  `test_save_attachment_twice_at_once_is_one_success`（`fail`・`rename`・容量がちょうど 1 件分・フォルダが満杯。2 つの要求が
+  オブジェクトを写し終えてから置くよう待ち合わせる）。
+

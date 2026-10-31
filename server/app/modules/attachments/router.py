@@ -44,7 +44,7 @@ async def list_files(
 @router.get("/attachments/{attachment_id}", response_model=AttachmentOut)
 async def get_attachment(attachment_id: UUID, user: CurrentUser, db: Db) -> AttachmentOut:
     row = await service.get_for_access(db, user, attachment_id)
-    return (await service.attachments_out(db, [row]))[0]
+    return await service.attachment_out_for(db, user, row)
 
 
 # GET and HEAD as two routes with their own operation ids (as the share links' content).

@@ -988,3 +988,27 @@ AL5 の後、HEIC の投稿とドライブのファイルは写真の格子に�
   `drive-photos` が同じキーに作り直すので再び GC が消せるようになる。孤児のオブジェクトを探す道具は無い（verify-attachments は
   足りない方だけを見る）ので、直していない。
 - HEIC のタイルの資源（レビューの未確認の候補）：悪意ある HEIC と ffmpeg 7.1 での確かめはまだ。
+
+## 25. REVIEW-v0.1.84 の対応（2026-10-31）
+
+### 25.1 残す拡張の中のデータ（#1）
+
+- §24.3 では残す拡張（GCE と NETSCAPE2.0 / ANIMEXTS1.0）の区切りをすべてそのまま写していたので、繰り返しの回数の後ろに足された
+  区切り（撮影地・メモなど）が `originals = false` のリンクの `/display` と表示サイズの ZIP に残った。
+- `gifclean.scrub` は、残す拡張を決まった形のときだけ残す：
+  - 繰り返しの拡張：3 バイトの区切り 1 つ（最初のバイトが 1、続く 2 バイトが回数）と終わり。ほかの形（区切りが続く・長さが
+    違う・区切りが無い・最初のバイトが 1 でない）は拡張ごと 0 で埋めたコメントにする（繰り返しは無くなり 1 回だけ流れる）。
+  - GCE：4 バイトの区切り 1 つと終わり。予約のビット（上の 3 ビット）は 0 にし、透明が無いときの透明の色番号も 0 にする
+    （どちらも絵に効かずデータを入れられる）。ほかの形は拡張ごと 0 のコメント。
+  - 長さは今まで通り元と同じ（Content-Length・ZIP の前もって決めた長さはそのまま）。
+- 試験：`test_review_v084.py` の `test_gif_loop_extension_keeps_the_loop_count_alone`（NETSCAPE2.0・ANIMEXTS1.0 の後ろの 1 つ・
+  多数・1 バイトの区切り、1・7・65,536 バイトずつ）、`test_gif_odd_loop_and_graphic_control_extensions_are_blanked`（長さの違う
+  区切り・回数でない区切り・区切りなし・GCE の長さ違い・GCE の後ろの区切り）、`test_gif_graphic_control_keeps_its_fields_without_spare_bits`、
+  `test_gif_scrub_survives_every_cut_of_the_new_paths`（新しい道のどこで切れても長さが同じ）、
+  `test_link_without_originals_drops_data_inside_the_loop_extension`（実 API の `/display`・ZIP、フレームと長さが同じ、元のファイルは 403）。
+
+### 25.2 残したこと
+
+- 色の表の使われない色・画像の LZW の後ろの区切りなど、絵のデータそのものに埋めたものは残る（復号せずに見分けられない）。
+- §24.4 の動画のメタデータ・0127 の downgrade の後の表示サイズの画像の回収は、そのまま。
+

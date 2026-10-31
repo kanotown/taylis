@@ -62,13 +62,18 @@ def folder_system() -> AppError:
     )
 
 
-def version_posted(message_id: uuid.UUID | None, channel_id: uuid.UUID | None) -> AppError:
-    """409 drive_version_posted: with the message and its channel for someone who can read them,
-    without any details for anyone else (REVIEW-v0.1.82 #5)."""
-    if message_id is None or channel_id is None:
-        return conflict("drive_version_posted", "A message shows this version")
+def version_posted(message_id: uuid.UUID, channel_id: uuid.UUID) -> AppError:
+    """409 drive_version_posted, with the message and its channel: only for someone who can read
+    them (REVIEW-v0.1.82 #5)."""
     details: dict[str, Any] = {"message_id": str(message_id), "channel_id": str(channel_id)}
     return conflict("drive_version_posted", "A message shows this version", details)
+
+
+def version_protected() -> AppError:
+    """409 drive_version_protected: the version cannot be deleted, without saying why. For
+    someone who cannot read the message that shows it (REVIEW-v0.1.84 #4: the words of
+    drive_version_posted told that a post exists)."""
+    return conflict("drive_version_protected", "This version cannot be deleted")
 
 
 def _chunks(ids: Sequence[uuid.UUID]) -> Iterable[list[uuid.UUID]]:

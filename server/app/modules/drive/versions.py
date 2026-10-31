@@ -177,13 +177,20 @@ async def list_versions(
     if item.kind != "file":
         raise item_not_found()
     rows = sorted(await repo.versions_of(db, [item.id]), key=lambda v: v.number, reverse=True)
+    # REVIEW-v0.1.84 #4: 'message' (filed from a post) only for a version a message the viewer
+    # can read shows now; for anyone else it reads as an upload, so the list tells nothing of a
+    # conversation they cannot see.
+    shown = await posted.posted_versions(db, [v.id for v in rows if v.source == "message"])
+    readable = await posted.readable_channels(db, actor, {c for _, c in shown.values()})
     return DriveVersionListOut(
         versions=[
             DriveVersionOut(
                 id=v.id,
                 number=v.number,
                 size_bytes=v.size_bytes,
-                source=v.source,
+                source=v.source
+                if v.source != "message" or (v.id in shown and shown[v.id][1] in readable)
+                else "upload",
                 uploaded_by=v.uploaded_by,
                 created_at=v.created_at,
                 content_modified_at=v.content_modified_at,
@@ -347,11 +354,13 @@ async def delete_version(
         # CF1 (docs/CHANNEL_FILES.md §7.4): a message shows it; delete the message first. The
         # message and its channel are named only to someone who can read it (REVIEW-v0.1.82 #5:
         # the message's id leaked to a manager outside a private channel).
+        # REVIEW-v0.1.84 #4: someone who cannot read it gets a general refusal that does not
+        # say a message shows it (drive_version_protected).
         message_id, channel_id = shown
         try:
             await channels.require_readable(db, actor, channel_id)
         except AppError:
-            raise posted.version_posted(None, None) from None
+            raise posted.version_protected() from None
         raise posted.version_posted(message_id, channel_id)
     location = await service.lock_location(db, item.location_id)
     await _remove_in_tx(db, [version], {location.id: location})
