@@ -516,13 +516,20 @@ class ApiClient(
 
     // --- scheduled messages (M12d) --------------------------------------------------------------
 
-    suspend fun scheduleMessage(channelId: String, clientMsgId: String, body: String, parentId: String?, attachmentIds: List<String>, sendAt: String): ScheduledOut =
+    /** The composer's options go with it (Functional review v0.1.84 #1); an older server ignores them. */
+    suspend fun scheduleMessage(
+        channelId: String, clientMsgId: String, body: String, parentId: String?, attachmentIds: List<String>, sendAt: String,
+        options: jp.chikuwachat.android.sync.SendOptions = jp.chikuwachat.android.sync.SendOptions(),
+    ): ScheduledOut =
         request("POST", "/api/v1/channels/$channelId/scheduled", buildJsonObject {
             put("client_msg_id", clientMsgId)
             put("body", body)
             if (parentId == null) put("parent_id", JsonNull) else put("parent_id", parentId)
             put("attachment_ids", buildJsonArray { attachmentIds.forEach { add(JsonPrimitive(it)) } })
             put("send_at", sendAt)
+            put("also_in_channel", options.alsoInChannel)
+            if (options.priority == null) put("priority", JsonNull) else put("priority", options.priority)
+            put("ack_requested", options.ackRequested)
         })
     override suspend fun listScheduled(): List<ScheduledOut> = request("GET", "/api/v1/scheduled")
     // --- drafts (M15d) -----------------------------------------------------------------------------

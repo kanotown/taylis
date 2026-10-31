@@ -800,6 +800,10 @@
     <string name="drafts_pane_scheduled">予約送信</string>
     <string name="drafts_pane_send_now">今すぐ送信</string>
     <string name="drafts_pane_thread">" · スレッド"</string>
+    <string name="drafts_pane_also_in_channel">" · チャンネルにも送信"</string>
+    <string name="drafts_pane_important">" · 重要"</string>
+    <string name="drafts_pane_urgent">" · 緊急"</string>
+    <string name="drafts_pane_asks_ack">" · 確認を求める"</string>
     <string name="drafts_pane_unfinished_messages_are_saved">入力途中のメッセージは会話ごとに自動で残ります。</string>
     <string name="emoji_picker_sheet_choose">選ぶ</string>
     <string name="emoji_picker_sheet_clear_search">検索語を消す</string>

@@ -804,6 +804,10 @@
     <string name="drafts_pane_scheduled">Scheduled</string>
     <string name="drafts_pane_send_now">Send now</string>
     <string name="drafts_pane_thread">" · Thread"</string>
+    <string name="drafts_pane_also_in_channel">" · Also to the channel"</string>
+    <string name="drafts_pane_important">" · Important"</string>
+    <string name="drafts_pane_urgent">" · Urgent"</string>
+    <string name="drafts_pane_asks_ack">" · Asks for acknowledgement"</string>
     <string name="drafts_pane_unfinished_messages_are_saved">Unfinished messages are saved automatically for each conversation.</string>
     <string name="emoji_picker_sheet_choose">Choose</string>
     <string name="emoji_picker_sheet_clear_search">Clear search</string>

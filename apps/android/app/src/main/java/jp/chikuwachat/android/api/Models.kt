@@ -904,6 +904,10 @@ data class ScheduledOut(
     val error: String? = null,
     val sentMessageId: String? = null,
     val createdAt: String,
+    /** Functional review v0.1.84 #1: the composer's options, applied when it is posted (defaults from an older server). */
+    val alsoInChannel: Boolean = false,
+    val priority: String? = null,
+    val ackRequested: Boolean = false,
 )
 
 /** GET /mentions (M11h): messages that mention me or everyone, newest first. */

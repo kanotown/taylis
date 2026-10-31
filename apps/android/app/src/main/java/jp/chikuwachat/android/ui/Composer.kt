@@ -414,18 +414,29 @@ fun ConversationComposer(controller: AppController, channelId: String, version: 
             val ids = pendingUploads.map { it.id }
             if (!canSchedule) return
             if (at.isBefore(ZonedDateTime.now().plusMinutes(1))) { controller.error = L10n.str(R.string.common_choose_a_time_at_least_1); return }
-            val what = listOf(channelId, parentId, body, ids).toString()
+            // Functional review v0.1.84 #1: the same options as a send now (they were dropped); another choice is another
+            // schedule (another key).
+            val options = SendOptions(
+                alsoInChannel = canShare && alsoInChannel,
+                priority = if (parentId == null) priority else null,
+                ackRequested = parentId == null && ackRequested,
+            )
+            val what = listOf(channelId, parentId, body, ids, options).toString()
             val key = scheduleKey?.takeIf { it.second == what }?.first ?: java.util.UUID.randomUUID().toString()
             scheduleKey = key to what
             val typed = draft
             scheduling = true
             controller.scope.launch {
-                val done = controller.scheduleMessage(channelId, parentId, body, ids, at, key)
+                val done = controller.scheduleMessage(channelId, parentId, body, ids, at, key, options)
                 scheduling = false
                 if (!done) return@launch
                 scheduleKey = null
                 // Codex audit C1: what was typed or attached while the request was on its way stays.
                 store.setDraft(channelId, parentId) { it.copy(text = if (it.text == typed) "" else it.text, attachments = it.attachments.filterNot { a -> a.id in ids }) }
+                // They went with the scheduled post, as after a send.
+                alsoInChannel = false
+                priority = null
+                ackRequested = false
             }
         }
         if (customOpen) ScheduleDialog(onDismiss = { customOpen = false }) { at -> customOpen = false; schedule(at) }

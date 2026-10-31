@@ -101,6 +101,7 @@ import jp.chikuwachat.android.sync.EngineStatus
 import jp.chikuwachat.android.sync.MessageState
 import jp.chikuwachat.android.sync.OkHttpWsTransport
 import jp.chikuwachat.android.sync.Store
+import jp.chikuwachat.android.sync.SendOptions
 import jp.chikuwachat.android.sync.SyncEngine
 import jp.chikuwachat.android.ui.Mentions
 import jp.chikuwachat.android.ui.channelTitle
@@ -2142,10 +2143,13 @@ class AppController(private val app: Application) {
      * `clientMsgId` stays the same while the reader schedules the same draft again after a failure, so a lost response
      * cannot make a second row (Codex audit C2): the server answers with the row it made.
      */
-    suspend fun scheduleMessage(channelId: String, parentId: String?, body: String, attachmentIds: List<String>, sendAt: ZonedDateTime, clientMsgId: String = UUID.randomUUID().toString()): Boolean {
+    suspend fun scheduleMessage(
+        channelId: String, parentId: String?, body: String, attachmentIds: List<String>, sendAt: ZonedDateTime,
+        clientMsgId: String = UUID.randomUUID().toString(), options: SendOptions = SendOptions(),
+    ): Boolean {
         val api = api ?: return false
         return try {
-            val row = api.scheduleMessage(channelId, clientMsgId, body, parentId, attachmentIds, sendAt.toInstant().toString())
+            val row = api.scheduleMessage(channelId, clientMsgId, body, parentId, attachmentIds, sendAt.toInstant().toString(), options)
             store.applyScheduled(row)
             notice = L10n.str(R.string.common_will_send_at, Schedule.label(sendAt))
             true
