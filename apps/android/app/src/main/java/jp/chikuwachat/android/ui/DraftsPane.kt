@@ -55,6 +55,13 @@ fun DraftsPane(controller: AppController, version: Int, onOpen: (channelId: Stri
                     Row(verticalAlignment = Alignment.CenterVertically) {
                         Text(channel?.let { channelTitle(it, store) } ?: "?", style = MaterialTheme.typography.labelLarge, fontWeight = FontWeight.SemiBold)
                         if (row.parentId != null) Text(stringResource(R.string.drafts_pane_thread), style = MaterialTheme.typography.labelMedium, color = MaterialTheme.colorScheme.onSurfaceVariant)
+                        // Functional review v0.1.84 #1: what the post will carry.
+                        if (row.alsoInChannel) Text(stringResource(R.string.drafts_pane_also_in_channel), style = MaterialTheme.typography.labelMedium, color = MaterialTheme.colorScheme.onSurfaceVariant)
+                        when (row.priority) {
+                            "urgent" -> Text(stringResource(R.string.drafts_pane_urgent), style = MaterialTheme.typography.labelMedium, color = MaterialTheme.colorScheme.error)
+                            "important" -> Text(stringResource(R.string.drafts_pane_important), style = MaterialTheme.typography.labelMedium, color = MaterialTheme.colorScheme.onSurfaceVariant)
+                        }
+                        if (row.ackRequested) Text(stringResource(R.string.drafts_pane_asks_ack), style = MaterialTheme.typography.labelMedium, color = MaterialTheme.colorScheme.onSurfaceVariant)
                         val failed = row.status == "failed"
                         if (failed) Text(stringResource(R.string.drafts_pane_couldnt_send), style = MaterialTheme.typography.labelMedium, color = MaterialTheme.colorScheme.error)
                         else Text(stringResource(R.string.drafts_pane_sends_at, Schedule.label(row.sendAt)), style = MaterialTheme.typography.labelMedium, color = MaterialTheme.colorScheme.onSurfaceVariant)

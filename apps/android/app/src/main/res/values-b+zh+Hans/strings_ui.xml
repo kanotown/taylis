@@ -800,6 +800,10 @@
     <string name="drafts_pane_scheduled">定时发送</string>
     <string name="drafts_pane_send_now">立即发送</string>
     <string name="drafts_pane_thread">" · 话题"</string>
+    <string name="drafts_pane_also_in_channel">" · 同时发送到频道"</string>
+    <string name="drafts_pane_important">" · 重要"</string>
+    <string name="drafts_pane_urgent">" · 紧急"</string>
+    <string name="drafts_pane_asks_ack">" · 请求确认"</string>
     <string name="drafts_pane_unfinished_messages_are_saved">未完成的消息会按会话自动保存。</string>
     <string name="emoji_picker_sheet_choose">选择</string>
     <string name="emoji_picker_sheet_clear_search">清除搜索词</string>
