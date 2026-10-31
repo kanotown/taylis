@@ -10,6 +10,13 @@ extension becomes a comment of the same length filled with zero bytes, in sub-bl
 depend only on the extension's length (an XMP packet's "magic trailer" makes its bytes read as
 sub-block lengths, so those are not kept either). Anything after the trailer is zeroed.
 
+The kept extensions are kept only in their exact form (REVIEW-v0.1.84 #1): a graphic control
+extension is one 4-byte sub-block (its reserved bits, and the transparent index when transparency
+is off, are zeroed); a loop extension is one 3-byte sub-block whose first byte is 1. Anything else
+under those labels (an extra sub-block after the loop count, a wrong length) could carry data, so
+the whole extension becomes a blank comment like any other (an odd loop extension is dropped: the
+GIF then plays once).
+
 The output has exactly the input's length, so a Content-Length and a ZIP planned from the stored
 size still hold. A file that does not parse as a GIF (wrong signature, an unknown block, cut short)
 is zeroed from the first byte that does not fit: what was shown so far is the picture's own data,
@@ -92,23 +99,41 @@ async def scrub(chunks: AsyncIterator[bytes]) -> AsyncIterator[bytes]:
             if len(out) >= _FLUSH:
                 yield take()
 
-    async def blank_sub_blocks(pending: int) -> AsyncIterator[bytes]:
+    async def blank_sub_blocks(pending: int, size: int | None = None) -> AsyncIterator[bytes]:
         """Reads the rest of an extension's sub-blocks; writes them (and `pending` bytes already
-        read) as zeros, then the terminator."""
+        read) as zeros, then the terminator. `size` is a sub-block length already read (its byte
+        not yet counted in `pending`, its data not read yet)."""
         while True:
-            size = (await reader.exact(1))[0]
-            if size == 0:
-                break
-            await reader.exact(size)
-            pending += 1 + size
             while pending >= 258:
                 out.append(255)
                 out.extend(_ZEROS)
                 pending -= 256
             if len(out) >= _FLUSH:
                 yield take()
+            if size is None:
+                size = (await reader.exact(1))[0]
+            if size == 0:
+                break
+            await reader.exact(size)
+            pending += 1 + size
+            size = None
         out.extend(_tail(pending))
         out.append(0)
+
+    async def exact_block(length: int) -> tuple[bytes | None, int, int | None]:
+        """Reads an extension body expected to be one sub-block of `length` bytes and its
+        terminator. Returns (the data or None, the bytes read, a sub-block length read but not
+        consumed yet — None when the extension's terminator was read)."""
+        size = (await reader.exact(1))[0]
+        if size == 0:
+            return None, 0, 0
+        if size != length:
+            return None, 0, size
+        data = await reader.exact(size)
+        after = (await reader.exact(1))[0]
+        if after != 0:
+            return None, 1 + size, after
+        return data, 1 + size, None
 
     try:
         head = await reader.exact(13)
@@ -137,28 +162,40 @@ async def scrub(chunks: AsyncIterator[bytes]) -> AsyncIterator[bytes]:
             if introducer != 0x21:
                 raise _Broken
             label = (await reader.exact(1))[0]
-            if label == 0xF9:  # graphic control: the frame's delay and transparency
-                out.extend((introducer, label))
-                async for chunk in copy_sub_blocks():
-                    yield chunk
-                continue
             pending = 0
-            if label == 0xFF:  # an application extension: its identifier first
+            next_size: int | None = None
+            if label == 0xF9:  # graphic control: the frame's delay and transparency
+                data, pending, next_size = await exact_block(4)
+                if data is not None:
+                    packed = data[0] & 0x1F  # disposal, user input, transparency; no reserved bits
+                    index = data[3] if packed & 0x01 else 0
+                    out.extend((introducer, label, 4, packed, data[1], data[2], index, 0))
+                    continue
+            elif label == 0xFF:  # an application extension: its identifier first
                 size = (await reader.exact(1))[0]
                 identifier = await reader.exact(size) if size else b""
-                if size == 11 and identifier in _KEPT_APPLICATIONS:
-                    out.extend((introducer, label, size))
-                    out.extend(identifier)
-                    async for chunk in copy_sub_blocks():
-                        yield chunk
-                    continue
                 if size == 0:  # nothing but the terminator
                     out.extend((introducer, 0xFE, 0))
                     continue
                 pending = 1 + size
-            # A comment, plain text, another application or an unknown extension: a blank comment.
+                if size == 11 and identifier in _KEPT_APPLICATIONS:
+                    data, read, next_size = await exact_block(3)
+                    if data is not None and data[0] == 1:  # the loop count, nothing else
+                        out.extend((introducer, label, size))
+                        out.extend(identifier)
+                        out.extend((3, *data, 0))
+                        continue
+                    pending += read
+                    if data is not None:  # the right shape but not a loop count
+                        next_size = 0
+            # A comment, plain text, another application, an unknown extension or a kept one in
+            # an unexpected form: a blank comment.
             out.extend((introducer, 0xFE))
-            async for chunk in blank_sub_blocks(pending):
+            if next_size == 0:
+                out.extend(_tail(pending))
+                out.append(0)
+                continue
+            async for chunk in blank_sub_blocks(pending, next_size):
                 yield chunk
     except _Broken:
         pass

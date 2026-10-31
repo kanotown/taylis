@@ -1761,6 +1761,11 @@
       "en": "A message shows this version, so it can't be deleted. Delete the message first.",
       "zh-Hans": "此版本附在消息中，无法删除。请先删除该消息。"
     },
+    "drive_version_protected": {
+      "ja": "このバージョンは保護されているため削除できません",
+      "en": "This version is protected and can't be deleted.",
+      "zh-Hans": "此版本受保护，无法删除。"
+    },
     "drive_version_current": {
       "ja": "現在のバージョンです。古いバージョンだけを戻したり削除したりできます",
       "en": "This is the current version. Only older versions can be restored or deleted.",

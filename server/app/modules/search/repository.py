@@ -13,6 +13,7 @@ from sqlalchemy import (
     Text,
     cast,
     exists,
+    false,
     func,
     literal,
     literal_column,
@@ -28,6 +29,7 @@ from sqlalchemy.orm import aliased
 from app.core.doctext import blocks as doc_blocks
 from app.modules.attachments.models import Attachment
 from app.modules.canvases.models import Canvas
+from app.modules.channels.models import Channel, ChannelMember
 from app.modules.drive.models import DriveAlbum, DriveFileVersion, DriveItem, DriveText
 from app.modules.messages.models import Message, Reaction
 from app.modules.users.models import User
@@ -525,14 +527,40 @@ async def count_pages(
 DriveOrigin = Literal["all", "uploads", "posts"]
 
 
-def _origin(stmt: Select[Any], origin: DriveOrigin) -> Select[Any]:
+@dataclass(frozen=True)
+class PostReader:
+    """Whose posts `origin` may tell of (REVIEW-v0.1.84 #4): the channels the viewer is a member
+    of, and with `public` every public channel (channels.require_readable's rule)."""
+
+    user_id: uuid.UUID
+    public: bool
+
+
+def _origin(stmt: Select[Any], origin: DriveOrigin, reader: PostReader | None) -> Select[Any]:
     """CF1 (docs/CHANNEL_FILES.md §12.6): `posts`: the files posted in a channel (filed from a
-    message: a version with source 'message'); `uploads`: everything else."""
+    message: a version with source 'message'); `uploads`: everything else. REVIEW-v0.1.84 #4:
+    a post counts only while a message the viewer can read now shows it (a file posted in a
+    conversation they cannot read is an upload to them, as in its version list)."""
     if origin == "all":
         return stmt
+    readable: Any = false()
+    if reader is not None:
+        readable = Attachment.channel_id.in_(
+            select(ChannelMember.channel_id).where(ChannelMember.user_id == reader.user_id)
+        )
+        if reader.public:
+            readable = or_(
+                readable,
+                Attachment.channel_id.in_(select(Channel.id).where(Channel.type == "public")),
+            )
     from_message = exists(
-        select(DriveFileVersion.id).where(
-            DriveFileVersion.item_id == DriveItem.id, DriveFileVersion.source == "message"
+        select(DriveFileVersion.id)
+        .join(Attachment, Attachment.id == DriveFileVersion.attachment_id)
+        .where(
+            DriveFileVersion.item_id == DriveItem.id,
+            DriveFileVersion.source == "message",
+            Attachment.drive_state.in_(("available", "moved", "trashed")),
+            readable,
         )
     )
     if origin == "posts":
@@ -549,6 +577,7 @@ def drive_search_statement(
     offset: int,
     content: bool = False,
     origin: DriveOrigin = "all",
+    reader: PostReader | None = None,
 ) -> Select[Any]:
     """Live items (not a location's root, not in the trash) of these locations whose name matches
     (PGroonga, drive_items_name_pgroonga_idx; the words are escaped: a file name is not a query),
@@ -584,7 +613,7 @@ def drive_search_statement(
         )
         if kind is not None:
             stmt = stmt.where(DriveItem.kind == kind)
-        stmt = _origin(stmt, origin)
+        stmt = _origin(stmt, origin, reader)
         return (
             stmt.order_by(matched.c.score.desc(), DriveItem.updated_at.desc(), DriveItem.id)
             .limit(limit)
@@ -643,7 +672,7 @@ def drive_search_statement(
     )
     if kind is not None:
         stmt = stmt.where(DriveItem.kind == kind)
-    stmt = _origin(stmt, origin)
+    stmt = _origin(stmt, origin, reader)
     return (
         stmt.order_by(
             grouped.c.by_name.desc(),
@@ -714,11 +743,19 @@ async def search_drive(
     offset: int,
     content: bool = False,
     origin: DriveOrigin = "all",
+    reader: PostReader | None = None,
 ) -> list[DriveHit]:
     if not location_ids:
         return []
     stmt = drive_search_statement(
-        query, location_ids, kind=kind, limit=limit, offset=offset, content=content, origin=origin
+        query,
+        location_ids,
+        kind=kind,
+        limit=limit,
+        offset=offset,
+        content=content,
+        origin=origin,
+        reader=reader,
     )
     rows = (await db.execute(stmt)).all()
     if not content or kind == "album":
