@@ -35,12 +35,14 @@ from app.core.ids import uuid7
 from app.core.time import utcnow
 from app.modules.audit import service as audit
 from app.modules.canvases import templates as tpl
+from app.modules.lending.csvio import cell as csv_cell
 from app.modules.users.models import User
 from app.modules.wiki import access, events, ordering
 from app.modules.wiki import dbschema as ds
 from app.modules.wiki import repository as repo
 from app.modules.wiki import service as pages
 from app.modules.wiki.db_schemas import (
+    CsvExportIn,
     DatabaseLimits,
     DatabaseOut,
     DefaultTemplateIn,
@@ -565,7 +567,7 @@ async def _select(
 
 
 def _grouping(
-    record: WikiDatabase, view: Mapping[str, Any] | None, q: RowQuery
+    record: WikiDatabase, view: Mapping[str, Any] | None, q: RowQuery | CsvExportIn
 ) -> tuple[dict[str, Any] | None, bool]:
     """(the group_by the answer uses, whether it is answered in groups) — M147. A client before
     M147 (`grouped` left out) gets the view's groups as an order, without hidden groups' rows."""
@@ -674,29 +676,49 @@ async def query(db: AsyncSession, actor: User, database_id: uuid.UUID, q: RowQue
 
 
 async def export_csv(
-    db: AsyncSession, actor: User, database_id: uuid.UUID, view_id: str | None, locale: str
+    db: AsyncSession, actor: User, database_id: uuid.UUID, q: CsvExportIn, locale: str
 ) -> tuple[bytes, str]:
-    """(UTF-8 CSV with a BOM, file name): the view's rows, columns, sort and filter (all
-    properties in schema order without a view). People by name, options by name, dates ISO 8601,
-    relations by the titles the reader can read (WIKI.md §5.6)."""
+    """(UTF-8 CSV with a BOM, file name): the rows the view shows, in its order — its sort,
+    filter and groups (the rows of hidden groups left out, a row in several groups once, by its
+    first shown group), with its columns (all properties in schema order without a view). What
+    `q` gives replaces the saved view's (a change not saved yet). People by name, options by name,
+    dates ISO 8601, relations by the titles the reader can read (WIKI.md §5.6). A text a
+    spreadsheet would read as a formula gets a `'` in front (as the lending CSV, LENDING.md §18)."""
     page, record, _ = await _load_database(db, actor, database_id, "view")
     words = _CSV_WORDS.get(locale, _CSV_WORDS["ja"])
-    view = _view(record, view_id) or (record.views[0] if record.views else {})
+    view = _view(record, q.view_id) or (record.views[0] if record.views else {})
     names = await _names(db)
+    sort = [s.model_dump() for s in q.sort] if q.sort is not None else view.get("sort") or []
     rows = await _select(
         db,
         actor,
         record,
-        sort=view.get("sort") or [],
-        group=view.get("filter"),
+        sort=sort,
+        group=q.filter.model_dump(mode="json") if q.filter is not None else view.get("filter"),
         date_range=None,
         names=names,
     )
+    # Review v0.1.84 #2: the groups the view hides are left out of the file as of the screen.
+    # A given group_by is used (`grouped: true` with RowQuery); a stale saved one is skipped.
+    if q.group_by is not None and q.grouped is None:
+        q = q.model_copy(update={"grouped": True})
+    group_by, _ = _grouping(record, view, q)
+    if group_by is not None:
+        rows = ds.in_group_order(
+            rows,
+            ds.props_by_id(record.schema_doc)[group_by["prop_id"]],
+            group_by,
+            ds.Ctx(names=names, actor_id=str(actor.id)),
+            zone=ZoneInfo(q.tz or "UTC"),
+        )
     props = record.schema_doc.get("properties", [])
     by_id = {p["id"]: p for p in props}
     columns: list[dict[str, Any]] = []
     listed = set()
-    for column in view.get("columns") or []:
+    view_columns = (
+        [c.model_dump() for c in q.columns] if q.columns is not None else view.get("columns") or []
+    )
+    for column in view_columns:
         prop = by_id.get(column["prop_id"])
         listed.add(column["prop_id"])
         if prop is not None and not column.get("hidden"):
@@ -709,18 +731,24 @@ async def export_csv(
     buffer = io.StringIO()
     writer = csv.writer(buffer)
     writer.writerow(
-        [p.get("name") or (words["title"] if p["type"] == "title" else p["id"]) for p in columns]
+        [
+            csv_cell(p.get("name") or (words["title"] if p["type"] == "title" else p["id"]))
+            for p in columns
+        ]
     )
     for row in rows:
         line = []
         for prop in columns:
             if prop["type"] == "relation":
-                line.append(ds.relation_text(prop["id"], row.id, ctx, words["hidden"]))
-            else:
+                line.append(csv_cell(ds.relation_text(prop["id"], row.id, ctx, words["hidden"])))
+            elif prop["type"] == "number":
+                # A number as it is (-5 is a number, not a formula).
                 line.append(ds.value_text(prop, ds.cell_value(prop, row), ctx))
+            else:
+                line.append(csv_cell(ds.value_text(prop, ds.cell_value(prop, row), ctx)))
         writer.writerow(line)
     name = pages._file_name(page)
-    return ("﻿" + buffer.getvalue()).encode("utf-8"), f"{name}.csv"
+    return ("\ufeff" + buffer.getvalue()).encode("utf-8"), f"{name}.csv"
 
 
 async def candidates(

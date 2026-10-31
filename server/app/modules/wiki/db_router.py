@@ -5,12 +5,15 @@ from urllib.parse import quote
 from uuid import UUID
 
 from fastapi import APIRouter, Query, Request, Response
+from fastapi.exceptions import RequestValidationError
+from pydantic import ValidationError
 
 from app.core.db import Db
 from app.core.errors import request_locale
 from app.modules.auth.deps import CurrentUser
 from app.modules.wiki import databases
 from app.modules.wiki.db_schemas import (
+    CsvExportIn,
     DatabaseOut,
     DefaultTemplateIn,
     RowCreate,
@@ -116,6 +119,19 @@ async def relation_candidates(
     return await databases.candidates(db, user, database_id, prop_id, q, limit)
 
 
+def _csv_response(content: bytes, name: str) -> Response:
+    return Response(
+        content,
+        media_type="text/csv; charset=utf-8",
+        headers={
+            "Content-Disposition": (
+                f"attachment; filename=\"export.csv\"; filename*=UTF-8''{quote(name)}"
+            ),
+            "Cache-Control": "private, no-store",
+        },
+    )
+
+
 @router.get(
     "/wiki/databases/{database_id}/export.csv",
     response_class=Response,
@@ -127,21 +143,30 @@ async def export_csv(
     db: Db,
     request: Request,
     view_id: str | None = Query(default=None, max_length=24),
+    tz: str | None = Query(default=None, max_length=64),
 ) -> Response:
-    """The view's rows and columns as CSV (WIKI.md §5.6)."""
-    content, name = await databases.export_csv(
-        db, user, database_id, view_id, request_locale(request)
-    )
-    return Response(
-        content,
-        media_type="text/csv; charset=utf-8",
-        headers={
-            "Content-Disposition": (
-                f"attachment; filename=\"export.csv\"; filename*=UTF-8''{quote(name)}"
-            ),
-            "Cache-Control": "private, no-store",
-        },
-    )
+    """The saved view's rows and columns as CSV, without the rows of its hidden groups (WIKI.md
+    §5.6). `tz`: the reader's zone for groups by the day of a time."""
+    try:
+        q = CsvExportIn(view_id=view_id, tz=tz)
+    except ValidationError as exc:
+        raise RequestValidationError(exc.errors()) from exc
+    content, name = await databases.export_csv(db, user, database_id, q, request_locale(request))
+    return _csv_response(content, name)
+
+
+@router.post(
+    "/wiki/databases/{database_id}/export.csv",
+    response_class=Response,
+    responses={200: {"content": {"text/csv": {}}, "description": "UTF-8 with a BOM"}},
+)
+async def export_csv_as_shown(
+    database_id: UUID, data: CsvExportIn, user: CurrentUser, db: Db, request: Request
+) -> Response:
+    """The rows as the reader's view shows them, a sort, filter, groups or columns not saved yet
+    included (WIKI.md §5.6, Functional review v0.1.84 #2)."""
+    content, name = await databases.export_csv(db, user, database_id, data, request_locale(request))
+    return _csv_response(content, name)
 
 
 @router.get("/wiki/rows/{row_id}", response_model=RowDetailOut)

@@ -196,3 +196,110 @@ async def test_send_now_and_attachment_reservation(
         a.filename: a.status for a in (await db.execute(select(Attachment))).scalars().all()
     }
     assert statuses == {"kept.txt": "attached", "dropped.txt": "deleted"}
+
+
+async def test_scheduled_post_keeps_priority_ack_and_also_in_channel(
+    app: FastAPI, client: AsyncClient, db: AsyncSession, as_user: Callable[[User], None]
+) -> None:
+    """Functional review v0.1.84 #1: the composer's options survive the schedule (send now and
+    the worker), are listed with the row, and get the same checks as an ordinary post."""
+    alice = await make_user(db, "alice")
+    bob = await make_user(db, "bob")
+    as_user(alice)
+    general = (await client.post("/api/v1/channels", json={"name": "general"})).json()
+    as_user(bob)
+    assert (await client.post(f"/api/v1/channels/{general['id']}/join")).status_code == 200
+    as_user(alice)
+    parent = (
+        await client.post(
+            f"/api/v1/channels/{general['id']}/messages",
+            json={"client_msg_id": str(uuid.uuid4()), "body": "topic"},
+        )
+    ).json()
+    flagged = await _schedule(
+        client, general["id"], "必ず読んで", priority="urgent", ack_requested=True
+    )
+    assert (flagged["priority"], flagged["ack_requested"], flagged["also_in_channel"]) == (
+        "urgent",
+        True,
+        False,
+    )
+    broadcast = await _schedule(
+        client, general["id"], "thread and channel", parent_id=parent["id"], also_in_channel=True
+    )
+    assert broadcast["also_in_channel"] is True and broadcast["priority"] is None
+    plain = await _schedule(client, general["id"], "older client")  # options left out
+    assert (plain["priority"], plain["ack_requested"], plain["also_in_channel"]) == (
+        None,
+        False,
+        False,
+    )
+    listed = {r["id"]: r for r in (await client.get("/api/v1/scheduled")).json()}
+    assert listed[flagged["id"]]["priority"] == "urgent"
+    assert listed[broadcast["id"]]["also_in_channel"] is True
+
+    # The same constraints as MessageCreate.
+    for bad in (
+        {"also_in_channel": True},  # not a reply
+        {"parent_id": parent["id"], "priority": "important"},
+        {"parent_id": parent["id"], "ack_requested": True},
+        {"priority": "whenever"},
+    ):
+        refused = await client.post(
+            f"/api/v1/channels/{general['id']}/scheduled",
+            json={
+                "client_msg_id": str(uuid.uuid4()),
+                "body": "x",
+                "send_at": (utcnow() + timedelta(hours=1)).isoformat(),
+            }
+            | bad,
+        )
+        assert refused.status_code == 422, bad
+
+    sent = await client.post(f"/api/v1/scheduled/{flagged['id']}/send-now")
+    assert sent.status_code == 200, sent.text
+    assert (sent.json()["priority"], sent.json()["ack_requested"]) == ("urgent", True)
+    async with app.state.db.session_factory() as worker_db:
+        assert await scheduled.send_due(worker_db, now=utcnow() + timedelta(hours=2)) == 2
+    as_user(bob)  # another member receives them with the options
+    got = (await client.get(f"/api/v1/messages/{sent.json()['id']}")).json()
+    assert (got["priority"], got["ack_requested"]) == ("urgent", True)
+    replies = (await client.get(f"/api/v1/messages/{parent['id']}/replies")).json()
+    assert [(r["body"], r["also_in_channel"]) for r in replies] == [("thread and channel", True)]
+
+
+async def test_scheduled_post_respects_announcement_channels(
+    client: AsyncClient, db: AsyncSession, as_user: Callable[[User], None]
+) -> None:
+    """A member of an owners-only channel may schedule a thread reply but not a post (or a reply
+    sent to the channel too): refused when scheduled, not only when it fails at its time."""
+    alice = await make_user(db, "alice")
+    bob = await make_user(db, "bob")
+    as_user(alice)
+    news = (await client.post("/api/v1/channels", json={"name": "news"})).json()
+    as_user(bob)
+    assert (await client.post(f"/api/v1/channels/{news['id']}/join")).status_code == 200
+    as_user(alice)
+    assert (
+        await client.patch(f"/api/v1/channels/{news['id']}", json={"posting_policy": "owners"})
+    ).status_code == 200
+    parent = (
+        await client.post(
+            f"/api/v1/channels/{news['id']}/messages",
+            json={"client_msg_id": str(uuid.uuid4()), "body": "announcement"},
+        )
+    ).json()
+    as_user(bob)
+    base = {
+        "client_msg_id": str(uuid.uuid4()),
+        "body": "x",
+        "send_at": (utcnow() + timedelta(hours=1)).isoformat(),
+    }
+    top = await client.post(f"/api/v1/channels/{news['id']}/scheduled", json=base)
+    assert top.status_code == 403 and top.json()["error"]["code"] == "posting_restricted"
+    also = await client.post(
+        f"/api/v1/channels/{news['id']}/scheduled",
+        json=base | {"parent_id": parent["id"], "also_in_channel": True},
+    )
+    assert also.status_code == 403
+    await _schedule(client, news["id"], "a reply is fine", parent_id=parent["id"])
