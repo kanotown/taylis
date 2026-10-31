@@ -107,7 +107,7 @@ export const ja = {
   "settings.notifications.reactions": "リアクションのバナー",
   "settings.notifications.reactionsNote": "オフでもアクティビティに表示されます",
   "settings.notifications.times": "他の人の Times もすべて通知",
-  "settings.notifications.timesNote": "他の人の Times も、新しい投稿ごとに通知する（オフのときはメンションだけ）。未読も太字で数える。Times ごとに決めた通知が優先される。",
+  "settings.notifications.timesNote": "他の人の Times も、新しい投稿ごとに通知する（オフのときはメンションだけ）。未読も太字で数える。Times ごとに決めた通知が優先される。古いアプリ（Desktop v0.1.83・iOS ビルド 136・Android 1.0.32 まで）には効かないため、各端末のアプリを更新する。",
   "settings.notifications.tasks": "タスク（割り当て・期限）",
   "settings.notifications.tasksNote": "担当になったときと期限の日の朝",
   "settings.notifications.keywords": "通知キーワード（任意、コンマ区切り・20 個まで）",

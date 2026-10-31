@@ -222,3 +222,15 @@ refresh はワークスペースごとに 1 つの API クライアントが直�
 - ワークスペースをまたぐ検索、未読一覧、DM。
 - 1 サーバに複数アカウントでの同時サインイン。
 - 一覧の順の端末間の同期 (各端末で並べ替える。§5.4)。
+
+## 11. REVIEW-v0.1.84 の対応（2026-10-31）
+
+- **iOS：Times の設定だけを変えたときのワークスペースの未読の点（#3）**：開いているワークスペースの保存値（`hasUnread`、
+  切り替え UI と他のワークスペースの点が使う）は `SyncEngine.onBadge` → `AppController.activeBadgeChanged` でしか書き直して
+  いなかった。「他の人の Times もすべて通知」（PUSH_NOTIFICATIONS.md §4）は他の人の times の静かな未読を変えるが、数字の
+  バッジ（メンション数）は変えないので、設定だけを変えると保存値が古いまま残った。
+- 自分の端末で保存したとき（`AppController.updateProfile`）と、別の端末での変更を `user.updated` → `GET /users/me` で受けた
+  とき（`SyncEngine.refreshMe`）の両方で、`times_notification_default` が変わったら `onBadge` を呼んで保存値を計算し直す。
+- 試験：`SyncEngineTests.testTheTimesSettingAloneRefreshesTheWorkspaceUnreadDot`（メンションの無い未読 3 件の他の人の times で
+  `mentions → all → mentions`。ほかの欄だけが変わったときは呼ばない）。
+

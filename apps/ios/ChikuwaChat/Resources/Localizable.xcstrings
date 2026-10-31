@@ -38145,18 +38145,18 @@
         }
       }
     },
-    "他の人の Times も、新しい投稿ごとに通知する（オフのときはメンションだけ）。未読も太字で数える。Times ごとに決めた通知が優先される。" : {
+    "他の人の Times も、新しい投稿ごとに通知する（オフのときはメンションだけ）。未読も太字で数える。Times ごとに決めた通知が優先される。古いアプリ（Desktop v0.1.83・iOS ビルド 136・Android 1.0.32 まで）には効かないため、各端末のアプリを更新する。" : {
       "localizations" : {
         "en" : {
           "stringUnit" : {
             "state" : "translated",
-            "value" : "Notifies you of each new post in other people's times too (off: mentions only) and counts them as unread. A level set on one times channel wins."
+            "value" : "Notifies you of each new post in other people's times too (off: mentions only) and counts them as unread. A level set on one times channel wins. Older apps (Desktop v0.1.83, iOS build 136, Android 1.0.32 and earlier) don't apply it: update the app on each device."
           }
         },
         "zh-Hans" : {
           "stringUnit" : {
             "state" : "translated",
-            "value" : "他人的 Times 有新帖子时也通知（关闭时仅限提及），并计入未读。为单个 Times 设置的通知优先。"
+            "value" : "他人的 Times 有新帖子时也通知（关闭时仅限提及），并计入未读。为单个 Times 设置的通知优先。旧版应用（Desktop v0.1.83、iOS 版本 136、Android 1.0.32 及更早）不支持此设置，请更新各设备上的应用。"
           }
         }
       }

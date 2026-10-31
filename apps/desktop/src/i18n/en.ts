@@ -108,7 +108,7 @@ export const en: Readonly<Record<MessageKey, string>> = {
   "settings.notifications.reactions": "Reaction banners",
   "settings.notifications.reactionsNote": "Shown in Activity even when off",
   "settings.notifications.times": "Every post in others' times",
-  "settings.notifications.timesNote": "Notifies you of each new post in other people's times too (off: mentions only) and counts them as unread. A level set on one times channel wins.",
+  "settings.notifications.timesNote": "Notifies you of each new post in other people's times too (off: mentions only) and counts them as unread. A level set on one times channel wins. Older apps (Desktop v0.1.83, iOS build 136, Android 1.0.32 and earlier) don't apply it: update the app on each device.",
   "settings.notifications.tasks": "Tasks (assignments, due dates)",
   "settings.notifications.tasksNote": "When you're assigned and on the morning of the due date",
   "settings.notifications.keywords": "Notification keywords (optional, comma-separated, up to 20)",

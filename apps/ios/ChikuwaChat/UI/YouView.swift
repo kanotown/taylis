@@ -379,7 +379,7 @@ struct NotificationSettingsView: View {
                         Task { _ = await controller.updateProfile(timesNotificationDefault: on ? "all" : "mentions") }
                     }))
                 } footer: {
-                    Text("他の人の Times も、新しい投稿ごとに通知する（オフのときはメンションだけ）。未読も太字で数える。Times ごとに決めた通知が優先される。")
+                    Text("他の人の Times も、新しい投稿ごとに通知する（オフのときはメンションだけ）。未読も太字で数える。Times ごとに決めた通知が優先される。古いアプリ（Desktop v0.1.83・iOS ビルド 136・Android 1.0.32 まで）には効かないため、各端末のアプリを更新する。")
                 }
             }
             // M39: reactions to my messages as banners; a server before M39 has no such setting.
