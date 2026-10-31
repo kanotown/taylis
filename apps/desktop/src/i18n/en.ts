@@ -2448,6 +2448,7 @@ export const en: Readonly<Record<MessageKey, string>> = {
   "drafts.sendFailed": "Couldn't send",
   "drafts.sendsAt": "Sends {when}",
   "drafts.attachments": "{count, plural, one {# attachment} other {# attachments}}",
+  "drafts.alsoInChannel": "Also sent to the channel",
   "drafts.noText": "(no text)",
   "drafts.backToDraft": "Back to draft",
   "drafts.sendNow": "Send now",

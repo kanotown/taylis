@@ -30,6 +30,7 @@ import {
   clampWidth,
   type Column,
   columnsOf,
+  csvExportOf,
   databaseRights,
   daysBetween,
   firstDateProp,
@@ -395,7 +396,9 @@ export function DatabaseView({ controller, databaseId, compact, renderPeek, onOp
     const api = controller.api;
     if (!api) return;
     try {
-      const blob = await api.exportWikiDatabaseCsv(databaseId, view?.id ?? null);
+      // Functional review v0.1.84 #2: exactly what the view shows — its draft's sort, filter, groups (the hidden ones
+      // left out) and columns, as loadRows asks for the rows.
+      const blob = await api.exportWikiDatabaseCsv(databaseId, csvExportOf(view?.id ?? null, draft, grouped, localZone()));
       const title = hub?.page(databaseId)?.title?.replace(/[\\/:*?"<>|]+/g, "_") || "database";
       await controller.saveFile(`${title}.csv`, blob);
     } catch (error) {

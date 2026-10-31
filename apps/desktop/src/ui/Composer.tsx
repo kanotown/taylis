@@ -73,6 +73,14 @@ export function Composer({
   const [ackRequested, setAckRequested] = useState(false);
   const [priorityOpen, setPriorityOpen] = useState(false);
   const canShare = parentId !== null && canPostTopLevel(channel, controller.isAdmin);
+  /** The options chosen for this post: the same for a send now and a 「後で送信」 (Functional review v0.1.84 #1). */
+  const sendOptions = (): SendOptions => {
+    const options: SendOptions = {};
+    if (canShare && alsoInChannel) options.alsoInChannel = true;
+    if (!parentId && priority) options.priority = priority;
+    if (!parentId && ackRequested) options.ackRequested = true;
+    return options;
+  };
   const [caret, setCaret] = useState(0);
   const [selected, setSelected] = useState(0);
   const [preview, setPreview] = useState(false);
@@ -238,10 +246,7 @@ export function Composer({
     const ids = pending.map((a) => a.id);
     setText("");
     setPending([]);
-    const options: SendOptions = {};
-    if (canShare && alsoInChannel) options.alsoInChannel = true;
-    if (!parentId && priority) options.priority = priority;
-    if (!parentId && ackRequested) options.ackRequested = true;
+    const options = sendOptions();
     setAlsoInChannel(false);
     setPriority(null);
     setAckRequested(false);
@@ -261,18 +266,24 @@ export function Composer({
     if ((!body && pending.length === 0) || uploading > 0 || scheduling) return;
     if (Number.isNaN(sendAt.getTime()) || sendAt.getTime() < Date.now() + 60_000) { controller.setError(t("composer.pickLater")); return; }
     const ids = pending.map((a) => a.id);
-    const what = JSON.stringify([channel.id, parentId, body, ids]);
+    const options = sendOptions();
+    // The options are part of what is scheduled: another choice is another schedule (another key).
+    const what = JSON.stringify([channel.id, parentId, body, ids, options]);
     if (scheduleKey.current?.what !== what) scheduleKey.current = { key: crypto.randomUUID(), what };
     const typed = text;
     setScheduleOpen(false);
     setScheduling(true);
-    const done = await controller.scheduleMessage(channel.id, parentId, body, ids, sendAt, scheduleKey.current.key);
+    const done = await controller.scheduleMessage(channel.id, parentId, body, ids, sendAt, scheduleKey.current.key, options);
     setScheduling(false);
     if (!done) return;
     scheduleKey.current = null;
     // Codex audit C1: what was typed while the request was on its way stays (only the scheduled text leaves).
     if (store.draft(channel.id, parentId).text === typed) setText("");
     setPending((items) => items.filter((a) => !ids.includes(a.id)));
+    // They went with the scheduled post, as after a send (review v0.1.84 #1: they stayed selected).
+    setAlsoInChannel(false);
+    setPriority(null);
+    setAckRequested(false);
   };
 
   /** Uploads picked, dropped or pasted files. The count and each size are checked before any byte is read (review

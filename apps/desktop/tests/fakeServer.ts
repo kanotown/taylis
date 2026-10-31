@@ -1084,7 +1084,7 @@ export class FakeServer {
 
   /** A scheduled row for the user; `emitScheduled` reports later status changes. */
   schedule(userId: string, channelId: string, body: string, sendAt: string): ScheduledOut {
-    const row: ScheduledOut = { id: `sch-${++this.eventId}`, channel_id: channelId, parent_id: null, client_msg_id: `c-${this.eventId}`, body, attachments: [], send_at: sendAt, status: "pending", error: null, sent_message_id: null, created_at: now() };
+    const row: ScheduledOut = { id: `sch-${++this.eventId}`, channel_id: channelId, parent_id: null, client_msg_id: `c-${this.eventId}`, body, attachments: [], send_at: sendAt, also_in_channel: false, priority: null, ack_requested: false, status: "pending", error: null, sent_message_id: null, created_at: now() };
     this.scheduled.set(userId, [...(this.scheduled.get(userId) ?? []), row]);
     return row;
   }

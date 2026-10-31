@@ -27,7 +27,7 @@ import type { AttachmentOut, AuthMethodsOut, CalendarEventOut, PollAnswer, PollA
 import { canOpenDownloaded, openDownloaded, revealDownloaded, saveDownload } from "../platform/download";
 import { browserDownload, downloadRoute, saveStreamToFile, ticketUrl } from "../drive/download";
 import { driveFileOf } from "../drive/listing";
-import type { ChannelState, MessageState } from "../sync/types";
+import type { ChannelState, MessageState, SendOptions } from "../sync/types";
 import { setTitleBase, setUnreadBadge } from "../platform/badge";
 import { listenForDeepLinks } from "../platform/deepLink";
 import { isTauri, isWeb } from "../platform/env";
@@ -1077,15 +1077,19 @@ export class AppController {
    * when the reader tries the same schedule again after a failure (a lost response must not make a second row, Codex
    * audit C2).
    */
-  async scheduleMessage(channelId: string, parentId: string | null, body: string, attachmentIds: string[], sendAt: Date, clientMsgId: string = crypto.randomUUID()): Promise<boolean> {
+  async scheduleMessage(channelId: string, parentId: string | null, body: string, attachmentIds: string[], sendAt: Date, clientMsgId: string = crypto.randomUUID(), options: SendOptions = {}): Promise<boolean> {
     if (!this.api) return false;
     try {
+      // Functional review v0.1.84 #1: the composer's options go with the schedule (an older server ignores them).
       const row = await this.api.scheduleMessage(channelId, {
         client_msg_id: clientMsgId,
         body,
         parent_id: parentId,
         attachment_ids: attachmentIds,
         send_at: sendAt.toISOString(),
+        also_in_channel: !!options.alsoInChannel,
+        priority: options.priority ?? null,
+        ack_requested: !!options.ackRequested,
       });
       this.store.applyScheduled(row);
       this.setNotice(t("app.scheduledSet", { when: scheduleLabel(row.send_at) }));

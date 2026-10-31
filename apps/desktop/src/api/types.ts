@@ -483,6 +483,7 @@ export type DbDateValue = components["schemas"]["DateValue"];
 export type DbRow = components["schemas"]["RowOut"];
 export type DbRowRef = components["schemas"]["RowRef"];
 export type DbRowQuery = components["schemas"]["RowQuery"];
+export type DbCsvExport = components["schemas"]["CsvExportIn"];
 export type DbRowQueryOut = components["schemas"]["RowQueryOut"];
 export type DbRowWithRefs = components["schemas"]["RowWithRefs"];
 export type DbRowDetail = components["schemas"]["RowDetailOut"];

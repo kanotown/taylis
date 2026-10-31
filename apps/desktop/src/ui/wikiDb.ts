@@ -3,7 +3,7 @@
  * columns from a view, and the calendar's month grid with multi-day rows laid out in lanes (and the agenda list a
  * narrow screen shows instead). The server sorts and filters; nothing here reorders rows.
  */
-import type { DatabaseOut, DbDateValue, DbFilterOp, DbGroupBy, DbGroupOut, DbProperty, DbPropType, DbRow, DbRowRef, DbView, DbViewColumn, DbViewIn, DbViewType } from "../api/types";
+import type { DatabaseOut, DbCsvExport, DbDateValue, DbFilterOp, DbGroupBy, DbGroupOut, DbProperty, DbPropType, DbRow, DbRowRef, DbView, DbViewColumn, DbViewIn, DbViewType } from "../api/types";
 
 export const TITLE_ID = "title";
 
@@ -177,6 +177,24 @@ export function readyConditions<T extends { op: DbFilterOp; value?: unknown }>(c
 export const isRestrictedValue = (value: unknown): value is string => typeof value === "string" && value.startsWith("restricted:");
 
 export const sortable = (type: DbPropType) => type !== "relation";
+
+/**
+ * What 「CSV で書き出し」 asks for: the rows as the view shows them (Functional review v0.1.84 #2) — the draft's sort,
+ * filter (only conditions filled in, as the query), groups (`grouped` as the query: the hidden groups' rows are left
+ * out; none for a calendar or a view without groups) and columns, saved or not. Nothing from the draft: the saved view.
+ */
+export function csvExportOf(viewId: string | null, draft: DbViewIn | null, grouped: boolean, tz: string): DbCsvExport {
+  if (!draft) return { view_id: viewId };
+  return {
+    view_id: viewId,
+    sort: draft.sort ?? [],
+    filter: { combinator: draft.filter?.combinator ?? "and", conditions: readyConditions(draft.filter?.conditions ?? []) },
+    grouped,
+    group_by: grouped ? draft.group_by ?? null : null,
+    columns: draft.columns ?? [],
+    tz,
+  };
+}
 
 // --- the table's columns -------------------------------------------------------------------------------------------
 
