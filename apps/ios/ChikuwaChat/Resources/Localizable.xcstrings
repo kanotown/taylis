@@ -34340,34 +34340,34 @@
         }
       }
     },
-    "題名（空欄なら「無題のキャンバス」）" : {
+    "空欄なら「無題のキャンバス」になります。" : {
       "localizations" : {
         "en" : {
           "stringUnit" : {
             "state" : "translated",
-            "value" : "Title (blank: “Untitled canvas”)"
+            "value" : "Leave empty for “Untitled canvas”."
           }
         },
         "zh-Hans" : {
           "stringUnit" : {
             "state" : "translated",
-            "value" : "标题（留空则为“无标题画布”）"
+            "value" : "留空则为“无标题画布”。"
           }
         }
       }
     },
-    "題名（空欄ならテンプレートの題名）" : {
+    "空欄ならテンプレートの題名（日付や名前を入れたもの）になります。" : {
       "localizations" : {
         "en" : {
           "stringUnit" : {
             "state" : "translated",
-            "value" : "Title (blank: the template's title)"
+            "value" : "Leave empty to use the template's title (with the date and names filled in)."
           }
         },
         "zh-Hans" : {
           "stringUnit" : {
             "state" : "translated",
-            "value" : "标题（留空则使用模板的标题）"
+            "value" : "留空则使用模板标题（填入日期和名字）。"
           }
         }
       }

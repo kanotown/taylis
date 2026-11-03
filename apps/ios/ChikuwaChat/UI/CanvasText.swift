@@ -9,6 +9,18 @@ enum CanvasText {
     /// A task line, as the server counts it (server/app/modules/canvases/service.py TASK_LINE).
     static let taskLine = try! NSRegularExpression(pattern: #"^([ \t]*)[-*] \[([ xX])\](?: (.*))?$"#)
 
+    /// The server's limit on a canvas title (`canvases.title varchar(200)`, characters = Unicode scalars).
+    static let titleMax = 200
+
+    /// The name typed when creating a canvas (2026-11-03), as sent: trimmed and cut to the limit; empty → nil (the
+    /// template's title or 「無題のキャンバス」, the server's default).
+    static func createTitle(_ typed: String) -> String? {
+        let trimmed = typed.trimmingCharacters(in: .whitespacesAndNewlines)
+        let cut = String(String.UnicodeScalarView(trimmed.unicodeScalars.prefix(titleMax)))
+            .trimmingCharacters(in: .whitespacesAndNewlines)
+        return cut.isEmpty ? nil : cut
+    }
+
     /// The text and a selection in it (UTF-16 offsets).
     struct EditState: Equatable {
         var text: String

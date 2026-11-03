@@ -301,8 +301,8 @@
     <string name="canvas_pane_keep_their_version_and_tick_the">Keep their version and tick the checkboxes again.</string>
     <string name="canvas_pane_last_updated">Last updated: %1$s · %2$s</string>
     <string name="canvas_pane_later">Later</string>
-    <string name="canvas_pane_leave_empty_for_the_templates_title">Leave empty for the template\'s title</string>
-    <string name="canvas_pane_leave_empty_for_untitled_canvas">Leave empty for \"Untitled canvas\"</string>
+    <string name="canvas_pane_leave_empty_for_the_templates_title">Leave empty to use the template\'s title (with the date and names filled in).</string>
+    <string name="canvas_pane_leave_empty_for_untitled_canvas">Leave empty for \"Untitled canvas\".</string>
     <string name="canvas_pane_loading_templates">Loading templates…</string>
     <string name="canvas_pane_make_conversation_canvas">Make conversation canvas</string>
     <string name="canvas_pane_make_it_the_conversation_canvas_opens">Make it the conversation canvas (opens first in the \"Canvas\" tab)</string>

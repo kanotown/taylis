@@ -300,8 +300,8 @@
     <string name="canvas_pane_keep_their_version_and_tick_the">请保留对方的版本，然后重新勾选。</string>
     <string name="canvas_pane_last_updated">最后更新：%1$s · %2$s</string>
     <string name="canvas_pane_later">稍后</string>
-    <string name="canvas_pane_leave_empty_for_the_templates_title">留空则使用模板标题</string>
-    <string name="canvas_pane_leave_empty_for_untitled_canvas">留空则为\"无标题画布\"</string>
+    <string name="canvas_pane_leave_empty_for_the_templates_title">留空则使用模板标题（填入日期和名字）。</string>
+    <string name="canvas_pane_leave_empty_for_untitled_canvas">留空则为\"无标题画布\"。</string>
     <string name="canvas_pane_loading_templates">正在加载模板…</string>
     <string name="canvas_pane_make_conversation_canvas">设为会话画布</string>
     <string name="canvas_pane_make_it_the_conversation_canvas_opens">设为会话画布 (在\"画布\"标签页中首先打开)</string>

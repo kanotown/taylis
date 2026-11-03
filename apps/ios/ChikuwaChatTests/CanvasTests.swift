@@ -151,6 +151,15 @@ final class CanvasMarkdownFixtureTests: XCTestCase {
         XCTAssertEqual(E.failed(ApiError.network(URLError(.notConnectedToInternet)), was: rows), rows)
     }
 
+    /// 2026-11-03: the name typed in 「新しいキャンバス」, as sent — empty keeps the server's default title.
+    func testTheNameOfANewCanvas() {
+        XCTAssertNil(CanvasText.createTitle(""))
+        XCTAssertNil(CanvasText.createTitle("  \n "))
+        XCTAssertEqual(CanvasText.createTitle(" 第3回 輪講 "), "第3回 輪講")
+        XCTAssertEqual(CanvasText.createTitle(String(repeating: "あ", count: 250)), String(repeating: "あ", count: 200))
+        XCTAssertEqual(CanvasText.createTitle(String(repeating: "😀", count: 201))?.unicodeScalars.count, 200)
+    }
+
     func testTickingATaskLine() throws {
         for item in try XCTUnwrap(fixture()["toggle"]?.arrayValue) {
             let body = try XCTUnwrap(item["body"]?.stringValue)
