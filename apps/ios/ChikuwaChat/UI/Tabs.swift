@@ -186,7 +186,8 @@ struct DMListView: View {
                             Button(pinned ? "固定を外す" : "上に固定", systemImage: pinned ? "pin.slash" : "pin") {
                                 Task { await controller.setDmPinned(channel.id, on: !pinned) }
                             }
-                            .tint(.orange)
+                            // White label: a dark orange (#C2410C, 5.2:1) instead of .orange (2.2:1).
+                            .tint(Color(red: 0xC2 / 255, green: 0x41 / 255, blue: 0x0C / 255))
                         }
                     }
                     // M141 (MOBILE_UI.md §6.3): 「会話を閉じる」 from right to left as well.
