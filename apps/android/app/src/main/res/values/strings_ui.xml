@@ -300,8 +300,8 @@
     <string name="canvas_pane_keep_their_version_and_tick_the">相手のバージョンを残して、チェックを付け直してください。</string>
     <string name="canvas_pane_last_updated">最終更新：%1$s · %2$s</string>
     <string name="canvas_pane_later">あとで</string>
-    <string name="canvas_pane_leave_empty_for_the_templates_title">空欄ならテンプレートの題名</string>
-    <string name="canvas_pane_leave_empty_for_untitled_canvas">空欄なら「無題のキャンバス」</string>
+    <string name="canvas_pane_leave_empty_for_the_templates_title">空欄ならテンプレートの題名（日付や名前を入れたもの）になります。</string>
+    <string name="canvas_pane_leave_empty_for_untitled_canvas">空欄なら「無題のキャンバス」になります。</string>
     <string name="canvas_pane_loading_templates">テンプレートを読み込んでいます…</string>
     <string name="canvas_pane_make_conversation_canvas">会話のキャンバスにする</string>
     <string name="canvas_pane_make_it_the_conversation_canvas_opens">会話のキャンバスにする（「キャンバス」タブで最初に開きます）</string>

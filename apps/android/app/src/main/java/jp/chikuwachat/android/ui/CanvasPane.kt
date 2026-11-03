@@ -16,6 +16,8 @@ import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.selection.selectable
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.foundation.text.BasicTextField
+import androidx.compose.foundation.text.KeyboardActions
+import androidx.compose.foundation.text.KeyboardOptions
 import androidx.compose.foundation.verticalScroll
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.automirrored.outlined.FormatListBulleted
@@ -71,6 +73,7 @@ import androidx.compose.ui.platform.LocalClipboard
 import androidx.compose.ui.platform.LocalDensity
 import androidx.compose.ui.text.TextRange
 import androidx.compose.ui.text.font.FontWeight
+import androidx.compose.ui.text.input.ImeAction
 import androidx.compose.ui.text.input.TextFieldValue
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
@@ -1288,7 +1291,7 @@ private fun RenameDialog(controller: AppController, canvas: CanvasMeta, onDismis
     )
 }
 
-/** A new canvas: empty or from a template (§4.12); the conversation's tab when it has none. */
+/** A new canvas: its name first (2026-11-03), then empty or from a template (§4.12); the conversation's tab when it has none. */
 @Composable
 private fun NewCanvasDialog(controller: AppController, channel: ChannelState, list: List<CanvasMeta>, onDismiss: () -> Unit, onCreated: (CanvasOut) -> Unit) {
     var templates by remember { mutableStateOf<List<CanvasTemplateOut>?>(null) }
@@ -1298,12 +1301,39 @@ private fun NewCanvasDialog(controller: AppController, channel: ChannelState, li
     var asTab by rememberSaveable { mutableStateOf(!hasTab) }
     var busy by remember { mutableStateOf(false) }
     val scope = rememberCoroutineScope()
+    val nameFocus = remember { FocusRequester() }
     LaunchedEffect(Unit) { templates = controller.canvasTemplates() ?: emptyList() }
+    LaunchedEffect(Unit) {
+        delay(150) // once the dialog's window has focus, or the keyboard does not come up
+        runCatching { nameFocus.requestFocus() }
+    }
+    val picked = if (choice.isEmpty()) null else templates?.firstOrNull { it.key == choice }
+    val create: () -> Unit = {
+        if (!busy) {
+            busy = true
+            scope.launch {
+                val created = controller.createCanvas(channel.id, choice.ifEmpty { null }, CanvasText.createTitle(title), asTab && !hasTab)
+                busy = false
+                if (created != null) onCreated(created)
+            }
+        }
+    }
     AlertDialog(
         onDismissRequest = onDismiss,
         title = { Text(stringResource(R.string.canvas_pane_new_canvas)) },
         text = {
             Column(Modifier.verticalScroll(rememberScrollState())) {
+                // Empty keeps the server's default: the template's title, else 「無題のキャンバス」.
+                OutlinedTextField(
+                    title, { title = CanvasText.clipTitle(it) }, singleLine = true,
+                    modifier = Modifier.fillMaxWidth().focusRequester(nameFocus),
+                    label = { Text(stringResource(R.string.common_name)) },
+                    placeholder = { Text(picked?.title?.ifEmpty { null } ?: stringResource(R.string.canvases_pane_untitled_canvas), maxLines = 1, overflow = TextOverflow.Ellipsis) },
+                    supportingText = { Text(stringResource(if (picked != null) R.string.canvas_pane_leave_empty_for_the_templates_title else R.string.canvas_pane_leave_empty_for_untitled_canvas)) },
+                    keyboardOptions = KeyboardOptions(imeAction = ImeAction.Done),
+                    keyboardActions = KeyboardActions(onDone = { create() }),
+                )
+                Spacer(Modifier.height(4.dp))
                 Text(stringResource(R.string.canvas_pane_start_blank_or_from_a_template), style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
                 Spacer(Modifier.height(8.dp))
                 @Composable
@@ -1324,13 +1354,8 @@ private fun NewCanvasDialog(controller: AppController, channel: ChannelState, li
                 val loaded = templates
                 if (loaded == null) Text(stringResource(R.string.canvas_pane_loading_templates), style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
                 else loaded.forEach { option(it.key, it.name, it.description) }
-                Spacer(Modifier.height(8.dp))
-                OutlinedTextField(
-                    title, { title = it.take(200) }, singleLine = true, modifier = Modifier.fillMaxWidth(),
-                    label = { Text(stringResource(R.string.common_title)) },
-                    placeholder = { Text(if (choice.isNotEmpty()) stringResource(R.string.canvas_pane_leave_empty_for_the_templates_title) else stringResource(R.string.canvas_pane_leave_empty_for_untitled_canvas)) },
-                )
                 if (!hasTab) {
+                    Spacer(Modifier.height(8.dp))
                     Row(Modifier.fillMaxWidth().selectable(selected = asTab, role = Role.Checkbox, onClick = { asTab = !asTab }).padding(vertical = 4.dp), verticalAlignment = Alignment.CenterVertically) {
                         Checkbox(checked = asTab, onCheckedChange = null)
                         Spacer(Modifier.width(8.dp))
@@ -1340,14 +1365,7 @@ private fun NewCanvasDialog(controller: AppController, channel: ChannelState, li
             }
         },
         confirmButton = {
-            TextButton(enabled = !busy, onClick = {
-                busy = true
-                scope.launch {
-                    val created = controller.createCanvas(channel.id, choice.ifEmpty { null }, title.trim().ifEmpty { null }, asTab && !hasTab)
-                    busy = false
-                    if (created != null) onCreated(created)
-                }
-            }) { Text(stringResource(R.string.common_create)) }
+            TextButton(enabled = !busy, onClick = create) { Text(stringResource(R.string.common_create)) }
         },
         dismissButton = { TextButton(onClick = onDismiss) { Text(stringResource(R.string.common_cancel)) } },
     )

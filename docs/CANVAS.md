@@ -1704,3 +1704,18 @@ VS Code や GitHub と同じく、行で対応させる。
   ブラウザ（2 タブ）：相手が打ち終えた時点でカーソルが表示済み、保存後の位置のずれ 1 px、フォーカスを外すと消える。
   iOS CanvasCaretPresenceTests・CanvasPhase2Tests、Android CanvasCaretPresenceTest（送る間隔、フレームの読み書き、位置の変換、色）。
   シミュレータ・エミュレータで、WS から送った相手のカーソルが該当の文字の位置に名前付きで出て、止めると消えることを確かめた。
+
+## 26. 作成時に名前を付ける（2026-11-03）
+
+利用者の要望：「新しいキャンバスを作るときに名前を付けたい」。題名の欄は 3 端末とも作成の画面にあったが、テンプレートの
+一覧の下にあり（スマホでは一覧に押し出されて画面の外）、作ってから題名を変える使い方になっていた。
+
+- **画面**：「新しいキャンバス」の一番上に「名前」の欄を置き、開いたときにフォーカスする（Desktop / Web は `autoFocus`、
+  iOS は `@FocusState`、Android は `FocusRequester`。スマホはキーボードが上がる）。Enter（キーボードの「完了」）で作成。
+  プレースホルダは「無題のキャンバス」、テンプレートを選ぶとそのテンプレートの題名（`{{date}}` などはそのまま見せる）。
+  欄の下に空欄のときの題名を一言で出す。テンプレート・「会話のキャンバスにする」は従来どおりその下。
+- **送るもの**：前後の空白を除き 200 文字（サーバの `varchar(200)`、コードポイントで数える）までに切って `title` に入れる。
+  空なら送らない（サーバがテンプレートの題名か「無題のキャンバス」にする）。`client_save_id` による再送の冪等は変えない。
+  API・サーバの変更はない。
+- **テスト**：vitest canvasScreen（欄が先頭でフォーカスされる、プレースホルダの切り替え、Enter で作成、`canvasCreateTitle`）、
+  iOS CanvasTests `testTheNameOfANewCanvas`、Android CanvasMarkdownTest `theNameOfANewCanvas`（`CanvasText.createTitle`）。

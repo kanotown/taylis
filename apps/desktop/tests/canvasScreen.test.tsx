@@ -13,6 +13,7 @@ import type { ApiClient } from "../src/api/client";
 import { AppController } from "../src/state/app";
 import { SyncEngine } from "../src/sync/engine";
 import { Store } from "../src/sync/store";
+import { canvasCreateTitle } from "../src/ui/CanvasPane";
 import { COMPACT_QUERY } from "../src/ui/compact";
 import { MainScreen } from "../src/ui/MainScreen";
 import { FakeServer } from "./fakeServer";
@@ -131,6 +132,37 @@ it("wide: 「メッセージ | キャンバス」 in the header; a canvas from a
   fireEvent.click(screen.getByRole("tab", { name: "メッセージ" }));
   await settle();
   expect(document.querySelector(".timeline")?.closest("[inert]")).toBeNull();
+});
+
+it("2026-11-03: the new canvas is named in its dialog — 「名前」 first and focused, the template's title as the hint, Enter creates", async () => {
+  const { server, channelId } = await setup();
+  await openCanvasTab();
+  fireEvent.click(screen.getByRole("button", { name: /キャンバスを作成/ }));
+  await settle(10);
+  const dialog = screen.getByRole("dialog", { name: "新しいキャンバス" });
+  const name = within(dialog).getByLabelText("名前") as HTMLInputElement;
+  expect(document.activeElement).toBe(name);
+  expect(name.placeholder).toBe("無題のキャンバス");
+  expect(name.maxLength).toBe(200);
+  // The name comes before the templates.
+  expect(name.compareDocumentPosition(within(dialog).getByRole("radiogroup")) & Node.DOCUMENT_POSITION_FOLLOWING).toBeTruthy();
+  fireEvent.click(within(dialog).getByRole("radio", { name: /議事録/ }));
+  expect(name.placeholder).toBe("議事録 {{date}}");
+  expect(within(dialog).getByText(/空欄ならテンプレートの題名/)).toBeTruthy();
+  fireEvent.change(name, { target: { value: "  第3回 輪講  " } });
+  fireEvent.submit(name.closest("form")!); // Enter in the field
+  await settle(30);
+  const [canvas] = server.listCanvases(server.userByName("bob").id, channelId);
+  expect(canvas).toMatchObject({ title: "第3回 輪講", template_key: "minutes" });
+  expect(screen.queryByRole("dialog", { name: "新しいキャンバス" })).toBeNull();
+});
+
+it("canvasCreateTitle: trimmed, cut to the server's 200 characters, empty → the default", () => {
+  expect(canvasCreateTitle("")).toBeNull();
+  expect(canvasCreateTitle("   ")).toBeNull();
+  expect(canvasCreateTitle(" 輪講 ")).toBe("輪講");
+  expect(canvasCreateTitle("あ".repeat(250))).toBe("あ".repeat(200));
+  expect(Array.from(canvasCreateTitle("😀".repeat(201))!)).toHaveLength(200);
 });
 
 it("a narrow header (the thread pane open): the tabs fold into one menu, then pins, files and shortcuts move into ⋯ (2026-10-02)", async () => {

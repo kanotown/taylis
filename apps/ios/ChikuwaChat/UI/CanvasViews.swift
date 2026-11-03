@@ -653,7 +653,7 @@ private struct CanvasListSheet: View {
     }
 }
 
-/// A new canvas: empty or from a template (§4.12); the conversation's tab when it has none.
+/// A new canvas: its name first (2026-11-03), then empty or from a template (§4.12); the conversation's tab when it has none.
 private struct NewCanvasSheet: View {
     @Bindable var controller: AppController
     let channel: ChannelState
@@ -664,11 +664,30 @@ private struct NewCanvasSheet: View {
     @State private var title = ""
     @State private var asTab = true
     @State private var busy = false
+    @FocusState private var nameFocused: Bool
 
     var body: some View {
         let hasTab = (controller.store.canvasesOf(channel.id) ?? []).contains { $0.isChannelTab }
+        let picked = choice.isEmpty ? nil : templates?.first { $0.key == choice }
         NavigationStack {
             Form {
+                Section {
+                    // Empty keeps the server's default: the template's title, else 「無題のキャンバス」.
+                    TextField("名前", text: $title, prompt: picked.map { Text(verbatim: $0.title) } ?? Text("無題のキャンバス"))
+                        .focused($nameFocused)
+                        .submitLabel(.done)
+                        .onSubmit { create(hasTab: hasTab) }
+                        .onChange(of: title) { _, typed in
+                            if typed.unicodeScalars.count > CanvasText.titleMax {
+                                title = String(String.UnicodeScalarView(typed.unicodeScalars.prefix(CanvasText.titleMax)))
+                            }
+                        }
+                        .accessibilityIdentifier("canvas.new.name")
+                } header: {
+                    Text("名前")
+                } footer: {
+                    Text(picked == nil ? "空欄なら「無題のキャンバス」になります。" : "空欄ならテンプレートの題名（日付や名前を入れたもの）になります。")
+                }
                 Section {
                     option("", tr("空白のキャンバス"), nil)
                     if let templates {
@@ -681,13 +700,12 @@ private struct NewCanvasSheet: View {
                 } footer: {
                     Text("日付や名前はテンプレートに入ります。")
                 }
-                Section {
-                    TextField(choice.isEmpty ? "題名（空欄なら「無題のキャンバス」）" : "題名（空欄ならテンプレートの題名）", text: $title)
-                    if !hasTab {
+                if !hasTab {
+                    Section {
                         Toggle("会話のキャンバスにする", isOn: $asTab)
+                    } footer: {
+                        Text("「キャンバス」タブで最初に開きます。")
                     }
-                } footer: {
-                    if !hasTab { Text("「キャンバス」タブで最初に開きます。") }
                 }
             }
             .navigationTitle("新しいキャンバス")
@@ -695,20 +713,27 @@ private struct NewCanvasSheet: View {
             .toolbar {
                 ToolbarItem(placement: .cancellationAction) { Button("キャンセル") { dismiss() } }
                 ToolbarItem(placement: .confirmationAction) {
-                    Button("作成") {
-                        busy = true
-                        Task {
-                            let trimmed = title.trimmingCharacters(in: .whitespacesAndNewlines)
-                            let canvas = await controller.createCanvas(channelId: channel.id, templateKey: choice.isEmpty ? nil : choice,
-                                                                       title: trimmed.isEmpty ? nil : String(trimmed.prefix(200)), asTab: asTab && !hasTab)
-                            busy = false
-                            if let canvas { onCreated(canvas) }
-                        }
-                    }
-                    .disabled(busy)
+                    Button("作成") { create(hasTab: hasTab) }
+                        .disabled(busy)
                 }
             }
             .task { templates = await controller.canvasTemplates() ?? [] }
+            .task {
+                // The keyboard up for the name once the sheet has risen (focus set during the presentation is lost).
+                try? await Task.sleep(nanoseconds: 350_000_000)
+                nameFocused = true
+            }
+        }
+    }
+
+    private func create(hasTab: Bool) {
+        guard !busy else { return }
+        busy = true
+        Task {
+            let canvas = await controller.createCanvas(channelId: channel.id, templateKey: choice.isEmpty ? nil : choice,
+                                                       title: CanvasText.createTitle(title), asTab: asTab && !hasTab)
+            busy = false
+            if let canvas { onCreated(canvas) }
         }
     }
 

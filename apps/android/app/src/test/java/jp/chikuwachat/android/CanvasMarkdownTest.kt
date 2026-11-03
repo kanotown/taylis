@@ -121,6 +121,19 @@ class CanvasMarkdownTest {
         }
     }
 
+    /** 2026-11-03: the name typed in 「新しいキャンバス」, as sent — empty keeps the server's default title. */
+    @Test
+    fun theNameOfANewCanvas() {
+        assertNull(CanvasText.createTitle(""))
+        assertNull(CanvasText.createTitle("  \n "))
+        assertEquals("第3回 輪講", CanvasText.createTitle(" 第3回 輪講 "))
+        assertEquals("あ".repeat(200), CanvasText.createTitle("あ".repeat(250)))
+        val emoji = CanvasText.createTitle("😀".repeat(201))!!
+        assertEquals(200, emoji.codePointCount(0, emoji.length)) // whole pairs, cut by code points like the server
+        assertEquals("😀".repeat(200), CanvasText.clipTitle("😀".repeat(201)))
+        assertEquals("abc", CanvasText.clipTitle("abc"))
+    }
+
     @Test
     fun tickingWithAnExplicitStateAndMessagesStayUntouched() {
         assertEquals("- [x] a", CanvasText.toggleTaskLine("- [ ] a", 0, done = true))

@@ -15,6 +15,19 @@ import jp.chikuwachat.android.L10n
  * cases the three clients share (CanvasMarkdownTest).
  */
 object CanvasText {
+    /** The server's limit on a canvas title (`canvases.title varchar(200)`, characters = code points). */
+    const val TITLE_MAX = 200
+
+    /** [typed] cut to [TITLE_MAX] code points (never in the middle of a surrogate pair). */
+    fun clipTitle(typed: String): String =
+        if (typed.codePointCount(0, typed.length) <= TITLE_MAX) typed else typed.substring(0, typed.offsetByCodePoints(0, TITLE_MAX))
+
+    /**
+     * The name typed when creating a canvas (2026-11-03), as sent: trimmed and cut to the limit; empty → null (the
+     * template's title or 「無題のキャンバス」, the server's default).
+     */
+    fun createTitle(typed: String): String? = clipTitle(typed.trim()).trim().ifEmpty { null }
+
     /** A text and its selection (start ≤ end, UTF-16 offsets like TextRange). */
     data class Edit(val text: String, val start: Int, val end: Int = start)
 

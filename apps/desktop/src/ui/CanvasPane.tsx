@@ -28,7 +28,7 @@ import { useCompact } from "./compact";
 import { CANVAS_SPLIT_DEFAULT, CANVAS_SPLIT_MAX, CANVAS_SPLIT_MIN, clampCanvasSplit, readCanvasSplit, writeCanvasSplit } from "./prefs";
 import { sinceLabel } from "./format";
 import { mentionsToNames } from "./mentions";
-import { Badge, Button, cn, Input, Menu, MenuContent, MenuItem, MenuLabel, MenuRadioGroup, MenuRadioItem, MenuSeparator, MenuTrigger, Modal, PopoverContent, PopoverRoot, PopoverTrigger } from "./primitives";
+import { Badge, Button, cn, Field, Input, Menu, MenuContent, MenuItem, MenuLabel, MenuRadioGroup, MenuRadioItem, MenuSeparator, MenuTrigger, Modal, PopoverContent, PopoverRoot, PopoverTrigger } from "./primitives";
 import { t } from "../i18n";
 
 /** The canvas the tab opens on: the conversation's tab canvas, else the most recently updated one. */
@@ -649,7 +649,16 @@ function RenameDialog({ controller, canvas, onClose }: { controller: AppControll
   );
 }
 
-/** A new canvas: empty or from a template (§4.12); the conversation's tab when it has none. */
+/** The server's limit on a canvas title (`canvases.title varchar(200)`). */
+export const CANVAS_TITLE_MAX = 200;
+
+/** The name typed when creating a canvas, as sent: trimmed and cut to the limit; empty → null (the default title). */
+export function canvasCreateTitle(typed: string): string | null {
+  const trimmed = Array.from(typed.trim()).slice(0, CANVAS_TITLE_MAX).join("").trim();
+  return trimmed === "" ? null : trimmed;
+}
+
+/** A new canvas: its name, then empty or from a template (§4.12); the conversation's tab when it has none. */
 function NewCanvasDialog({ controller, channel, list, onClose, onCreated }: {
   controller: AppController;
   channel: ChannelState;
@@ -666,9 +675,11 @@ function NewCanvasDialog({ controller, channel, list, onClose, onCreated }: {
   useEffect(() => {
     void controller.canvasTemplates().then((rows) => setTemplates(rows ?? []));
   }, [controller]);
+  const picked = choice ? templates?.find((row) => row.key === choice) ?? null : null;
   const create = async () => {
+    if (busy) return;
     setBusy(true);
-    const canvas = await controller.createCanvas(channel.id, { templateKey: choice || null, title: title.trim() || null, asTab: asTab && !hasTab });
+    const canvas = await controller.createCanvas(channel.id, { templateKey: choice || null, title: canvasCreateTitle(title), asTab: asTab && !hasTab });
     setBusy(false);
     if (canvas) onCreated(canvas);
   };
@@ -684,11 +695,21 @@ function NewCanvasDialog({ controller, channel, list, onClose, onCreated }: {
   return (
     <Modal title={t("canvas.new")} description={t("canvas.newDescription")} onClose={onClose} className="w-[520px]">
       <form className="mt-4 space-y-3" onSubmit={(event) => { event.preventDefault(); void create(); }}>
-        <div className="max-h-[42dvh] space-y-1.5 overflow-y-auto pr-1" role="radiogroup" aria-label={t("composer.templates")}>
+        {/* The name first (Enter creates); empty keeps the template's title or 「無題のキャンバス」. */}
+        <Field label={t("canvas.nameLabel")} hint={picked ? t("canvas.nameHintTemplate") : t("canvas.nameHintBlank")}>
+          <Input
+            aria-label={t("canvas.nameLabel")}
+            value={title}
+            maxLength={CANVAS_TITLE_MAX}
+            autoFocus
+            placeholder={picked?.title || t("canvas.untitled")}
+            onChange={(event) => setTitle(event.target.value)}
+          />
+        </Field>
+        <div className="max-h-[38dvh] space-y-1.5 overflow-y-auto pr-1" role="radiogroup" aria-label={t("composer.templates")}>
           {option("", t("canvas.blank"), null)}
           {templates === null ? <div className="py-2 text-sm text-muted">{t("canvas.loadingTemplates")}</div> : templates.map((t) => option(t.key, t.name, t.description))}
         </div>
-        <Input aria-label={t("canvas.titleLabel")} placeholder={choice ? t("canvas.titlePlaceholderTemplate") : t("canvas.titlePlaceholderBlank")} value={title} maxLength={200} onChange={(event) => setTitle(event.target.value)} />
         {!hasTab && (
           <label className="flex items-center gap-2 text-sm">
             <input type="checkbox" checked={asTab} onChange={(event) => setAsTab(event.target.checked)} />
