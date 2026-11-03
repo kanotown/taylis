@@ -639,7 +639,8 @@ struct ChannelListView: View {
             Button(starred(channel) ? "お気に入りから外す" : "お気に入り", systemImage: starred(channel) ? "star.slash" : "star") {
                 Task { await controller.toggleFavorite(channel.id) }
             }
-            .tint(.yellow)
+            // The system draws the label in white: a dark amber (#A16207, 4.9:1) instead of .yellow (1.5:1).
+            .tint(Color(red: 0xA1 / 255, green: 0x62 / 255, blue: 0x07 / 255))
         }
     }
 }
