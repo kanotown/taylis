@@ -182,7 +182,7 @@ function ChannelsTab({ controller }: { controller: AppController }) {
       {renaming && (
         <Modal onClose={() => setRenaming(null)} title={t("dialogs.renameChannel")} className="w-[440px]">
           <form className="mt-4 space-y-4" onSubmit={rename}>
-            <Input value={name} pattern="[a-z0-9][a-z0-9._-]*" maxLength={80} autoFocus required onChange={(e) => setName(e.target.value.toLowerCase())} />
+            <Input value={name} pattern="[^\s#@/]{1,80}" maxLength={80} autoFocus required onChange={(e) => setName(e.target.value)} />
             <div className="flex justify-end gap-2">
               <Button type="button" variant="secondary" onClick={() => setRenaming(null)}>{t("common.cancel")}</Button>
               <Button type="submit" disabled={busy || !name.trim() || name.trim() === renaming.name}>{t("common.save")}</Button>
