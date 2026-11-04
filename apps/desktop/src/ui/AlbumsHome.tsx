@@ -3,8 +3,10 @@
  * can read, newest first (GET /drive/albums, 50 at a time), each with its cover, title, count and days, and where it
  * is. The search (GET /search/drive?kind=album) finds them by name and description. 「新しいアルバム」 makes one in a
  * location I can write (its 「アルバム」 folder). drive.changed reads the list again (once a second at most).
+ * A card's ⋯ (at the top right of its cover, and a right click) is the drive's folder menu (DriveItemMenu).
  */
 import { Images, Loader2, Plus, Search, X } from "lucide-react";
+import { ContextMenu } from "radix-ui";
 import { type ReactNode, useCallback, useEffect, useState } from "react";
 
 import { describeError } from "../api/errors";
@@ -16,6 +18,7 @@ import { pathLine } from "../drive/listing";
 import { coalesce } from "../sync/drive";
 import { NewAlbumDialog } from "./AlbumDialogs";
 import { useThumbnail } from "./DriveBrowser";
+import { DriveItemMenuItems, type DriveItemActions, ItemMenuButton, MENU_CONTENT, useDriveItemActions } from "./DriveItemMenu";
 import { Button, Input } from "./primitives";
 import { t } from "../i18n";
 
@@ -32,20 +35,52 @@ export function albumWhere(entry: Pick<AlbumEntry, "path" | "location_kind">): s
   return pathLine(localizedPath(entry.path, entry.location_kind), root);
 }
 
-function AlbumTile({ controller, entry, onOpen }: { controller: AppController; entry: AlbumEntry; onOpen: () => void }) {
+function AlbumTile({ controller, entry, location, actions, onOpen }: {
+  controller: AppController;
+  entry: AlbumEntry;
+  /** The album's location when it is one of mine (else the menu only reads: download, the link, copy needs a place). */
+  location: DriveLocationOut | null;
+  actions: DriveItemActions;
+  onOpen: () => void;
+}) {
   const cover = entry.album?.cover?.attachment_id ?? entry.album?.preview_attachment_ids[0] ?? null;
   const url = useThumbnail(controller, cover ? `/api/v1/attachments/${cover}/thumbnail` : null);
+  const item = entry.album ? { ...entry.folder, album: entry.album } : entry.folder;
+  const menu = (
+    <DriveItemMenuItems
+      actions={actions}
+      item={item}
+      place={location ? { location, folderId: entry.folder.parent_id ?? location.root_id } : null}
+      canWrite={location?.can_write ?? false}
+      canShare={location?.can_share ?? false}
+      onOpen={onOpen}
+    />
+  );
   return (
-    <li>
-      <button type="button" data-album-entry={entry.folder.id} onClick={onOpen} className="group flex w-full min-w-0 flex-col text-left">
-        <span className="flex aspect-[4/3] w-full items-center justify-center overflow-hidden rounded-lg bg-panel ring-1 ring-line group-hover:ring-ink/25">
-          {url ? <img src={url} alt="" className="h-full w-full object-cover transition-transform group-hover:scale-[1.02]" /> : <Images size={34} className="text-muted" />}
-        </span>
-        <span className="mt-2 block truncate text-[14px] font-semibold">{entry.folder.name}</span>
-        {entry.album && <span className="block truncate text-xs text-muted">{albumLine(entry.album)}</span>}
-        <span className="block truncate text-[11.5px] text-muted">{albumWhere(entry)}</span>
-      </button>
-    </li>
+    <ContextMenu.Root>
+      <ContextMenu.Trigger asChild>
+        <li className="group/card relative">
+          <button type="button" data-album-entry={entry.folder.id} onClick={onOpen} className="group flex w-full min-w-0 flex-col text-left">
+            <span className="flex aspect-[4/3] w-full items-center justify-center overflow-hidden rounded-lg bg-panel ring-1 ring-line group-hover:ring-ink/25">
+              {url ? <img src={url} alt="" className="h-full w-full object-cover transition-transform group-hover:scale-[1.02]" /> : <Images size={34} className="text-muted" />}
+            </span>
+            <span className="mt-2 block truncate text-[14px] font-semibold">{entry.folder.name}</span>
+            {entry.album && <span className="block truncate text-xs text-muted">{albumLine(entry.album)}</span>}
+            <span className="block truncate text-[11.5px] text-muted">{albumWhere(entry)}</span>
+          </button>
+          <ItemMenuButton
+            data-album-entry-menu={entry.folder.id}
+            iconSize={16}
+            className="absolute right-2 top-2 flex h-7 w-7 items-center justify-center rounded-full bg-black/45 text-white opacity-0 transition-opacity hover:bg-black/65 focus-visible:opacity-100 group-focus-within/card:opacity-100 group-hover/card:opacity-100 data-[state=open]:opacity-100 [@media(hover:none)]:opacity-100"
+          >
+            {menu}
+          </ItemMenuButton>
+        </li>
+      </ContextMenu.Trigger>
+      <ContextMenu.Portal>
+        <ContextMenu.Content className={MENU_CONTENT} collisionPadding={8}>{menu}</ContextMenu.Content>
+      </ContextMenu.Portal>
+    </ContextMenu.Root>
   );
 }
 
@@ -110,6 +145,20 @@ export function AlbumsHome({ controller, locations, onOpen, header }: {
     };
   }, [api, query, controller]);
 
+  // A card's menu: the drive's folder menu (rename, move, the trash with the posted-files warning, 「アルバムを解除」…).
+  const actions = useDriveItemActions(controller, {
+    onChanged: () => void load(),
+    onTrashed: (gone) => {
+      setEntries((held) => held && held.filter((entry) => !gone.has(entry.folder.id)));
+      setHits((held) => held && held.filter((entry) => !gone.has(entry.folder.id)));
+    },
+    onReplaced: (changed) => {
+      const swap = (held: AlbumEntry[] | null) => held && held.map((entry) => (entry.folder.id === changed.id ? { ...entry, folder: changed } : entry));
+      setEntries(swap);
+      setHits(swap);
+    },
+  });
+  const locationOf = (entry: AlbumEntry) => locations.find((loc) => loc.id === entry.folder.location_id) ?? null;
   const writable = locations.filter((loc) => loc.can_write);
   const shown = hits ?? entries;
   const open = (entry: AlbumEntry) => onOpen({ locationId: entry.folder.location_id, folderId: entry.folder.id });
@@ -137,13 +186,14 @@ export function AlbumsHome({ controller, locations, onOpen, header }: {
           </div>
         ) : (
           <ul className="grid grid-cols-[repeat(auto-fill,minmax(min(200px,100%),1fr))] gap-x-4 gap-y-5">
-            {shown.map((entry) => <AlbumTile key={entry.folder.id} controller={controller} entry={entry} onOpen={() => open(entry)} />)}
+            {shown.map((entry) => <AlbumTile key={entry.folder.id} controller={controller} entry={entry} location={locationOf(entry)} actions={actions} onOpen={() => open(entry)} />)}
           </ul>
         )}
         {!hits && cursor && (
           <div className="mt-4 flex justify-center"><Button size="sm" variant="ghost" onClick={() => void load(cursor)}>{t("drive.showMore")}</Button></div>
         )}
       </div>
+      {actions.dialogs}
       {creating && (
         <NewAlbumDialog
           controller={controller}

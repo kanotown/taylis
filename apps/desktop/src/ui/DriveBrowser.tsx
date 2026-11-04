@@ -16,7 +16,7 @@
  *   who may (§3.2).
  * - drive.changed for this folder reads it again (several within 300 ms once); a reconnect reads it again too.
  */
-import { ArrowDown, ArrowUp, ChevronDown, ChevronRight, Copy, Download, File, FileArchive, FileAudio, FileImage, FilePlus2, FileSpreadsheet, FileText, FileVideo, Folder, FolderInput, FolderOpen, Hash, HardDrive, User, FolderPlus, FolderUp, History, Images, Info, LayoutGrid, Link as LinkIcon, Link2, List, Loader2, MessageSquareShare, MoreHorizontal, Pencil, Presentation, RotateCcw, Search, Trash2, Upload, X } from "lucide-react";
+import { ArrowDown, ArrowUp, ChevronDown, ChevronRight, Copy, Download, File, FileArchive, FileAudio, FileImage, FilePlus2, FileSpreadsheet, FileText, FileVideo, Folder, FolderInput, FolderOpen, Hash, HardDrive, User, FolderPlus, FolderUp, History, Images, Info, LayoutGrid, Link2, List, Loader2, MoreHorizontal, Presentation, RotateCcw, Search, Trash2, Upload, X } from "lucide-react";
 import { ContextMenu } from "radix-ui";
 import { type DragEvent, type KeyboardEvent, type ReactNode, useCallback, useEffect, useMemo, useRef, useState } from "react";
 
@@ -25,25 +25,23 @@ import type { DriveCrumb, DriveItemOut, DriveLocationOut, DriveSearchHitOut, Dri
 import type { AppController } from "../state/app";
 import { appendPage, breadcrumbs, checkAll, checkSelection, clickAction, clickSelection, headerCheck, type DriveIconKind, driveColumns, type DriveOrder, type DriveSort, type DriveViewMode, driveTime, exactTime, formatBytes, iconKind, itemTime, locationName, nextSort, pathLine, readViewMode, sortLabel, thumbnailPath, viewable, viewerKind, writeViewMode } from "../drive/listing";
 import { openPage } from "../drive/snippet";
-import { afterPaste, type DriveClipboard, downloadPlan, pasteAction } from "../drive/actions";
+import { afterPaste, type DriveClipboard, pasteAction } from "../drive/actions";
 import { canRearrange, isSystemFolder, itemName, localizedPath, rememberSystemFolders } from "../drive/channelFiles";
 import { uploadQueueFor, useUploadsDone } from "../drive/session";
-import { canBecomeAlbum, readAlbumAsFiles, writeAlbumAsFiles } from "../drive/albums";
+import { readAlbumAsFiles, writeAlbumAsFiles } from "../drive/albums";
 import { NewAlbumDialog } from "./AlbumDialogs";
 import { AlbumView } from "./AlbumView";
 import { coalesce } from "../sync/drive";
 import { dropEntries, emptyFolders, type PickedTree, pickFilesNative, pickFolderNative, treeFromEntries, treeFromInput } from "../platform/driveFiles";
 import { isFileDrag } from "../platform/fileDrops";
 import { isTauri } from "../platform/env";
-import { DeleteForeverDialog, ImpactDialog, MoveDialog, NewFolderDialog, RenameDialog, useImpactCheck } from "./DriveDialogs";
+import { DeleteForeverDialog, NewFolderDialog } from "./DriveDialogs";
+import { DriveItemMenuItems, ItemMenuButton, MENU_CONTENT, useDriveItemActions } from "./DriveItemMenu";
 import { PostedMark, PostsSection, SystemFolderIcon } from "./ChannelFiles";
 import { onDriveTarget, takeDriveSelection } from "./DriveSearch";
-import { SendToConversationDialog } from "./DriveConversation";
-import { driveLink } from "./permalink";
 import { DriveSnippet } from "./DriveSnippet";
 import { DriveViewer } from "./DriveViewer";
-import { VersionsDialog } from "./DriveVersions";
-import { SharedMark, ShareLinksDialog } from "./DriveShareDialog";
+import { SharedMark } from "./DriveShareDialog";
 import { DropOverlay, useFileDropZone } from "./FileDropZone";
 import { FileName } from "./FileName";
 import { sinceLabel } from "./format";
@@ -55,15 +53,9 @@ const PAGE = 100;
 const DETAILS_WIDTH = 288;
 const DETAILS_BESIDE_MIN = 640;
 const ROW_DRAG = "application/x-taylis-drive-items";
-const MENU_CONTENT = "rx-popover z-50 min-w-48 rounded-xl border border-line bg-canvas p-1 text-ink shadow-xl";
-const MENU_ITEM = "flex select-none items-center gap-2 rounded-lg px-2.5 py-1.5 text-sm outline-none data-[disabled]:opacity-50 data-[highlighted]:bg-accent-soft";
 
 /** Items cut with ⌘X (moved by ⌘V) or copied with ⌘C (copied by ⌘V) into the open folder: one per window. */
 let clipboard: DriveClipboard | null = null;
-
-function newOpId(): string {
-  return typeof crypto !== "undefined" && typeof crypto.randomUUID === "function" ? crypto.randomUUID() : `${Date.now()}-${Math.random()}`;
-}
 
 const ICONS: Readonly<Record<DriveIconKind, typeof File>> = {
   folder: Folder, image: FileImage, video: FileVideo, audio: FileAudio, pdf: FileText, document: FileText, sheet: FileSpreadsheet, slides: Presentation, archive: FileArchive, text: FileText, file: File,
@@ -209,7 +201,7 @@ export function DriveBrowser({ controller, location, folderId, onFolder, mode = 
     setAsFiles(value);
     writeAlbumAsFiles(value);
   };
-  const [dialog, setDialog] = useState<{ kind: "new-folder" } | { kind: "new-album" } | { kind: "rename"; item: DriveItemOut } | { kind: "move" | "copy"; items: DriveItemOut[] } | { kind: "versions"; item: DriveItemOut } | { kind: "share"; item: DriveItemOut } | { kind: "send"; item: DriveItemOut } | null>(null);
+  const [dialog, setDialog] = useState<{ kind: "new-folder" } | { kind: "new-album" } | null>(null);
   const [viewing, setViewing] = useState<DriveItemOut | null>(null);
   // §29: the page a document found by its text opens at (stepping to another file starts at its top).
   const [openAt, setOpenAt] = useState<{ id: string; page: number } | null>(null);
@@ -398,76 +390,19 @@ export function DriveBrowser({ controller, location, folderId, onFolder, mode = 
     }
   };
 
-  /** One file as it is; a folder or several items as one ZIP (M162). */
-  const download = (targets: DriveItemOut[]) => {
-    const plan = downloadPlan(targets);
-    if (plan?.kind === "file") void controller.downloadDriveFile(plan.item);
-    else if (plan?.kind === "zip") void controller.downloadDriveZip(plan.ids);
-  };
-
-  // CF2 (docs/CHANNEL_FILES.md §6.4, §6.5): before a trash or a move, the warning when posted files would change.
-  const impact = useImpactCheck(controller);
-
-  const trashItems = async (targets: DriveItemOut[]) => {
-    if (!api || targets.length === 0) return;
-    if (!canRearrange(targets)) return;
-    if (!(await impact.confirm(targets.map((item) => item.id), null))) return;
-    try {
-      const out = await api.trashDriveItems(targets.map((item) => item.id));
-      const failed = out.results.filter((result) => !result.ok);
-      if (failed.length > 0) controller.setError(new ApiError(409, failed[0]!.error ?? "unknown", ""));
-      const gone = new Set(out.results.filter((result) => result.ok).map((result) => result.id));
+  // The item menu's actions and dialogs, shared with the album view (DriveItemMenu).
+  const place = { location, folderId };
+  const actions = useDriveItemActions(controller, {
+    onChanged: () => void load({ keep: true }),
+    onTrashed: (gone) => {
       setListing((current) => ({ ...current, items: current.items.filter((item) => !gone.has(item.id)) }));
       setHits((current) => current && current.filter((hit) => !gone.has(hit.item.id)));
       setSelected(new Set());
-      if (gone.size > 0) controller.setNotice(gone.size === 1 ? t("drive.trashedOne") : t("drive.trashedMany", { count: gone.size }));
-    } catch (error) {
-      controller.setError(error);
-    }
-  };
-
-  const moveItems = async (targets: DriveItemOut[], targetFolderId: string) => {
-    if (!api || targets.length === 0) return;
-    const moving = targets.filter((item) => item.id !== targetFolderId && item.parent_id !== targetFolderId);
-    if (moving.length === 0 || !canRearrange(moving)) return;
-    if (!(await impact.confirm(moving.map((item) => item.id), targetFolderId))) return;
-    try {
-      const out = await api.moveDriveItems(moving.map((item) => item.id), targetFolderId, "fail");
-      const failed = out.results.filter((result) => !result.ok);
-      if (failed.length > 0) controller.setError(new ApiError(409, failed[0]!.error ?? "unknown", ""));
-      void load({ keep: true });
-    } catch (error) {
-      controller.setError(error);
-    }
-  };
-
-  /** M162: copies into `targetFolderId` (numbered 「名前 (1)」 where the name is taken). */
-  const copyItems = async (targets: DriveItemOut[], targetFolderId: string) => {
-    if (!api || targets.length === 0) return;
-    try {
-      const out = await api.copyDriveItems(targets.map((item) => item.id), targetFolderId, "rename", newOpId());
-      const failed = out.results.filter((result) => !result.ok);
-      if (failed.length > 0) controller.setError(new ApiError(409, failed[0]!.error ?? "unknown", ""));
-      const done = out.results.length - failed.length;
-      if (done > 0) controller.setNotice(t("drive.copied", { count: done }));
-      if (targetFolderId === folderId) void load({ keep: true });
-    } catch (error) {
-      controller.setError(error);
-    }
-  };
-
-  /** AL2: 「アルバムにする」 / 「アルバムをやめる」 on a folder (its files stay as they are). */
-  const setAlbum = async (item: DriveItemOut, on: boolean) => {
-    if (!api) return;
-    try {
-      if (on) await api.putDriveAlbum(item.id, {});
-      else await api.deleteDriveAlbum(item.id);
-      controller.setNotice(on ? t("albums.made", { name: item.name }) : t("albums.removed", { name: item.name }));
-      void load({ keep: true });
-    } catch (error) {
-      controller.setError(error);
-    }
-  };
+    },
+    onReplaced: (changed) => setListing((current) => ({ ...current, items: current.items.map((item) => (item.id === changed.id ? changed : item)) })),
+    onMoved: () => setSelected(new Set()),
+  });
+  const { download, trash: trashItems, move: moveItems, copy: copyItems } = actions;
 
   /** Files (and the empty folders of a folder upload) into `parentId`. */
   const upload = async (tree: PickedTree, parentId: string, label: string) => {
@@ -544,7 +479,7 @@ export function DriveBrowser({ controller, location, folderId, onFolder, mode = 
       if (viewerKind(current)) setViewing(current);
     } else if (event.key === "F2" && current && canWrite && mode === "folder" && !isSystemFolder(current)) {
       event.preventDefault();
-      setDialog({ kind: "rename", item: current });
+      actions.show({ kind: "rename", item: current });
     } else if ((event.key === "Delete" || (event.key === "Backspace" && mod)) && chosen.length > 0 && canWrite && mode === "folder" && canRearrange(chosen)) {
       event.preventDefault();
       void trashItems(chosen);
@@ -642,46 +577,18 @@ export function DriveBrowser({ controller, location, folderId, onFolder, mode = 
     },
   });
 
-  const rowMenu = (item: DriveItemOut) => {
-    const targets = selected.has(item.id) && chosen.length > 1 ? chosen : [item];
-    const many = targets.length > 1;
-    return (
-      <>
-        {!many && <ContextMenu.Item className={MENU_ITEM} onSelect={() => open(item)}>{item.kind === "folder" ? t("drive.open") : viewerKind(item) ? t("drive.preview") : t("drive.details")}</ContextMenu.Item>}
-        <ContextMenu.Item className={MENU_ITEM} onSelect={() => download(targets)}><Download size={14} /> {many || item.kind === "folder" ? t("drive.downloadZip") : t("drive.download")}</ContextMenu.Item>
-        {!many && item.kind === "file" && mode === "folder" && (
-          <ContextMenu.Item className={MENU_ITEM} onSelect={() => setDialog({ kind: "versions", item })}><History size={14} /> {t("drive.versions.open")}</ContextMenu.Item>
-        )}
-        {!many && mode === "folder" && item.parent_id && (location.can_share || item.link_count > 0) && (
-          <ContextMenu.Item className={MENU_ITEM} onSelect={() => setDialog({ kind: "share", item })}><Link2 size={14} /> {t("drive.share.open")}</ContextMenu.Item>
-        )}
-        {!many && mode === "folder" && item.parent_id && (
-          // M165 (docs/DRIVE.md §13.1): the item's link `<server>/d/<id>` for a conversation (a card there for whoever can read it).
-          <>
-            <ContextMenu.Item className={MENU_ITEM} onSelect={() => setDialog({ kind: "send", item })}><MessageSquareShare size={14} /> {t("driveLink.send")}</ContextMenu.Item>
-            <ContextMenu.Item className={MENU_ITEM} onSelect={() => { const base = controller.api?.baseUrl; if (base) void controller.copyToClipboard(driveLink(base, item.id), t("driveLink.copied")); }}><LinkIcon size={14} /> {t("driveLink.copy")}</ContextMenu.Item>
-          </>
-        )}
-        {hits && !many && item.parent_id && (
-          <ContextMenu.Item className={MENU_ITEM} onSelect={() => { setQuery(""); onFolder(item.parent_id!); }}><FolderInput size={14} /> {t("drive.showInFolder")}</ContextMenu.Item>
-        )}
-        {mode === "folder" && (
-          // Copying needs only reading here (the dialog lists the folders I can write in).
-          <ContextMenu.Item className={MENU_ITEM} onSelect={() => setDialog({ kind: "copy", items: targets })}><Copy size={14} /> {t("drive.copy")}</ContextMenu.Item>
-        )}
-        {canWrite && mode === "folder" && canRearrange(targets) && (
-          <>
-            <ContextMenu.Separator className="my-1 h-px bg-line" />
-            {!many && <ContextMenu.Item className={MENU_ITEM} onSelect={() => setDialog({ kind: "rename", item })}><Pencil size={14} /> {t("drive.rename")}</ContextMenu.Item>}
-            {!many && canBecomeAlbum(item) && <ContextMenu.Item data-drive-make-album="" className={MENU_ITEM} onSelect={() => void setAlbum(item, true)}><Images size={14} /> {t("albums.make")}</ContextMenu.Item>}
-            {!many && item.kind === "folder" && item.album && <ContextMenu.Item data-drive-unmake-album="" className={MENU_ITEM} onSelect={() => void setAlbum(item, false)}><Images size={14} /> {t("albums.unmake")}</ContextMenu.Item>}
-            <ContextMenu.Item className={MENU_ITEM} onSelect={() => setDialog({ kind: "move", items: targets })}><FolderInput size={14} /> {t("drive.move")}</ContextMenu.Item>
-            <ContextMenu.Item className={cn(MENU_ITEM, "text-danger")} onSelect={() => void trashItems(targets)}><Trash2 size={14} /> {t("drive.toTrash")}</ContextMenu.Item>
-          </>
-        )}
-      </>
-    );
-  };
+  const rowMenu = (item: DriveItemOut) => (
+    <DriveItemMenuItems
+      actions={actions}
+      item={item}
+      targets={selected.has(item.id) && chosen.length > 1 ? chosen : [item]}
+      place={place}
+      canWrite={canWrite}
+      canShare={location.can_share}
+      onOpen={() => open(item)}
+      onShowInFolder={hits && item.parent_id ? () => { setQuery(""); onFolder(item.parent_id!); } : undefined}
+    />
+  );
 
   // --- drawing ------------------------------------------------------------------------------------------------------
 
@@ -761,9 +668,9 @@ export function DriveBrowser({ controller, location, folderId, onFolder, mode = 
           <IconButton label={t("drive.clearSelection")} onClick={() => setSelected(new Set())}><X size={16} /></IconButton>
           <strong className="mr-2 text-[13.5px]">{t("drive.selectedCount", { count: chosen.length })}</strong>
           <Button size="sm" variant="secondary" onClick={() => download(chosen)}><Download size={14} /> {chosen.length > 1 || chosen[0]!.kind === "folder" ? t("drive.downloadZip") : t("drive.download")}</Button>
-          {chosen.length === 1 && canShareItem(chosen[0]!) && <Button size="sm" variant="ghost" onClick={() => setDialog({ kind: "share", item: chosen[0]! })}><Link2 size={14} /> {t("drive.share.open")}</Button>}
-          <Button size="sm" variant="ghost" onClick={() => setDialog({ kind: "copy", items: chosen })}><Copy size={14} /> {t("drive.copy")}</Button>
-          {canWrite && canRearrange(chosen) && <Button size="sm" variant="ghost" onClick={() => setDialog({ kind: "move", items: chosen })}><FolderInput size={14} /> {t("drive.move")}</Button>}
+          {chosen.length === 1 && canShareItem(chosen[0]!) && <Button size="sm" variant="ghost" onClick={() => actions.show({ kind: "share", item: chosen[0]! })}><Link2 size={14} /> {t("drive.share.open")}</Button>}
+          <Button size="sm" variant="ghost" onClick={() => actions.show({ kind: "copy", items: chosen, place })}><Copy size={14} /> {t("drive.copy")}</Button>
+          {canWrite && canRearrange(chosen) && <Button size="sm" variant="ghost" onClick={() => actions.show({ kind: "move", items: chosen, place })}><FolderInput size={14} /> {t("drive.move")}</Button>}
           {canWrite && canRearrange(chosen) && <Button size="sm" variant="ghost" className="text-danger" onClick={() => void trashItems(chosen)}><Trash2 size={14} /> {t("drive.toTrash")}</Button>}
         </div>
       ) : mode === "folder" ? (
@@ -847,7 +754,7 @@ export function DriveBrowser({ controller, location, folderId, onFolder, mode = 
     <div className="flex items-center justify-end gap-0.5" onClick={(event) => event.stopPropagation()}>
       <span data-drive-hover-actions="" className={cn("flex items-center gap-0.5 opacity-0 transition-opacity focus-within:opacity-100 group-hover/row:opacity-100 [@media(hover:none)]:hidden", !hoverActions && "hidden")}>
         {canShareItem(item) && (
-          <button type="button" data-drive-row-share="" aria-label={t("drive.share.open")} title={t("drive.share.open")} className="rounded-md p-1.5 text-muted hover:bg-ink/8 hover:text-ink" onClick={() => setDialog({ kind: "share", item })}>
+          <button type="button" data-drive-row-share="" aria-label={t("drive.share.open")} title={t("drive.share.open")} className="rounded-md p-1.5 text-muted hover:bg-ink/8 hover:text-ink" onClick={() => actions.show({ kind: "share", item })}>
             <Link2 size={15} />
           </button>
         )}
@@ -855,7 +762,7 @@ export function DriveBrowser({ controller, location, folderId, onFolder, mode = 
           <Download size={15} />
         </button>
       </span>
-      <RowMenuButton>{rowMenu(item)}</RowMenuButton>
+      <ItemMenuButton>{rowMenu(item)}</ItemMenuButton>
     </div>
   );
 
@@ -974,7 +881,7 @@ export function DriveBrowser({ controller, location, folderId, onFolder, mode = 
             >
               <span className="absolute left-2 top-2 z-[1]"><ItemCheck item={item} checked={selected.has(item.id)} shown={selected.size > 0} onCheck={checkItem} tile /></span>
               <span className="absolute right-1.5 top-1.5 z-[1] rounded-md bg-canvas/90 opacity-0 shadow-sm transition-opacity focus-within:opacity-100 group-hover/row:opacity-100 [@media(hover:none)]:opacity-100" onClick={(event) => event.stopPropagation()}>
-                <RowMenuButton>{rowMenu(item)}</RowMenuButton>
+                <ItemMenuButton>{rowMenu(item)}</ItemMenuButton>
               </span>
               <TileThumb controller={controller} item={item} />
               <div className="flex min-w-0 items-center gap-2 border-t border-line/70 px-2.5 py-2">
@@ -1049,8 +956,8 @@ export function DriveBrowser({ controller, location, folderId, onFolder, mode = 
             count={chosen.length}
             path={here}
             onClose={() => setDetails(false)}
-            onVersions={(item) => setDialog({ kind: "versions", item })}
-            onShare={(item) => setDialog({ kind: "share", item })}
+            onVersions={(item) => actions.show({ kind: "versions", item, location })}
+            onShare={(item) => actions.show({ kind: "share", item })}
             canShare={location.can_share}
             onDownload={() => download(chosen.length > 0 ? chosen : listing.folder ? [listing.folder] : [])}
             overlay={overlayDetails}
@@ -1078,32 +985,7 @@ export function DriveBrowser({ controller, location, folderId, onFolder, mode = 
           onMade={(made) => onFolder(made.folder.id)}
         />
       )}
-      {dialog?.kind === "rename" && <RenameDialog controller={controller} item={dialog.item} onClose={() => setDialog(null)} onDone={(renamed) => {
-        setListing((current) => ({ ...current, items: current.items.map((item) => (item.id === renamed.id ? renamed : item)) }));
-        void load({ keep: true });
-      }} />}
-      {(dialog?.kind === "move" || dialog?.kind === "copy") && <MoveDialog controller={controller} mode={dialog.kind} items={dialog.items} startLocation={location} startFolderId={folderId} onClose={() => setDialog(null)} onMoved={(_target, failed) => {
-        if (failed > 0) controller.setError(t(dialog.kind === "copy" ? "drive.someNotCopied" : "drive.someNotMoved", { count: failed }));
-        else if (dialog.kind === "copy") controller.setNotice(t("drive.copied", { count: dialog.items.length }));
-        setSelected(new Set());
-        void load({ keep: true });
-      }} />}
-      {dialog?.kind === "send" && <SendToConversationDialog controller={controller} item={dialog.item} onClose={() => setDialog(null)} />}
-      {dialog?.kind === "share" && (
-        <ShareLinksDialog controller={controller} item={dialog.item} onClose={() => setDialog(null)} onChanged={() => void load({ keep: true })} />
-      )}
-      {dialog?.kind === "versions" && (
-        <VersionsDialog
-          controller={controller}
-          item={dialog.item}
-          location={location}
-          onClose={() => setDialog(null)}
-          onChanged={(changed) => {
-            if (changed) setListing((current) => ({ ...current, items: current.items.map((item) => (item.id === changed.id ? changed : item)) }));
-            void load({ keep: true });
-          }}
-        />
-      )}
+      {actions.dialogs}
       {forever && (
         <DeleteForeverDialog
           name={forever.item.name}
@@ -1122,7 +1004,6 @@ export function DriveBrowser({ controller, location, folderId, onFolder, mode = 
         />
       )}
       {viewing && <DriveViewer controller={controller} item={viewing} siblings={viewables} onStep={setViewing} onClose={() => setViewing(null)} page={openAt?.id === viewing.id ? openAt.page : null} />}
-      {impact.asking && <ImpactDialog controller={controller} asking={impact.asking} />}
     </div>
   );
 }
@@ -1191,31 +1072,6 @@ function SortHeader({ label, sort, current, onSort, disabled, className, align =
         {active && !disabled && (current.order === "asc" ? <ArrowUp size={12} /> : <ArrowDown size={12} />)}
       </button>
     </th>
-  );
-}
-
-/** The row's ⋯: the same items as its context menu, opened by a click. */
-function RowMenuButton({ children }: { children: ReactNode }) {
-  return (
-    <ContextMenu.Root>
-      <ContextMenu.Trigger asChild>
-        <button
-          type="button"
-          aria-label={t("drive.actions")}
-          className="rounded-md p-1 text-muted hover:bg-ink/8 hover:text-ink"
-          onClick={(event) => {
-            event.stopPropagation();
-            const box = event.currentTarget.getBoundingClientRect();
-            event.currentTarget.dispatchEvent(new MouseEvent("contextmenu", { bubbles: true, cancelable: true, clientX: box.left, clientY: box.bottom }));
-          }}
-        >
-          <MoreHorizontal size={15} />
-        </button>
-      </ContextMenu.Trigger>
-      <ContextMenu.Portal>
-        <ContextMenu.Content className={MENU_CONTENT} collisionPadding={8}>{children}</ContextMenu.Content>
-      </ContextMenu.Portal>
-    </ContextMenu.Root>
   );
 }
 

@@ -11,17 +11,20 @@
  *   when it has some (`folder_count`, `other_count`).
  * - Selecting (the tile's check box, ⌘ / Ctrl / Shift with a click, ⌘A): 「n 枚を選択中」 with download (ZIP), move,
  *   copy, the trash and 「表紙にする」 (one photo).
+ * - §27: a tile's ⋯ (top right, on hover / focus, always on touch screens) and its right click open the drive's item
+ *   menu (DriveItemMenu, the same as the listing's row) with 「表紙にする」; the header's ⋯ has the folder's items too.
  * - Files dropped on it are uploaded into it, keeping both on a taken name (「IMG_1234 (1).jpg」).
  * - drive.changed for the folder (and a reconnect) reads it again.
  */
 import { ArrowDown, ArrowUp, ChevronDown, ChevronRight, Copy, Download, FilePlus2, Folder, FolderInput, HardDrive, Images, ImageUp, Link2, List, Loader2, MessageSquareShare, MoreHorizontal, Play, Presentation, Settings2, Trash2, Upload, X } from "lucide-react";
+import { ContextMenu } from "radix-ui";
 import { type KeyboardEvent as ReactKeyboardEvent, type MouseEvent as ReactMouseEvent, type ReactNode, type UIEvent, useCallback, useEffect, useMemo, useRef, useState } from "react";
 
 import { ApiError, describeError } from "../api/errors";
 import type { AlbumDetailOut, AlbumOut, DriveItemOut, DriveLocationOut } from "../api/types";
 import type { AppController } from "../state/app";
 import { albumCount, albumDates, type AlbumOrder, type AlbumSort, dayGroups, durationLabel, isAlbumMedia, isVideo, layoutGrid, notifyDraft, readSlideshowSettings, type SlideshowSettings, SLIDESHOW_INTERVALS, visibleRows, writeSlideshowSettings } from "../drive/albums";
-import { canRearrange, itemName, localizedPath } from "../drive/channelFiles";
+import { itemName, localizedPath } from "../drive/channelFiles";
 import { clickSelection, formatBytes, locationName, pathLine, thumbnailPath, viewable, viewerKind } from "../drive/listing";
 import { uploadQueueFor, useUploadsDone } from "../drive/session";
 import { coalesce } from "../sync/drive";
@@ -31,7 +34,7 @@ import { AddFromDriveDialog, AlbumSettingsDialog } from "./AlbumDialogs";
 import { AlbumViewer, Slideshow } from "./AlbumViewer";
 import { DriveIcon, useThumbnail } from "./DriveBrowser";
 import { SendToConversationDialog } from "./DriveConversation";
-import { ImpactDialog, MoveDialog, useImpactCheck } from "./DriveDialogs";
+import { DriveItemMenuItems, ItemMenuButton, MENU_CONTENT, MENU_ITEM, useDriveItemActions } from "./DriveItemMenu";
 import { ShareLinksDialog } from "./DriveShareDialog";
 import { DriveViewer } from "./DriveViewer";
 import { DropOverlay, useFileDropZone } from "./FileDropZone";
@@ -52,7 +55,7 @@ interface Loaded {
 const EMPTY: Loaded = { detail: null, items: [], cursor: null, loading: true, error: null };
 
 /** One tile: the thumbnail (read once its row is drawn), ▶ and the length of a video, the check box. */
-function Tile({ controller, item, size, selected, showCheck, onOpen, onCheck }: {
+function Tile({ controller, item, size, selected, showCheck, onOpen, onCheck, menu }: {
   controller: AppController;
   item: DriveItemOut;
   size: number;
@@ -60,42 +63,58 @@ function Tile({ controller, item, size, selected, showCheck, onOpen, onCheck }: 
   showCheck: boolean;
   onOpen: (event: ReactMouseEvent) => void;
   onCheck: (event: ReactMouseEvent) => void;
+  /** The item's menu (the drive's, with 「表紙にする」): on the ⋯ at the top right and on a right click. */
+  menu: ReactNode;
 }) {
   const url = useThumbnail(controller, thumbnailPath(item));
   const video = isVideo(item);
   return (
-    <div data-album-tile={item.id} aria-selected={selected} className="group/tile relative shrink-0" style={{ width: size, height: size }}>
-      <button
-        type="button"
-        title={item.name}
-        aria-label={item.name}
-        onClick={onOpen}
-        className={cn("block h-full w-full overflow-hidden bg-panel", selected ? "ring-[3px] ring-inset ring-accent" : "hover:opacity-90")}
-      >
-        {url ? (
-          <img src={url} alt="" draggable={false} data-album-thumb="" className={cn("h-full w-full object-cover", selected && "scale-[0.92] rounded-sm")} />
-        ) : (
-          <span className="flex h-full w-full items-center justify-center"><DriveIcon item={item} size={Math.min(40, size / 3)} /></span>
-        )}
-      </button>
-      {video && (
-        <span className="pointer-events-none absolute bottom-1.5 left-1.5 inline-flex items-center gap-1 rounded bg-black/60 px-1.5 py-0.5 text-[11px] font-medium tabular-nums text-white">
-          <Play size={10} className="fill-white" /> {durationLabel(item.file?.duration_ms)}
-        </span>
-      )}
-      <input
-        type="checkbox"
-        data-album-check={item.id}
-        checked={selected}
-        aria-label={t("drive.selectItem", { name: item.name })}
-        onClick={(event) => {
-          event.stopPropagation();
-          onCheck(event);
-        }}
-        onChange={() => undefined}
-        className={cn("absolute left-1.5 top-1.5 h-4 w-4 cursor-pointer accent-[var(--accent)] shadow", selected || showCheck ? "opacity-100" : "opacity-0 focus-visible:opacity-100 group-hover/tile:opacity-100 [@media(hover:none)]:opacity-100")}
-      />
-    </div>
+    <ContextMenu.Root>
+      <ContextMenu.Trigger asChild>
+        <div data-album-tile={item.id} aria-selected={selected} className="group/tile relative shrink-0" style={{ width: size, height: size }}>
+          <button
+            type="button"
+            title={item.name}
+            aria-label={item.name}
+            onClick={onOpen}
+            className={cn("block h-full w-full overflow-hidden bg-panel", selected ? "ring-[3px] ring-inset ring-accent" : "hover:opacity-90")}
+          >
+            {url ? (
+              <img src={url} alt="" draggable={false} data-album-thumb="" className={cn("h-full w-full object-cover", selected && "scale-[0.92] rounded-sm")} />
+            ) : (
+              <span className="flex h-full w-full items-center justify-center"><DriveIcon item={item} size={Math.min(40, size / 3)} /></span>
+            )}
+          </button>
+          {video && (
+            <span className="pointer-events-none absolute bottom-1.5 left-1.5 inline-flex items-center gap-1 rounded bg-black/60 px-1.5 py-0.5 text-[11px] font-medium tabular-nums text-white">
+              <Play size={10} className="fill-white" /> {durationLabel(item.file?.duration_ms)}
+            </span>
+          )}
+          <input
+            type="checkbox"
+            data-album-check={item.id}
+            checked={selected}
+            aria-label={t("drive.selectItem", { name: item.name })}
+            onClick={(event) => {
+              event.stopPropagation();
+              onCheck(event);
+            }}
+            onChange={() => undefined}
+            className={cn("absolute left-1.5 top-1.5 h-4 w-4 cursor-pointer accent-[var(--accent)] shadow", selected || showCheck ? "opacity-100" : "opacity-0 focus-visible:opacity-100 group-hover/tile:opacity-100 [@media(hover:none)]:opacity-100")}
+          />
+          <ItemMenuButton
+            data-album-tile-menu={item.id}
+            iconSize={16}
+            className="absolute right-1.5 top-1.5 flex h-7 w-7 items-center justify-center rounded-full bg-black/45 text-white opacity-0 transition-opacity hover:bg-black/65 focus-visible:opacity-100 group-focus-within/tile:opacity-100 group-hover/tile:opacity-100 data-[state=open]:opacity-100 [@media(hover:none)]:opacity-100"
+          >
+            {menu}
+          </ItemMenuButton>
+        </div>
+      </ContextMenu.Trigger>
+      <ContextMenu.Portal>
+        <ContextMenu.Content className={MENU_CONTENT} collisionPadding={8}>{menu}</ContextMenu.Content>
+      </ContextMenu.Portal>
+    </ContextMenu.Root>
   );
 }
 
@@ -134,7 +153,7 @@ export function AlbumView({ controller, location, folderId, onFolder, onShowFile
   const [viewingOther, setViewingOther] = useState<DriveItemOut | null>(null);
   const [slides, setSlides] = useState<{ startId: string | null } | null>(null);
   const [slideSettings, setSlideSettings] = useState<SlideshowSettings>(readSlideshowSettings);
-  const [dialog, setDialog] = useState<"settings" | "drive" | "share" | "notify" | { kind: "move" | "copy"; items: DriveItemOut[] } | null>(null);
+  const [dialog, setDialog] = useState<"settings" | "drive" | "share" | "notify" | null>(null);
   // Photos added on this screen (「チャンネルに知らせる」 says how many).
   const [added, setAdded] = useState(0);
   const generation = useRef(0);
@@ -310,27 +329,24 @@ export function AlbumView({ controller, location, folderId, onFolder, onShowFile
 
   // --- actions ------------------------------------------------------------------------------------------------------
 
-  const impact = useImpactCheck(controller);
-  const downloadSelection = () => {
-    if (chosen.length === 1) void controller.downloadDriveFile(chosen[0]!);
-    else if (chosen.length > 1) void controller.downloadDriveZip(chosen.map((item) => item.id));
-  };
-  const trash = async (targets: DriveItemOut[]) => {
-    if (!api || targets.length === 0 || !canRearrange(targets)) return;
-    if (!(await impact.confirm(targets.map((item) => item.id), null))) return;
-    try {
-      const out = await api.trashDriveItems(targets.map((item) => item.id));
-      const failed = out.results.filter((result) => !result.ok);
-      if (failed.length > 0) controller.setError(new ApiError(409, failed[0]!.error ?? "unknown", ""));
-      const gone = new Set(out.results.filter((result) => result.ok).map((result) => result.id));
+  // The drive's item menu (and its dialogs, the warning for posted files among them): the tiles' and the album's own.
+  const actions = useDriveItemActions(controller, {
+    onChanged: () => reload.current.poke(),
+    onTrashed: (gone) => {
+      if (gone.has(folderId)) {
+        // The album itself went to the trash: to the folder it was in.
+        onFolder(loaded.detail?.folder.parent_id ?? location.root_id);
+        return;
+      }
       setLoaded((current) => ({ ...current, items: current.items.filter((item) => !gone.has(item.id)) }));
       setSelected(new Set());
-      if (gone.size > 0) controller.setNotice(gone.size === 1 ? t("drive.trashedOne") : t("drive.trashedMany", { count: gone.size }));
       reload.current.poke();
-    } catch (error) {
-      controller.setError(error);
-    }
-  };
+    },
+    onReplaced: (changed) => setLoaded((current) => ({ ...current, items: current.items.map((item) => (item.id === changed.id ? changed : item)) })),
+    onMoved: () => setSelected(new Set()),
+  });
+  const downloadSelection = () => actions.download(chosen);
+  const trash = actions.trash;
   const makeCover = async (item: DriveItemOut) => {
     if (!api) return;
     try {
@@ -402,13 +418,31 @@ export function AlbumView({ controller, location, folderId, onFolder, onShowFile
   const dates = albumDates(album);
   const shareable = !!folder.parent_id && (location.can_share || folder.link_count > 0);
   const viewItems = media;
-  const actions = chosen.length > 0 ? (
+  /** A tile's menu: the drive's (for the selection it is part of), with 「表紙にする」 for one photo. */
+  const tileMenu = (item: DriveItemOut) => {
+    const targets = selected.has(item.id) && chosen.length > 1 ? chosen : [item];
+    return (
+      <DriveItemMenuItems
+        actions={actions}
+        item={item}
+        targets={targets}
+        place={{ location, folderId }}
+        canWrite={canWrite}
+        canShare={location.can_share}
+        onOpen={() => setViewing(item.id)}
+        extra={canWrite && targets.length === 1 && !isVideo(item) ? (
+          <ContextMenu.Item className={MENU_ITEM} data-item-action="cover" onSelect={() => void makeCover(item)}><ImageUp size={14} /> {t("albums.makeCover")}</ContextMenu.Item>
+        ) : null}
+      />
+    );
+  };
+  const bar = chosen.length > 0 ? (
     <div data-album-selection-bar="" role="toolbar" aria-label={t("albums.selected", { count: chosen.length })} className="flex min-h-10 flex-wrap items-center gap-1">
       <IconButton label={t("drive.clearSelection")} onClick={() => setSelected(new Set())}><X size={16} /></IconButton>
       <strong className="mr-2 text-[13.5px]">{t("albums.selected", { count: chosen.length })}</strong>
       <Button size="sm" variant="secondary" onClick={downloadSelection}><Download size={14} /> {chosen.length > 1 ? t("drive.downloadZip") : t("drive.download")}</Button>
-      {canWrite && <Button size="sm" variant="ghost" onClick={() => setDialog({ kind: "move", items: chosen })}><FolderInput size={14} /> {t("drive.move")}</Button>}
-      <Button size="sm" variant="ghost" onClick={() => setDialog({ kind: "copy", items: chosen })}><Copy size={14} /> {t("drive.copy")}</Button>
+      {canWrite && <Button size="sm" variant="ghost" onClick={() => actions.show({ kind: "move", items: chosen, place: { location, folderId } })}><FolderInput size={14} /> {t("drive.move")}</Button>}
+      <Button size="sm" variant="ghost" onClick={() => actions.show({ kind: "copy", items: chosen, place: { location, folderId } })}><Copy size={14} /> {t("drive.copy")}</Button>
       {canWrite && chosen.length === 1 && !isVideo(chosen[0]!) && <Button size="sm" variant="ghost" data-album-cover-selected="" onClick={() => void makeCover(chosen[0]!)}><ImageUp size={14} /> {t("albums.makeCover")}</Button>}
       {canWrite && <Button size="sm" variant="ghost" className="text-danger" onClick={() => void trash(chosen)}><Trash2 size={14} /> {t("drive.toTrash")}</Button>}
     </div>
@@ -462,6 +496,17 @@ export function AlbumView({ controller, location, folderId, onFolder, onShowFile
           </MenuItem>
           <MenuSeparator />
           <MenuItem data-album-as-files="" onSelect={onShowFiles}><List size={14} /> {t("albums.asFiles")}</MenuItem>
+          <MenuSeparator />
+          {/* The folder's own menu (as its row in the listing has it); the buttons beside it already download and send. */}
+          <DriveItemMenuItems
+            kind="dropdown"
+            actions={actions}
+            item={{ ...folder, album }}
+            place={{ location, folderId: folder.parent_id ?? location.root_id }}
+            canWrite={canWrite}
+            canShare={location.can_share}
+            omit={["download", "send"]}
+          />
         </MenuContent>
       </Menu>
     </div>
@@ -508,7 +553,7 @@ export function AlbumView({ controller, location, folderId, onFolder, onShowFile
               )}
             </div>
           </div>
-          <div className="mt-3">{actions}</div>
+          <div className="mt-3">{bar}</div>
         </header>
         {detail.shared_above > 0 && (
           <p className="flex items-center gap-2 border-b border-line px-4 py-1.5 text-[12.5px] text-muted"><Link2 size={13} className="shrink-0 text-accent" /> {t("drive.share.banner")}</p>
@@ -547,6 +592,7 @@ export function AlbumView({ controller, location, folderId, onFolder, onShowFile
                       showCheck={selected.size > 0}
                       onOpen={(event) => clickTile(item, event)}
                       onCheck={(event) => select(item, event, true)}
+                      menu={tileMenu(item)}
                     />
                   ))}
                 </div>
@@ -625,23 +671,7 @@ export function AlbumView({ controller, location, folderId, onFolder, onShowFile
           onClose={() => setDialog(null)}
         />
       )}
-      {typeof dialog === "object" && dialog !== null && (
-        <MoveDialog
-          controller={controller}
-          mode={dialog.kind}
-          items={dialog.items}
-          startLocation={location}
-          startFolderId={folderId}
-          onClose={() => setDialog(null)}
-          onMoved={(_target, failed) => {
-            if (failed > 0) controller.setError(t(dialog.kind === "copy" ? "drive.someNotCopied" : "drive.someNotMoved", { count: failed }));
-            else if (dialog.kind === "copy") controller.setNotice(t("drive.copied", { count: dialog.items.length }));
-            setSelected(new Set());
-            reload.current.poke();
-          }}
-        />
-      )}
-      {impact.asking && <ImpactDialog controller={controller} asking={impact.asking} />}
+      {actions.dialogs}
     </div>
   );
 }
