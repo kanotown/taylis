@@ -502,7 +502,7 @@ export function RenameChannelDialog({ controller, channel, onClose }: { controll
   return (
     <Modal onClose={onClose} title={t("dialogs.renameChannel")} description={t("dialogs.renameChannelDescription")}>
       <form className="mt-4 space-y-4" onSubmit={save}>
-        <Input value={name} pattern="[a-z0-9][a-z0-9._-]*" maxLength={80} autoFocus required onChange={(e) => setName(e.target.value.toLowerCase())} />
+        <Input value={name} pattern="[^\s#@/]{1,80}" maxLength={80} autoFocus required onChange={(e) => setName(e.target.value)} />
         <div className="flex justify-end gap-2">
           <Button type="button" variant="secondary" onClick={onClose}>
             {t("common.cancel")}
