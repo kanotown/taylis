@@ -133,6 +133,39 @@ TabView / NavigationBar (4 タブ、会話・スレッドの中ではタブバ�
   - スレッドの返信（メンション・保存済み・Times フィードの行、通知、パーマリンク）は、会話とスレッドを一度にスタックに積み、スレッドの画面だけがすぐ出る。途中で会話の画面を見せない。戻ると会話、もう一度戻ると一覧（2026-10-06。iOS は前は会話を開いてから会話がスレッドを開く 2 段の動きだったのを `MainNavigation.show` / `land`、`MainRoute.thread` で直した。iPad の分割ではこれまでどおり会話の横のペインに開く。Android は `MainNav.openConversation` / `MainTabs.land` が［会話, スレッド］を一度に置くので、もともとこの形）
   - アクティビティの行から開いたスレッドの返信は、戻るでアクティビティに 1 回で戻る（2026-10-09。「スレッド」一覧から開いたときと同じ）。それまでは戻ると会話、もう一度戻るとアクティビティだった。iOS は `MainNavigation.showFromActivity` がスレッドの画面だけを積む。Android は `revealFromActivity` が［会話, スレッド］を `ThreadFrom.LIST` で置き、戻るで両方を外す。どちらもスマホの幅だけで、iPad・タブレットの分割ではこれまでどおり会話の横のペインに開く。Desktop / Web の狭い幅はもともとアクティビティの上にスレッドを出して戻るでアクティビティに戻る。通知から開いたスレッドは上のとおり会話の上に積む（戻ると会話）
   - 開いている画面の中のメッセージへのリンク（スレッドの中から同じスレッドの返信・親へ、会話のタイムラインから同じ会話のトップレベルのメッセージへ）は移動せず、その場でそのメッセージまでスクロールして強調する。足りない返信は読み直す。同じリンクをもう一度押しても（スクロールしたあとでも）そこへ戻る。それ以外のリンク（別のスレッド、別の会話、キャンバスなどの中のリンク）はこれまでどおり上の着地（2026-10-21 のユーザー報告。前はスタックを同じ形に置き直すだけで、開いているスレッドは一度置いた位置から動かず、親へのリンクはスレッドを閉じて会話に移っていた。iOS は `PermalinkJump` / `MessageLinkContext`（環境値）と `ThreadView.jumpToFocus`、Android は同名の `PermalinkJump` / `LocalMessageLinkContext` と `ThreadPane` の `focusRequest`。Desktop / Web はもともとスレッドのペインがフォーカスの変化でその行へスクロールする）
+  - メッセージへのリンクが飛ばないことがある（2026-11-05 のユーザー報告。規則は SYNC_PROTOCOL.md §7.10）。主な原因は本文の
+    リンクの範囲：「（…/m/<id>）」「「…/m/<id>」を見て」「…/m/<id>を見て」「…/m/<id>.」の閉じ括弧・句点・続く日本語まで
+    URL に入り、「💬 メッセージを表示」にならずにブラウザで開いていた（3 端末とも。Android は Java の `\s` が ASCII だけの
+    ため、全角空白・ノーブレークスペースの後ろまで URL だった）。3 端末の字句解析（Desktop / Web `markdown.ts`
+    `bareUrl`、iOS `BodyTokenizer.bareUrl`、Android `BodyTokenizer.kt` `bareUrl`）を `apps/shared/inline-format.json` の
+    規則にそろえ、サーバのリンクの判定（Desktop / Web `permalink.ts`、iOS `ServerLink.id`、Android `Permalink.idAfter`）を
+    `apps/shared/message-links.json`（http・https と既定のポートの有無を同じに扱う）にそろえた。ほかに見つけて直したもの：
+    - 開いている会話のメッセージへのリンクを、その会話の「キャンバス」「タスク」「ドライブ」「ピン留め」「ファイル」タブや
+      詳細の上で押すと、「メッセージ」に戻してそこまでスクロールする（Desktop / Web `MainScreen` のフォーカスの処理、
+      iOS `ChannelView` の `focus.request`。Android は `MainTabs.land` がもともとタブを戻していた。`MainTabsTest` で固定）。
+      前は下のタイムラインが動くだけで何も見えなかった。iOS で会話の「N 件の返信」から開いたスレッドの中のリンクで、
+      そのスレッドの外のメッセージ（タイムラインの行・別のスレッド）へ行くときは、スレッドが自分で閉じる
+      （`ThreadView.onRevealElsewhere`。覆われた会話の画面はその間更新されず、リンクが何もしなかった。シミュレータで確認）。
+      Web のスマホ幅も、スレッドの上からタイムラインのメッセージへのリンクはスレッドを閉じる（親へのリンクは閉じない）。
+    - 同じリンク（強調中のメッセージへのリンク）をスクロールの後にもう一度押すと、そこへ戻る。Desktop / Web は
+      `messageFocus.request`（iOS / Android の `serial` と同じ）。前は id だけを見ていて動かなかった。Android の参加前の
+      プレビュー（`PreviewPane.kt`）も同じで、「最新の会話へ」で最新の行に戻るようにした。
+    - アーカイブ済みで参加していない公開チャンネルへのリンク：手元に無いので `GET /channels/{id}` で取り、プレビューを
+      開く（前は Desktop / Web が会話を閉じ、iOS は「会話が見つかりません」。Android はもとからこの形）。iOS は開いている
+      間、参加前の一覧の読み直し（再接続）でも消さない。iOS の参加前のプレビューは、リンクのたびにその前後を読み直して
+      行を中央に強調し、返信ならスレッドを開く（前は一度読むだけで、強調も移動もしなかった）。
+    - 会話のリンクの帯（M15f）の `/m/` などは、Desktop / Web と Android でもアプリの中で開く（前はブラウザ。iOS はもとから
+      アプリの中）。Android は「スレッド」一覧のカードの中のリンクも。iOS はリンクから全画面で開いたキャンバス・ページ・
+      ドライブの中のメッセージへのリンクで、そのシートを閉じてから会話を開く（前はシートの裏で開いていた）。
+    - 親が削除された返信へのリンク：サーバの `/context` が 404 を返していたので「メッセージが見つかりません」になって
+      いた。親のあった場所の前後を返すようにし、スレッドは「元のメッセージは削除されました」で開く（THREADS.md §5）。
+    - Web の入口：ブラウザで開いた `/m/<id>` の後ろに他のアプリが閉じ括弧などを含めてリンクにしていても、その id を開く。
+    - 試験：Desktop / Web `tests/messageLinks.test.tsx`（MainScreen・同期エンジン・偽のサーバで実際にリンクを押す）・
+      `tests/permalink.test.ts`、iOS `PermalinkTests`・`InlineFormatFixtureTests`・`SyncEngineTests`、Android
+      `InlineFormatTest`・`PermalinkTest`・`MainTabsTest`、サーバ `test_threads.py`。手元の専用サーバで、Web は Chrome
+      （広い画面とスマホ幅）、iOS はシミュレータの使い捨ての XCUITest、Android はエミュレータで、遠い過去・スレッドの
+      返信と親・チャンネルにも送信した返信・親が削除された返信・削除済み・未参加の公開／非公開／アーカイブ済み・DM・
+      句読点や括弧つきの文中のリンク・同じリンクを 2 回・会話のキャンバスの中のリンクを確かめた。
 - 広い画面は今のサイドバー型 (iOS の NavigationSplitView、Android と Web の 2〜3 列) を続ける。サイドバーに「アクティビティ」(今の「メンション」を置き換え) と「DM」を足して、中身を揃える。
 
 ### 5.1 横のスワイプで会話と一覧を行き来する (GitHub issue #1、2026-10-06)
