@@ -1855,7 +1855,7 @@ CREATE TABLE messages (
   workflow_name       varchar(40),                         -- M94: その時のワークフローの名前 (MessageOut.workflow = {id, name})
   call_url            text,                                -- M117 (0091): 通話を始めたメッセージの会議の部屋の URL。M130 からは LiveKit の通話の `/call/<id>` のページ (MessageOut.call、docs/CALLS.md)。ほかは NULL
   call_id             uuid REFERENCES calls(id) ON DELETE SET NULL, -- M130 (0097): このメッセージが知らせる通話 (MessageOut.call.kind = 'livekit')。ほかは NULL
-  hidden_previews     text[] NOT NULL DEFAULT '{}',        -- M185（0131）：送った人（か管理者）が消したリンクのカードのキー（正規化した URL、docs/LINK_PREVIEWS.md §4）。MessageOut.hidden_previews。削除で空
+  hidden_previews     text[] NOT NULL DEFAULT '{}',        -- M185（0131）：送った人（か管理者）が消したリンクのカードのキー（正規化した URL、docs/LINK_PREVIEWS.md §4）。MessageOut.hidden_previews。削除で空。0132 で 2026-11-05 より前のリンクの読み方のキーを今の読み方のキーに書き換え（LINK_PREVIEWS.md §4.1）
   UNIQUE (channel_id, seq)
 );
 CREATE UNIQUE INDEX messages_client_msg_id_uniq ON messages (sender_id, client_msg_id) WHERE client_msg_id IS NOT NULL;

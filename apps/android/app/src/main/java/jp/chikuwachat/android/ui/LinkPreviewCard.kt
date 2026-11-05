@@ -41,21 +41,15 @@ import jp.chikuwachat.android.app.AppController
 import jp.chikuwachat.android.R
 import androidx.compose.ui.res.stringResource
 
-/** The http(s) links in a body, outside code (M11g, M185). */
+/** The links a body shows (M11g, M185). */
 object Links {
-    private val FENCE = Regex("```[\\s\\S]*?```")
-    private val CODE = Regex("`[^`\\n]*`")
-    // \p{Z} as well: a full-width space ends a link here as it does on the web and the server (JavaScript's and Python's
-    // \s are Unicode; the JVM's is ASCII only).
-    private val URL = Regex("https?://[^\\s\\p{Z}<>)\\]]+")
-    // i18n: keep (trailing punctuation of a URL)
-    private const val TRAILING = ".,!?;:。、」』）"
-
-    /** Every link in order, trailing punctuation dropped (the desktop's bodyLinks). */
-    fun all(body: String): List<String> {
-        val text = body.replace(FENCE, " ").replace(CODE, " ")
-        return URL.findAll(text).map { it.value.trimEnd { c -> c in TRAILING } }.toList()
-    }
+    /**
+     * Every link in order (the desktop's bodyLinks): the links its tokenizer reads (2026-11-05, apps/shared/link-cards.json
+     * body_keys): a `[label](url)` link's URL and the bare URLs as far as they go (apps/shared/inline-format.json: not the
+     * closing mark or the Japanese after them, so 「…/m/<id>」を見て is a message card, not a card of a broken URL); none
+     * in code or in emphasis.
+     */
+    fun all(body: String): List<String> = tokenizeBody(body).mapNotNull { (it as? BodyToken.Link)?.url }
 
     /** The first link; null when there is none. */
     fun first(body: String): String? = all(body).firstOrNull()

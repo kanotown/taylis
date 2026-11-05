@@ -1,25 +1,16 @@
 import SwiftUI
 
-/// The first http(s) link in a body, outside code (M11g); nil when there is none.
+/// The links a body shows (M11g, M166, M185).
 enum Links {
-    private static let fence = try! NSRegularExpression(pattern: "```[\\s\\S]*?```")
-    private static let code = try! NSRegularExpression(pattern: "`[^`\\n]*`")
-    private static let url = try! NSRegularExpression(pattern: "https?://[^\\s<>)\\]]+")
-    private static let trailing = CharacterSet(charactersIn: ".,!?;:。、」』）")  // i18n-ignore
-
     static func first(in body: String) -> String? { all(in: body).first }
 
-    /// M166: every http(s) link outside code, in order (a body's drive links, DriveLink.ids).
+    /// Every link in order: the links its tokenizer reads (2026-11-05, apps/shared/link-cards.json body_keys): a
+    /// `[label](url)` link's URL and the bare URLs as far as they go (apps/shared/inline-format.json: not the closing mark
+    /// or the Japanese after them, so 「…/m/<id>」を見て is a message card, not a card of a broken URL); none in code or in
+    /// emphasis. A body's message, drive and Open Graph cards (MessageLinkCards, DriveLink.ids).
     static func all(in body: String) -> [String] {
-        var text = body
-        for regex in [fence, code] {
-            text = regex.stringByReplacingMatches(in: text, range: NSRange(location: 0, length: (text as NSString).length), withTemplate: " ")
-        }
-        let ns = text as NSString
-        return url.matches(in: text, range: NSRange(location: 0, length: ns.length)).map { match in
-            var found = ns.substring(with: match.range)
-            while let last = found.unicodeScalars.last, trailing.contains(last) { found.removeLast() }
-            return found
+        BodyTokenizer.tokenize(body).compactMap { token in
+            if case .link(let url, _) = token { return url } else { return nil }
         }
     }
 }

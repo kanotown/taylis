@@ -32,8 +32,14 @@ SYNC_PROTOCOL.md §6（`message.updated` の change `previews`）、`apps/shared
 
 ケースは `apps/shared/link-cards.json` の `cards`（Desktop / Web は `tests/messageLinkCards.test.tsx` が読む。iOS・Android も読むこと）。
 
-1. **本文のリンク**：M11g と同じ検出。コード（```` ``` ```` のブロックと `` ` `` の中）を除いた本文の `https?://[^\s<>)\]]+` を順に。
-   末尾の `.,!?;:。、」』）` は落とす。`[表示名](URL)` の URL も入る。
+1. **本文のリンク**：本文の字句解析が読むリンクを順に（2026-11-05 から。Desktop / Web `links.ts` `bodyLinks`、iOS・Android
+   `Links.all` は字句解析のリンクの字句を集める）。`[表示名](URL)` の URL と、むき出しの URL を `apps/shared/inline-format.json`
+   の規則で：空白・`<` `>`・全角や CJK の記号（、。「」（）など）の手前まで、末尾の `.` `,` `:` `;` `!` `?` `'` `"` `…` と URL の中で
+   開いていない `)` `]` は含めない、`/m/` などこのサーバの形のリンクは UUID の後に `/` `?` `#` が無ければそこまで。コード
+   （```` ``` ```` のブロックと `` ` `` の中）と強調（`**…**` など）の中はリンクでない。本文でチップになるリンクとカードのリンクが
+   いつも同じになる。以前（M11g〜）は `https?://[^\s<>)\]]+` から末尾の `.,!?;:。、」』）` を落としただけで、「「…/m/<id>」を見て」
+   「…/m/<id>を見て」は `」を見て` まで含んだ壊れた URL の外部のカードになり、メッセージのカードにならなかった（2026-11-05、
+   SYNC_PROTOCOL.md §7.10）。`body_keys` のケースで 3 端末とサーバが同じキーを確かめる。
 2. **メッセージのカード**：ログインしているサーバの `/m/<uuid>`（パーマリンクの判定と同じ：サーバのアドレスと `/m/` は大文字・小文字を
    区別しない、`?`・`#` 以降は無視、id は小文字にする）。**同じメッセージは 1 枚**、**そのメッセージ自身は除く**、本文の順に
    **最大 3 枚**（Slack は数を決めていないが、長い列は読みにくい。4 つ目以降のリンクは本文のチップのまま）。カードの URL は、
@@ -124,6 +130,15 @@ SYNC_PROTOCOL.md §6（`message.updated` の change `previews`）、`apps/shared
 ケースは `apps/shared/link-cards.json` の `keys`（サーバの `link_cards.preview_key` も同じものを通す）。
 端末は「カードのリンクのキーが `hidden_previews` にあるか」で消したかを決める。
 
+**リンクの読み方の変更とキー（2026-11-05、移行 0132）**：§2 1. の読み方が変わると、同じリンクのキーが変わることがある
+（`「https://example.com/a」を見て` は `https://example.com/a」を見て` から `https://example.com/a` に、Wikipedia の
+`Foo_(bar)` は `…Foo_(bar` から `…Foo_(bar)` に）。それまでに消したカードがまた出ないよう、移行 0132 が保存されたキーを
+書き換える：今の読み方のキーでなく、本文のどれかのリンクの以前の読み方のキーであるものを、同じリンクの今のキーに置き換え
+（重複はまとめ、合うリンクの無いキーはそのまま）、変わったメッセージは編集と同じく新しい `updated_seq` を取る（チャンネルの
+`last_seq` を 1 つ進める。イベントは出さないが、差分の同期で全端末が行を読み直す）。ケースは `link-cards.json` の
+`legacy_keys`（`tests/test_hidden_preview_keys_migration.py`）。戻しても書き換えたキーはそのまま（以前のサーバでも、ふつうの
+リンクのキーは同じ）。
+
 ### 4.2 `PUT /api/v1/messages/{id}/previews/hidden`
 
 ```jsonc
@@ -139,7 +154,7 @@ SYNC_PROTOCOL.md §6（`message.updated` の change `previews`）、`apps/shared
 | 会話がアーカイブされていない | `409 channel_archived` |
 | 人のメッセージ（参加・退出の行でない） | `400 system_message_readonly` |
 | 送った人、または管理者（`channels.moderate`。削除と同じ） | `403 not_message_owner` |
-| `hidden: true` のとき、`url` のキーが本文のリンクのキーのどれか（コードの中を含めて広めに見る。末尾の句読点の有無も可） | `400 preview_not_in_message`（http(s) でないものも） |
+| `hidden: true` のとき、`url` のキーが本文のリンクのキーのどれか（コードの中を含めて広めに見る：本文のすべての `http(s)://` から、§2 1. の今の読み方と 2026-11-05 より前の読み方（末尾の句読点の有無も）の両方。`link_cards.link_keys`） | `400 preview_not_in_message`（http(s) でないものも） |
 
 - **冪等**：もう消えているものを消す・出ているものを戻すのは何も変えない（200、seq も進まずイベントも出ない）。
 - 変わったときは、チャンネルの seq を 1 つ取り（`allocate_seq`、チャンネルの行のロック）、`updated_seq` を新しい seq にし、`message.updated`
@@ -174,13 +189,17 @@ SYNC_PROTOCOL.md §6（`message.updated` の change `previews`）、`apps/shared
 - 古いサーバ：`POST /messages/previews` が 404 / 405 → 端末は失敗と同じ扱い（カードを出さない）。`MessageOut` に
   `hidden_previews` が無ければ空とみなす。消す操作は 404 / 405 のエラーになる。
 - 移行 0131 を戻すと列が消える（消したカードがまた出る。前のサーバの動きのまま）。
+- 2026-11-05 より前の読み方の端末（カードは未リリースだったので開発版だけ）：以前のキーで消しても、サーバはそのキーも本文の
+  キーとして受け付ける（§4.2）。今の端末から見るとそのカードは消えていない（移行 0132 は移行のときにあったキーだけを書き換える）。
 
 ## 7. テスト
 
 - サーバ：`tests/test_message_link_cards.py`（キーのケース、抜粋の切り方、読める規則の表（メンバー・未参加の公開・プレビューの
   オフ・非公開・DM・抜けた非公開・アーカイブ・スレッド・削除・存在しない id・ゲスト・メンバーでない管理者）と `unavailable` が何も
   含まないこと、写真のサムネイルを読めること、件数の上限とレート制限、削除の権限（送った人・管理者・メンバーでない人・ほかの
-  メンバー）、冪等とイベント 1 つ、差分の同期、本文に無いリンク、戻す、編集と削除での掃除、アーカイブ）。
+  メンバー）、冪等とイベント 1 つ、差分の同期、本文に無いリンク、戻す、編集と削除での掃除、アーカイブ、`body_keys` と
+  `legacy_keys` のキーが本文のキーに入ること）、`tests/test_hidden_preview_keys_migration.py`（移行 0132：`legacy_keys` の書き換え、
+  変わった行だけ `updated_seq` と `last_seq` が進むこと。0131 に戻して上げ直す）。
 - Desktop / Web：`tests/messageLinkCards.test.tsx`（`link-cards.json` の全ケース、抜粋の描き方、読める・スレッド・読めない・
   削除のカード、手元の行の編集と削除、× は送った人と管理者だけ、消すと API と行の置き換えと「元に戻す」、`message.updated` の
   `hidden_previews` で消える、まとめて聞くことと失敗の後）。
@@ -194,7 +213,7 @@ SYNC_PROTOCOL.md §6（`message.updated` の change `previews`）、`apps/shared
    以外は id と state だけを信じる）。`message.updated` の change `"previews"` は特別な処理をせず、ほかの change と同じに行を
    置き換えるだけでよい（新しい `updated_seq`）。
 2. **どのカードか**：§2 の規則を 1 つの関数に（`cardLinks(body, baseUrl, selfId, hidden, call)` → メッセージのカード
-   `[(id, url)]` 最大 3 と外部のリンク 1 つ）。リンクの検出と末尾の句読点は M11g のもの、パーマリンクの判定は今の `/m/` のもの。
+   `[(id, url)]` 最大 3 と外部のリンク 1 つ）。リンクの検出は §2 1.（2026-11-05 から字句解析のリンク）、パーマリンクの判定は今の `/m/` のもの。
    キーは §4.1。`apps/shared/link-cards.json` の `keys` と `cards` を単体テストで全部通すこと。
 3. **聞き方**：カードが画面に近づいたら id を聞く。少し（30 ms 程度）まとめて `POST /messages/previews`、20 件ずつ。答えは id ごとに
    セッションの中で持ち（iOS は M11g のカードのように端末の DB に置いてもよい）、5 分で古い扱い、失敗は 1 分あけてから。

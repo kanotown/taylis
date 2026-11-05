@@ -1,9 +1,14 @@
+import { tokenize } from "./markdown";
 import { parseDriveLink, parsePermalink } from "./permalink";
 
-/** Every http(s) link in a body outside code, in order, trailing punctuation dropped (M11g, M185). */
+/**
+ * Every link a body shows, in order (M11g, M185): the links its tokenizer reads (2026-11-05, apps/shared/link-cards.json
+ * body_keys): a `[label](url)` link's URL and the bare URLs as far as they go (apps/shared/inline-format.json: not the
+ * closing mark or the Japanese after them, so 「…/m/<id>」を見て is a message card, not a card of a broken URL); none
+ * in code or in emphasis.
+ */
 export function bodyLinks(body: string): string[] {
-  const withoutCode = body.replace(/```[\s\S]*?```/g, " ").replace(/`[^`\n]*`/g, " ");
-  return [...withoutCode.matchAll(/https?:\/\/[^\s<>)\]]+/g)].map((match) => match[0].replace(/[.,!?;:。、」』）]+$/, ""));
+  return tokenize(body).flatMap((token) => (token.kind === "link" ? [token.url] : []));
 }
 
 /** The first http(s) link in a body, outside code (M11g); null when there is none. */
