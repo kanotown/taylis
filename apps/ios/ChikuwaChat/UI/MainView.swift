@@ -299,6 +299,11 @@ struct MainView: View {
             if let id = note.userInfo?["id"] as? String {
                 if sheet == .search || sheet?.isCanvasSearch == true || sheet?.isPageSearch == true { sheet = nil } // a conversation opened from a search result's profile or link
                 jumpShown = false // …or from the message search of 移動・検索
+                // …or from a canvas, a page or a drive item shown over everything from its link (a message link in it):
+                // the conversation landed behind the sheet, and the link seemed to do nothing (2026-11-05).
+                controller.canvasLink = nil
+                controller.pageLink = nil
+                controller.driveLink = nil
                 previewMessageId = note.userInfo?["messageId"] as? String
                 land(id, parentId: note.userInfo?["parentId"] as? String)
             }

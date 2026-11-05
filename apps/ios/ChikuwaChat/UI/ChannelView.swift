@@ -748,7 +748,7 @@ struct ChannelView: View {
             // The header's conversation link (MOBILE_UI.md §6.7): back to this conversation at the thread's parent.
             ThreadView(controller: controller, channelId: channelId, parentId: target.id, onOpenConversation: {
                 Task { if await controller.revealMessage(id: target.id, channelId: channelId, parentId: nil) { thread = nil } }
-            })
+            }, onRevealElsewhere: { thread = nil })
         }
         .onChange(of: thread?.id) { _, id in
             // The split (MOBILE_UI.md §13): MainView shows the thread in its pane beside the detail column (an inspector
@@ -780,9 +780,16 @@ struct ChannelView: View {
             // M73: a canvas mention's notification, a task's 元のキャンバス: the 「キャンバス」 tab (which selects the canvas).
             if let open, open.channelId == channelId { tab = .canvas }
         }
-        .onChange(of: controller.messageFocus?.messageId) { _, _ in
-            // M56: a message of this conversation to show (a task's 「メッセージを開く」): back to the messages.
-            if focus != nil, tab == .tasks { tab = .messages }
+        .onChange(of: focus?.request) { _, request in
+            // A message of this conversation to show (a link in its canvas, drive, tasks or details, a task's
+            // 「メッセージを開く」, a search hit …): the timeline comes in front of what covered it and scrolls to the message
+            // (2026-11-05: only the tasks tab gave way, so a link in this conversation's canvas or details, or in a thread
+            // opened from it, showed nothing). A reply's thread is landed over the conversation; a thread of this view's
+            // own stays only when it is that one.
+            guard request != nil, let focus else { return }
+            if tab != .messages { tab = .messages }
+            if showInfo { showInfo = false }
+            if PermalinkJump.closesOwnThread(open: threadInPane ? nil : thread?.id, focusParentId: focus.parentId) { thread = nil }
         }
         .onChange(of: pendingThreadId, initial: true) { _, id in
             if let id {

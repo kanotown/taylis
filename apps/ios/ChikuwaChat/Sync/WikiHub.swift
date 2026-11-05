@@ -162,14 +162,7 @@ enum PageLink {
             let id = String(url.dropFirst(5))
             return isUuid(id) ? id.lowercased() : nil
         }
-        guard let base else { return nil }
-        var prefix = base.absoluteString
-        while prefix.hasSuffix("/") { prefix.removeLast() }
-        prefix += "/p/"
-        guard url.count >= prefix.count, url.prefix(prefix.count).lowercased() == prefix.lowercased() else { return nil }
-        var id = String(url.dropFirst(prefix.count))
-        for stop in ["/", "?", "#"] { if let range = id.range(of: stop) { id = String(id[..<range.lowerBound]) } }
-        return isUuid(id) ? id.lowercased() : nil
+        return ServerLink.id(base: base, url: url, path: "/p/")
     }
 
     static func url(base: URL, pageId: String) -> String {

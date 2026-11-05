@@ -750,6 +750,32 @@ final class SyncEngineTests: XCTestCase {
         second.stop()
     }
 
+    /// 2026-11-05: an archived public channel opened from a link (AppController.ensureChannel) is never in the browsable
+    /// list; reloading that list (a reconnect) keeps it while it is the conversation on screen, else drops it as before.
+    func testAnArchivedPreviewOpenedFromALinkStaysWhileOnScreen() async throws {
+        let server = FakeServer()
+        let alice = server.addUser("alice")
+        _ = server.createChannel("general", ownerId: alice.id)
+        let store = Store()
+        var options = EngineOptions()
+        options.sleep = { _ in }
+        let engine = SyncEngine(api: server.api(for: alice.id), connect: server.connector(for: alice.id), wsUrl: URL(string: "ws://fake")!, store: store,
+                                getAccessToken: { "t" }, options: options)
+        func archived(_ id: String) -> ChannelOut {
+            ChannelOut(id: id, type: "public", name: id, topic: nil, purpose: nil, archived: true, createdBy: nil, lastSeq: 1,
+                       lastMessageAt: nil, createdAt: "", updatedAt: "", membership: nil, dmUserIds: nil)
+        }
+        store.upsertChannel(archived("old"), isMember: false)
+        store.upsertChannel(archived("older"), isMember: false)
+        engine.currentChannelId = "old"
+        await engine.loadBrowsableChannels()
+        XCTAssertNotNil(store.channel("old"))
+        XCTAssertNil(store.channel("older"))
+        engine.currentChannelId = nil
+        await engine.loadBrowsableChannels()
+        XCTAssertNil(store.channel("old"))
+    }
+
     func testCustomEmojiLoadFromBootstrapAndFollowEvents() async throws {
         let server = FakeServer()
         let alice = server.addUser("alice")

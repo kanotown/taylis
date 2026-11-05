@@ -324,7 +324,9 @@ final class MainNavigationTests: XCTestCase {
 
         let channelId = await controller.revealThreadParent(entry)
         XCTAssertEqual(channelId, "general")
-        XCTAssertEqual(recorder.all, ["/api/v1/messages/p1/context"]) // no replies: the thread is not opened
+        // No replies: the thread is not opened. (This store does not hold the conversation, so it is asked for first,
+        // AppController.ensureChannel; the stub's 404 leaves the store as it was.)
+        XCTAssertEqual(recorder.all, ["/api/v1/channels/general", "/api/v1/messages/p1/context"])
         let focus = try XCTUnwrap(controller.messageFocus)
         XCTAssertEqual(focus.channelId, "general")
         XCTAssertEqual(focus.messageId, "p1")

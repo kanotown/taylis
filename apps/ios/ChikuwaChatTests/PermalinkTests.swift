@@ -46,6 +46,71 @@ final class PermalinkTests: XCTestCase {
         XCTAssertEqual(PermalinkJump.of(channelId: "c2", messageId: "r9", parentId: "p1", from: thread), .open)
     }
 
+    /// 2026-11-05: the links every client recognises (apps/shared/message-links.json): http and https alike, the default
+    /// port written out or not, the server's path, an id that ends there or with `/` `?` `#`; for every kind of link.
+    func testTheSharedLinkCases() throws {
+        struct Fixture: Decodable {
+            struct Case: Decodable { let name: String; let base: String; let url: String; let kind: String; let id: String? }
+            let cases: [Case]
+        }
+        let file = URL(fileURLWithPath: #filePath).deletingLastPathComponent().deletingLastPathComponent().deletingLastPathComponent()
+            .appendingPathComponent("shared/message-links.json")
+        let fixture = try JSONDecoder().decode(Fixture.self, from: Data(contentsOf: file))
+        XCTAssertGreaterThan(fixture.cases.count, 20)
+        for c in fixture.cases {
+            let base = URL(string: c.base)
+            let found: String? = switch c.kind {
+            case "m": Permalink.messageId(base: base, url: c.url)
+            case "c": CanvasLink.canvasId(base: base, url: c.url)
+            case "p": PageLink.pageId(base: base, url: c.url)
+            case "e": EventLink.eventId(base: base, url: c.url)
+            case "d": DriveLink.itemId(base: base, url: c.url)
+            case "eq": EquipmentLink.itemId(base: base, url: c.url)
+            default: "unknown kind \(c.kind)"
+            }
+            XCTAssertEqual(found, c.id, c.name)
+        }
+    }
+
+    /// 2026-11-05: a message link written in a Japanese sentence (「…/m/<id>」を見て, …/m/<id>を見て, （…/m/<id>）) is the
+    /// app's link, not a URL with the sentence in it that opened in the browser.
+    func testALinkInASentenceIsTheMessage() {
+        let base = URL(string: "http://127.0.0.1:8766")!
+        for line in ["「http://127.0.0.1:8766/m/\(id)」を見て", "http://127.0.0.1:8766/m/\(id)を見て", "（http://127.0.0.1:8766/m/\(id)）",
+                     "http://127.0.0.1:8766/m/\(id).", "<http://127.0.0.1:8766/m/\(id)>", "https://127.0.0.1:8766/m/\(id.uppercased())。"] {
+            let links = BodyTokenizer.tokenizeInline(line).compactMap { token -> String? in
+                if case .link(let url, _) = token { return url } else { return nil }
+            }
+            XCTAssertEqual(links.count, 1, line)
+            XCTAssertEqual(links.first.flatMap { Permalink.messageId(base: base, url: $0) }, id, line)
+        }
+    }
+
+    /// 2026-11-05: a link to a message of the conversation shown in its timeline, tapped in a thread the conversation
+    /// pushed itself, closes that thread (the timeline comes in front); a link to a reply of that thread keeps it.
+    func testAMessageToShowClosesTheConversationsOwnThread() {
+        XCTAssertTrue(PermalinkJump.closesOwnThread(open: "p1", focusParentId: nil))
+        XCTAssertTrue(PermalinkJump.closesOwnThread(open: "p1", focusParentId: "p2"))
+        XCTAssertFalse(PermalinkJump.closesOwnThread(open: "p1", focusParentId: "p1"))
+        XCTAssertFalse(PermalinkJump.closesOwnThread(open: nil, focusParentId: nil))
+        XCTAssertFalse(PermalinkJump.closesOwnThread(open: nil, focusParentId: "p1"))
+    }
+
+    /// 2026-11-05 (seen in the simulator): the conversation under its own pushed thread is not updated while covered, so the
+    /// thread closes itself for a reveal of another message of the conversation; not for its own messages or another
+    /// conversation's.
+    func testAThreadGoesForARevealElsewhereInItsConversation() {
+        func focus(_ channel: String, _ id: String, _ parent: String?, threadOnly: Bool = false) -> AppController.MessageFocus {
+            AppController.MessageFocus(channelId: channel, messageId: id, parentId: parent, context: [], threadOnly: threadOnly, serial: 1)
+        }
+        XCTAssertTrue(PermalinkJump.revealsElsewhere(focus("c1", "m9", nil), channelId: "c1", threadParentId: "p1"))
+        XCTAssertTrue(PermalinkJump.revealsElsewhere(focus("c1", "r2", "p2"), channelId: "c1", threadParentId: "p1"))
+        XCTAssertFalse(PermalinkJump.revealsElsewhere(focus("c1", "r1", "p1"), channelId: "c1", threadParentId: "p1"))
+        XCTAssertFalse(PermalinkJump.revealsElsewhere(focus("c1", "p1", nil), channelId: "c1", threadParentId: "p1"))
+        XCTAssertFalse(PermalinkJump.revealsElsewhere(focus("c1", "p1", "p1", threadOnly: true), channelId: "c1", threadParentId: "p1"))
+        XCTAssertFalse(PermalinkJump.revealsElsewhere(focus("c2", "m9", nil), channelId: "c1", threadParentId: "p1"))
+    }
+
     func testALinkInsideTheTimelineStaysInIt() {
         let timeline = MessageLinkContext.timeline(channelId: "c1")
         XCTAssertEqual(PermalinkJump.of(channelId: "c1", messageId: "m1", parentId: nil, from: timeline), .timeline)

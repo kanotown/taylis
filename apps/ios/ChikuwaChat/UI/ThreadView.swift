@@ -11,6 +11,11 @@ struct ThreadView: View {
     /// The header's conversation line as a link (MOBILE_UI.md §6.7): the caller reveals the parent in the conversation
     /// and shows it. Nil (and while the root is deleted) the line is plain text.
     var onOpenConversation: (() -> Void)? = nil
+    /// Pushed by its conversation itself (ChannelView's 「N 件の返信」, not a route): a message of the conversation outside
+    /// this thread was revealed (a link here to its timeline or to another thread), so the thread goes and the
+    /// conversation (or the other thread, landed over it) comes in front (2026-11-05). The conversation cannot do it: a
+    /// screen under a pushed one is not updated while covered, so it never saw the new focus and the link did nothing.
+    var onRevealElsewhere: (() -> Void)? = nil
     @Environment(\.scenePhase) private var scenePhase
     @Environment(\.dismiss) private var dismiss
     @Environment(\.isPresented) private var isPresented
@@ -70,6 +75,10 @@ struct ThreadView: View {
     private var focusReplyId: String? { controller.messageFocus.flatMap { $0.parentId == parentId ? $0.messageId : nil } }
     /// Changes with every reveal into this thread, also of the message already in focus (a link tapped again).
     private var focusRequest: String? { controller.messageFocus.flatMap { $0.parentId == parentId ? $0.request : nil } }
+    /// A reveal in this conversation of a message outside this thread (PermalinkJump.revealsElsewhere).
+    private var elsewhereRequest: String? {
+        controller.messageFocus.flatMap { PermalinkJump.revealsElsewhere($0, channelId: channelId, threadParentId: parentId) ? $0.request : nil }
+    }
     private var parent: MessageState? {
         controller.store.message(channelId, id: parentId)
             ?? entry.map { MessageState($0.parent) }
@@ -182,6 +191,7 @@ struct ThreadView: View {
                 // A link in this thread to another of its messages (PermalinkJump.thread), or a reveal into it while it is
                 // open: the thread is placed already, so `position` does nothing more; it scrolls to the message here.
                 .onChange(of: focusRequest) { _, request in if request != nil { jumpToFocus(proxy) } }
+                .onChange(of: elsewhereRequest) { _, request in if request != nil { onRevealElsewhere?() } }
             }
             if let channel = controller.store.channel(channelId), channel.isMember, !channel.channel.archived, parent != nil {
                 TypingLine(controller: controller, channelId: channelId, parentId: parentId)

@@ -752,6 +752,9 @@ final class SyncEngine {
             store.upsertChannel(channel, isMember: false)
         }
         for channel in Array(store.channels.values) where !channel.isMember && !ids.contains(channel.id) {
+            // An archived public channel is never listed: one opened from a link (AppController.ensureChannel) stays while
+            // it is on screen, or a reconnect closed its preview.
+            if channel.id == currentChannelId && channel.channel.archived { continue }
             store.removeChannel(channel.id)
         }
     }
