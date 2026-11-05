@@ -94,6 +94,17 @@ def test_keys_links_and_excerpts() -> None:
     # Every link of a body, with and without trailing punctuation, markdown labels too.
     keys = link_keys(f"see https://a.example/x。 and [doc]({BASE}/m/abc), (https://c.example)")
     assert {"https://a.example/x", f"{BASE}/m/abc", "https://c.example/"} <= keys
+    # 2026-11-05: the keys the clients compute now (the links as their tokenizer reads them) are all
+    # keys of the body, and so are those they computed before (a removed card stays removable).
+    fixture = json.loads((ROOT / "apps" / "shared" / "link-cards.json").read_text())
+    assert len(fixture["body_keys"]) >= 5
+    for case in fixture["body_keys"]:
+        assert set(case["keys"]) <= link_keys(case["body"]), case
+    for case in fixture["legacy_keys"]:
+        assert set(case["migrated"]) - {"https://unrelated.example/"} <= link_keys(case["body"]), (
+            case
+        )
+    assert "https://example.com/a」を見て" in link_keys("「https://example.com/a」を見て")
     # The excerpt: the first lines, capped, never half a mention token.
     long_line = "x" * (EXCERPT_CHARS - 5) + f" <@{uuid.UUID(int=1)}> after"
     cut, truncated = excerpt(long_line)

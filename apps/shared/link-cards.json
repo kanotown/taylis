@@ -1,5 +1,5 @@
 {
-  "_comment": "M185 (docs/LINK_PREVIEWS.md §2, §4.1): the link cards under a message, the same on the three clients. keys: a link's key for MessageOut.hidden_previews (scheme and host in lower case, fragment dropped, '/' for an empty path, the rest as written; null for anything but http(s)); the server's link_cards.preview_key gives the same. cards: which cards a message shows (the clients' rule, base_url being the server the app is logged into): `messages` are the message links' cards (each linked message once, at most 3, not the message itself, the URL of its first link), `external` the link that gets the Open Graph card (the first link that is not a message or drive link of this server; none when the message announces a call); links in code count for nothing; a card whose link's key is in `hidden` is left out and nothing takes its place. Server: tests/test_message_link_cards.py (keys); Desktop / Web: tests/messageLinkCards.test.tsx (both); iOS and Android read both.",
+  "_comment": "M185 (docs/LINK_PREVIEWS.md §2, §4.1): the link cards under a message, the same on the three clients. keys: a link's key for MessageOut.hidden_previews (scheme and host in lower case, fragment dropped, '/' for an empty path, the rest as written; null for anything but http(s)); the server's link_cards.preview_key gives the same. cards: which cards a message shows (the clients' rule, base_url being the server the app is logged into): `messages` are the message links' cards (each linked message once, at most 3, not the message itself, the URL of its first link), `external` the link that gets the Open Graph card (the first link that is not a message or drive link of this server; none when the message announces a call); links in code count for nothing; a card whose link's key is in `hidden` is left out and nothing takes its place. A body's links (2026-11-05) are the links its tokenizer reads (apps/shared/inline-format.json: a `[label](url)` link's URL, a bare URL without the closing mark or the Japanese after it, links in code and emphasis are none). body_keys: the keys of a body's links, in order, each once (the clients compute exactly these; the server's link_cards.link_keys holds them and more). legacy_keys: keys stored before 2026-11-05 under the old reading (a URL up to a space, `<`, `>`, `)` or `]`, trailing .,!?;:。、」』） dropped) and what migration 0132 makes of them (the key of the same link read now; a right or unknown key stays). Server: tests/test_message_link_cards.py (keys, body_keys, legacy_keys); Desktop / Web: tests/messageLinkCards.test.tsx; iOS and Android read keys, cards and body_keys.",
   "base_url": "https://chat.example.com",
   "keys": [
     { "url": "HTTPS://Example.COM/Path?Q=1#frag", "key": "https://example.com/Path?Q=1" },
@@ -97,6 +97,64 @@
       "body": "これを見て：https://chat.example.com/m/0190a1b2-0000-7000-8000-00000000000a。",
       "messages": [{ "id": "0190a1b2-0000-7000-8000-00000000000a", "url": "https://chat.example.com/m/0190a1b2-0000-7000-8000-00000000000a" }],
       "external": null
+    },
+    {
+      "name": "a message link in Japanese brackets (2026-11-05: the link no longer takes 」を見て)",
+      "body": "「https://chat.example.com/m/0190a1b2-0000-7000-8000-00000000000a」を見て",
+      "messages": [{ "id": "0190a1b2-0000-7000-8000-00000000000a", "url": "https://chat.example.com/m/0190a1b2-0000-7000-8000-00000000000a" }],
+      "external": null
+    },
+    {
+      "name": "a message link with Japanese right after it",
+      "body": "https://chat.example.com/m/0190a1b2-0000-7000-8000-00000000000aを見て",
+      "messages": [{ "id": "0190a1b2-0000-7000-8000-00000000000a", "url": "https://chat.example.com/m/0190a1b2-0000-7000-8000-00000000000a" }],
+      "external": null
+    },
+    {
+      "name": "in full-width parentheses, and http for the https server",
+      "body": "前の話（http://chat.example.com/m/0190a1b2-0000-7000-8000-00000000000b）と資料（https://example.com/a）",
+      "messages": [{ "id": "0190a1b2-0000-7000-8000-00000000000b", "url": "http://chat.example.com/m/0190a1b2-0000-7000-8000-00000000000b" }],
+      "external": "https://example.com/a"
+    },
+    {
+      "name": "a full stop after a link, and a link's own parentheses",
+      "body": "https://chat.example.com/m/0190a1b2-0000-7000-8000-00000000000a. See https://en.wikipedia.org/wiki/Foo_(bar).",
+      "messages": [{ "id": "0190a1b2-0000-7000-8000-00000000000a", "url": "https://chat.example.com/m/0190a1b2-0000-7000-8000-00000000000a" }],
+      "external": "https://en.wikipedia.org/wiki/Foo_(bar)"
+    },
+    {
+      "name": "a link in quotes",
+      "body": "\"https://example.com/q\"",
+      "messages": [],
+      "external": "https://example.com/q"
+    },
+    {
+      "name": "a link in a bold run is no link",
+      "body": "**https://example.com/bold** https://example.com/plain",
+      "messages": [],
+      "external": "https://example.com/plain"
+    },
+    {
+      "name": "a removed card, by the key of the link as read now",
+      "hidden": ["https://example.com/a"],
+      "body": "資料（https://example.com/a）",
+      "messages": [],
+      "external": null
     }
+  ],
+  "body_keys": [
+    { "body": "「https://Example.com/a」を見て", "keys": ["https://example.com/a"] },
+    { "body": "https://chat.example.com/m/0190A1B2-0000-7000-8000-00000000000Aを見て", "keys": ["https://chat.example.com/m/0190A1B2-0000-7000-8000-00000000000A"] },
+    { "body": "[doc](https://example.com/d) と https://en.wikipedia.org/wiki/Foo_(bar)。", "keys": ["https://example.com/d", "https://en.wikipedia.org/wiki/Foo_(bar)"] },
+    { "body": "see https://example.com/x?y=1#frag, ok", "keys": ["https://example.com/x?y=1"] },
+    { "body": "`https://example.com/code` https://example.com", "keys": ["https://example.com/"] },
+    { "body": "https://example.com/a\u3000次 https://example.com/b\u00a0next", "keys": ["https://example.com/a", "https://example.com/b"] }
+  ],
+  "legacy_keys": [
+    { "body": "「https://example.com/a」を見て", "stored": ["https://example.com/a」を見て"], "migrated": ["https://example.com/a"] },
+    { "body": "https://chat.example.com/m/0190a1b2-0000-7000-8000-00000000000aを見て https://example.com/keep", "stored": ["https://chat.example.com/m/0190a1b2-0000-7000-8000-00000000000aを見て", "https://example.com/keep"], "migrated": ["https://chat.example.com/m/0190a1b2-0000-7000-8000-00000000000a", "https://example.com/keep"] },
+    { "body": "https://en.wikipedia.org/wiki/Foo_(bar)", "stored": ["https://en.wikipedia.org/wiki/Foo_(bar"], "migrated": ["https://en.wikipedia.org/wiki/Foo_(bar)"] },
+    { "body": "（https://example.com/a）と https://example.com/a", "stored": ["https://example.com/a）と", "https://example.com/a"], "migrated": ["https://example.com/a"] },
+    { "body": "https://other.example/gone", "stored": ["https://unrelated.example/"], "migrated": ["https://unrelated.example/"] }
   ]
 }
