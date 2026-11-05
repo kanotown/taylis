@@ -51,7 +51,7 @@ import { CustomEmojiImage, customEmojiName } from "./customEmoji";
 import { reminderPresets, scheduleLabel, toLocalInput } from "./schedule";
 import { BOTTOM_SLACK_PX, jumpToLatestShown, ListAnchor, stillAtBottom, unseenBelow as countUnseen } from "./scrollAnchor";
 import { conversationScrollKey, restoreDecision, scrollMemoryFor } from "./scrollMemory";
-import { backToLatestShown, focusWindow } from "./focusWindow";
+import { backToLatestShown, focusRequest, focusWindow } from "./focusWindow";
 import { READER_BACK } from "../platform/idle";
 import { ReactionsDialog } from "./WhoDialogs";
 import { isSystemMessage, systemMessageText } from "./systemMessage";
@@ -77,6 +77,8 @@ export function Timeline({ controller, channel, onOpenThread, active = true }: {
   const store = controller.store;
   const engine = controller.engine;
   const focus = controller.messageFocus?.channelId === channel.id ? controller.messageFocus : null;
+  // The reveal that asked for it: the same message revealed again (its link clicked after scrolling away) lands again.
+  const focusKey = focusRequest(focus);
   // Opened at a message: the server's window around it, joined to the live tail when the two meet (focusWindow.ts).
   const around = focus ? focusWindow(focus.context.map((m) => { const cached = store.message(channel.id, m.id); return cached && cached.updated_seq >= m.updated_seq ? cached : m; }), store.messages(channel.id), channel.oldestLoadedSeq) : null;
   const messages: MessageState[] = around ? around.rows : store.messages(channel.id);
@@ -285,7 +287,7 @@ export function Timeline({ controller, channel, onOpenThread, active = true }: {
     quiet.current = false;
     atBottom.current = false;
     setSeenSeq(channel.lastReadSeq);
-  }, [channel.id, focus?.messageId]);
+  }, [channel.id, focusKey]);
 
   // Once per open (or focus change): the search hit centred; else the divider and the row after it at the top, so
   // the reader starts where unread starts (anchored at once, no banner flash); else the newest message (§10.1).
@@ -322,7 +324,7 @@ export function Timeline({ controller, channel, onOpenThread, active = true }: {
     setShowJump(jumpToLatestShown(atBottom.current, el ? el.scrollHeight - el.scrollTop - el.clientHeight : 0));
     if (atBottom.current) markSeen();
     recordPosition();
-  }, [channel.id, focus?.messageId, messages.length]);
+  }, [channel.id, focusKey, messages.length]);
 
   // A top-level post sent from this device while the conversation shows a message's surroundings (a pin, a search hit, a
   // permalink): the view leaves them for the live conversation and lands at its newest row, where the post is, as Slack

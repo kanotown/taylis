@@ -7,6 +7,7 @@ import type { ChannelState, MessageState } from "../sync/types";
 import { tapClosesKeyboard } from "../platform/viewport";
 import { buildTimeline, rowKey } from "./format";
 import { channelTitle } from "./MainScreen";
+import { focusRequest } from "./focusWindow";
 import { useListAnchor } from "./scrollAnchor";
 import { PaneBackButton, PaneCloseButton } from "./compact";
 import { Button } from "./primitives";
@@ -23,6 +24,7 @@ export function PreviewTimeline({ controller, channel, onOpenThread, onJoin }: {
   const preview = previewOf(controller, channel.id);
   // A permalink into the channel (M12b) shows the rows around the message, as in a channel of mine.
   const focus = controller.messageFocus?.channelId === channel.id ? controller.messageFocus : null;
+  const focusKey = focusRequest(focus);
   const messages: MessageState[] = useMemo(() => (focus ? focus.context.filter((m) => !m.deleted) : (preview?.messages ?? [])), [focus, preview?.messages]);
   const meId = controller.store.me?.id ?? null;
   const today = new Date().toDateString();
@@ -55,7 +57,7 @@ export function PreviewTimeline({ controller, channel, onOpenThread, onJoin }: {
   // Once per channel (or linked message): the newest row at the bottom, or the linked one in the middle.
   useLayoutEffect(() => {
     const el = container.current;
-    const key = `${channel.id}:${focus?.messageId ?? ""}`;
+    const key = `${channel.id}:${focusKey}`;
     if (!el || messages.length === 0 || positioned.current === key) return;
     positioned.current = key;
     const target = focus ? document.getElementById(`timeline-${focus.parentId ?? focus.messageId}`) : null;
@@ -65,7 +67,7 @@ export function PreviewTimeline({ controller, channel, onOpenThread, onJoin }: {
     } else {
       anchor.toBottom();
     }
-  }, [channel.id, focus?.messageId, messages.length]);
+  }, [channel.id, focusKey, messages.length]);
 
   const loadOlder = () => {
     if (!engine || focus || !preview?.hasOlder || preview.loading) return;
@@ -229,15 +231,22 @@ export function PreviewThreadPane({ controller, channel, parentId, onClose }: { 
     void engine?.loadPreviewThread(parentId).catch((error) => controller.setError(error));
   }, [engine, hasPreview, parentId]);
 
-  // Once the replies are there: the linked reply in the middle, else the newest at the bottom.
+  // Once the replies are there: the linked reply in the middle, else the newest at the bottom. A reply of this thread
+  // revealed again (the same link clicked after scrolling away) goes to the middle again.
   const loaded = replies !== undefined;
+  const placed = useRef("");
+  const focusKey = focusRequest(focus);
   useLayoutEffect(() => {
     const el = list.current;
     if (!el) return;
     if (!loaded) {
       anchor.reset(); // another thread in the same pane
+      placed.current = "";
       return;
     }
+    const opened = placed.current === parentId;
+    placed.current = parentId;
+    if (opened && !focus) return; // the focus went elsewhere: the thread stays where the reader has it
     const hit = focus ? document.getElementById(`thread-${focus.messageId}`) : null;
     if (hit) {
       hit.scrollIntoView({ block: "center" });
@@ -245,7 +254,7 @@ export function PreviewThreadPane({ controller, channel, parentId, onClose }: { 
     } else {
       anchor.toBottom();
     }
-  }, [parentId, loaded]);
+  }, [parentId, loaded, focusKey]);
 
   return (
     <aside className="flex min-h-0 w-full min-w-0 flex-col border-l border-line bg-canvas max-md:border-l-0">

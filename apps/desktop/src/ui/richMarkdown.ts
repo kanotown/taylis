@@ -17,7 +17,7 @@
  *   a block (`- `, `1. `, `> `, `# `, ``` ``` ```, `$$`, a table separator) starts with one. A `$` typed as text that
  *   would open math is written `\$`; nothing inside a formula is ever escaped.
  */
-import { parseBlocks, straightQuotes, tokenizeInline, type Block, type Token } from "./markdown";
+import { bareUrl, bareUrlsIn, parseBlocks, straightQuotes, tokenizeInline, type Block, type Token } from "./markdown";
 
 /** A ProseMirror node as TipTap's JSON (`editor.getJSON()` / `setContent`). */
 export interface RichNode {
@@ -39,13 +39,15 @@ const MATH_START = /^\s*\$\$/;
 const TABLE_SEPARATOR = /^[ \t]*\|?[ \t]*:?-+:?[ \t]*(?:\|[ \t]*:?-+:?[ \t]*)*\|?[ \t]*$/;
 const WORD_CHAR = /[\p{L}\p{N}_]/u;
 const BLANK = /^[\s　]*$/;
-/** What the renderer never reads emphasis or escapes in: URLs, e-mail addresses, the shrug, @handles. */
-const PROTECTED = [/https?:\/\/[^\s<>]+/g, /[A-Za-z0-9._%+-]{1,64}@[A-Za-z0-9-]{1,63}(?:\.[A-Za-z0-9-]{1,63}){1,8}/g, /¯\\_\(ツ\)_\/¯/g, /(?<![A-Za-z0-9._@<-])@[A-Za-z0-9._-]+/g];
+/**
+ * What the renderer never reads emphasis or escapes in: e-mail addresses, the shrug, @handles; and URLs as far as the
+ * renderer takes them (markdown.ts bareUrlsIn: not the marks after them, 2026-11-05).
+ */
+const PROTECTED = [/[A-Za-z0-9._%+-]{1,64}@[A-Za-z0-9-]{1,63}(?:\.[A-Za-z0-9-]{1,63}){1,8}/g, /¯\\_\(ツ\)_\/¯/g, /(?<![A-Za-z0-9._@<-])@[A-Za-z0-9._-]+/g];
 const MARKERS = /[_*~`$]/g;
 const SAFE_URL = /^https?:\/\/[^\s)]+$/;
 /** M150: what a link may go to in the canvas dialect (markdown.ts INLINE_CANVAS). */
 const CANVAS_URL = /^(?:https?:\/\/[^\s)]+|(?:page|attachment):[0-9a-fA-F-]{36})$/;
-const BARE_URL = /https?:\/\/[^\s<>]+/g;
 
 // ---------------------------------------------------------------------------------------------------------------------
 // Markdown → document
@@ -458,6 +460,8 @@ function emitPieces(pieces: readonly Piece[], canvas = false): Emitted[] {
         const label = piece.text.replace(/\]/g, "］").replace(/\n/g, " ");
         const bracketed = `[${label}](${href})`;
         if (piece.text === href) out.push({ expect: [{ kind: "link", text: href, href }], raw: bracketed, bare: href });
+        // A URL written bare with its own parentheses (Wikipedia's `Foo_(bar)`): bare again when it reads back so.
+        else if (piece.text === piece.href && bareUrl(piece.text) === piece.text) out.push({ expect: [{ kind: "link", text: piece.text, href: piece.text }], raw: bracketed, bare: piece.text });
         else out.push({ expect: [{ kind: "link", text: label, href }], raw: bracketed });
         break;
       }
@@ -475,6 +479,7 @@ function escapeInside(text: string, marker: string): string | null {
 /** The positions of `_ * ~ \`` in plain text, outside URLs, e-mail addresses and @handles. */
 function markerPositions(text: string): number[] {
   const guarded = new Set<number>();
+  for (const { index, url } of bareUrlsIn(text)) for (let k = index; k < index + url.length; k++) guarded.add(k);
   for (const pattern of PROTECTED) {
     for (const match of text.matchAll(pattern)) {
       // The renderer tries emphasis before an address at its first character: a leading `_` is not protected.
@@ -532,10 +537,10 @@ function signature(pieces: readonly Piece[]): string {
       continue;
     }
     let last = 0;
-    for (const match of piece.text.matchAll(BARE_URL)) {
-      if (match.index! > last) out.push(["text", piece.text.slice(last, match.index), null]);
-      out.push(["link", match[0], match[0]]);
-      last = match.index! + match[0].length;
+    for (const { index, url } of bareUrlsIn(piece.text)) {
+      if (index > last) out.push(["text", piece.text.slice(last, index), null]);
+      out.push(["link", url, url]);
+      last = index + url.length;
     }
     if (last < piece.text.length) out.push(["text", piece.text.slice(last), null]);
   }

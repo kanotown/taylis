@@ -123,7 +123,7 @@ export type TableAlign = "left" | "center" | "right" | null;
 // (also inside emphasis). E-mail addresses (and the shrug ¯\_(ツ)_/¯, which keeps its backslash) are text tokens of
 // their own, so emphasis and escapes are never read inside them.
 const INLINE =
-  /(\*\*((?:\\.|[^*\n\\])+?)\*\*)|(``(?!`)(?:[^`\n]|`(?!`))+?``(?!`)|`([^`\n]+)`)|(\*((?:\\.|[^*\n\\])+)\*)|(_(?![\s\u3000_])((?:\\.|[^\n\\])*?(?:\\.|[^\s\u3000_\\]))_(?![\p{L}\p{N}_]))|(~~((?:\\.|[^~\n\\])+)~~)|(\[([^\]\n]+)\]\((https?:\/\/[^\s)]+)\))|(<@group:([0-9a-f-]{36})>)|(<@([0-9a-f-]{36})>)|(<!(channel|here)>)|(https?:\/\/[^\s<>]+)|(\\([_*~`$]))|([A-Za-z0-9._%+-]{1,64}@[A-Za-z0-9-]{1,63}(?:\.[A-Za-z0-9-]{1,63}){1,8}|¯\\_\(ツ\)_\/¯)|(\$\$((?:\\.|[^$\n\\])+?)\$\$)|(\$(?![\s$])((?:\\.|[^$\n\\])*?(?:\\.|[^\s$\\]))\$(?![0-9A-Za-z]))/gu;
+  /(\*\*((?:\\.|[^*\n\\])+?)\*\*)|(``(?!`)(?:[^`\n]|`(?!`))+?``(?!`)|`([^`\n]+)`)|(\*((?:\\.|[^*\n\\])+)\*)|(_(?![\s\u3000_])((?:\\.|[^\n\\])*?(?:\\.|[^\s\u3000_\\]))_(?![\p{L}\p{N}_]))|(~~((?:\\.|[^~\n\\])+)~~)|(\[([^\]\n]+)\]\((https?:\/\/[^\s)]+)\))|(<@group:([0-9a-f-]{36})>)|(<@([0-9a-f-]{36})>)|(<!(channel|here)>)|(https?:\/\/[^\s<>　-〿＀-￯]+)|(\\([_*~`$]))|([A-Za-z0-9._%+-]{1,64}@[A-Za-z0-9-]{1,63}(?:\.[A-Za-z0-9-]{1,63}){1,8}|¯\\_\(ツ\)_\/¯)|(\$\$((?:\\.|[^$\n\\])+?)\$\$)|(\$(?![\s$])((?:\\.|[^$\n\\])*?(?:\\.|[^\s$\\]))\$(?![0-9A-Za-z]))/gu;
 const WITH_BLOCKS = new RegExp(`(\`\`\`([\\s\\S]*?)\`\`\`)|${INLINE.source}|(\\n)`, "gu");
 /**
  * M121 (WIKI.md §2.3): the canvas dialect (canvases and Docs pages) also links `[label](page:<uuid>)` (a Docs page) and
@@ -132,6 +132,40 @@ const WITH_BLOCKS = new RegExp(`(\`\`\`([\\s\\S]*?)\`\`\`)|${INLINE.source}|(\\n
 const LINK_URL = "(https?:\\/\\/[^\\s)]+)\\)";
 const INLINE_CANVAS = new RegExp(INLINE.source.replace(LINK_URL, "(https?:\\/\\/[^\\s)]+|(?:page|attachment):[0-9a-fA-F-]{36})\\)"), "gu");
 const WORD_BEFORE = /[\p{L}\p{N}_]$/u;
+
+/**
+ * 2026-11-05 (apps/shared/inline-format.json): what of a bare URL match is the URL. The match already stops at a space,
+ * `<` `>` and the full-width / CJK marks (「」（）、。！？: Japanese puts them right after a URL); here a link to one of
+ * the server's things (`/m/` `/c/` `/p/` `/e/` `/d/` `/eq/` and a UUID) ends with its UUID unless `/` `?` `#` follows
+ * (`…/m/<id>を見て`), and closing punctuation (`.` `,` `)` without its `(` …) goes back to the text. Before, those
+ * stayed in the URL, so a message link was not recognised as one and opened in the browser (user report 2026-11-05).
+ */
+export function bareUrl(match: string): string {
+  const own = OWN_LINK.exec(match);
+  if (own) return own[1]!;
+  let url = match;
+  for (;;) {
+    const last = url[url.length - 1];
+    if (last !== undefined && CLOSING.includes(last)) url = url.slice(0, -1);
+    else if (last === ")" && count(url, ")") > count(url, "(")) url = url.slice(0, -1);
+    else if (last === "]" && count(url, "]") > count(url, "[")) url = url.slice(0, -1);
+    else return url;
+  }
+}
+/** The bare URLs of plain text as the renderer finds them (bareUrl's extent): where each starts and the URL. */
+export function bareUrlsIn(text: string): Array<{ index: number; url: string }> {
+  const found: Array<{ index: number; url: string }> = [];
+  const pattern = /https?:\/\/[^\s<>　-〿＀-￯]+/gu;
+  for (let match = pattern.exec(text); match !== null; match = pattern.exec(text)) {
+    const url = bareUrl(match[0]);
+    found.push({ index: match.index, url });
+    pattern.lastIndex = match.index + url.length;
+  }
+  return found;
+}
+const OWN_LINK = /^(https?:\/\/\S*?\/(?:m|c|p|e|d|eq)\/[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12})(?![/?#])/i;
+const CLOSING = ".,:;!?'\"…";
+const count = (text: string, char: string) => text.split(char).length - 1;
 
 /**
  * TeX math (apps/shared/math.json, DATA_MODEL.md 「本文の形式」). Inline `$…$` as Pandoc reads it: the opening `$` is
@@ -213,7 +247,16 @@ function scan(body: string, pattern: RegExp, withBlocks: boolean): Token[] {
     else if (g(14) !== undefined) tokens.push({ kind: "mention_group", groupId: g(15) ?? "" });
     else if (g(16) !== undefined) tokens.push({ kind: "mention", userId: g(17) ?? "" });
     else if (g(18) !== undefined) tokens.push({ kind: "mention_all", target: g(19) ?? "" });
-    else if (g(20) !== undefined) tokens.push({ kind: "link", url: g(20) ?? "" });
+    else if (g(20) !== undefined) {
+      // A bare URL leaves its closing marks to the text, which is read again after it (bareUrl).
+      const url = bareUrl(g(20) ?? "");
+      tokens.push({ kind: "link", url });
+      if (url.length < match[0].length) {
+        last = index + url.length;
+        pattern.lastIndex = last;
+        continue;
+      }
+    }
     else if (g(21) !== undefined) text(g(22) ?? "");
     else if (g(23) !== undefined) text(g(23) ?? "");
     else if (g(24) !== undefined || g(26) !== undefined) {
