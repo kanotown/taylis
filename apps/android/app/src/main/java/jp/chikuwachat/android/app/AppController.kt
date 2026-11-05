@@ -796,6 +796,7 @@ class AppController(private val app: Application) {
         linkPreviews.clear()
         previewLoads.clear()
         previewsAsked.clear()
+        previewRemoved = null
         emojiLoads.clear()
         canvasLinks.clear()
         canvasLinksAsked.clear()
@@ -2013,6 +2014,36 @@ class AppController(private val app: Application) {
         } finally {
             previewLoads.remove(url)
         }
+    }
+
+    // --- message link cards (M185, docs/LINK_PREVIEWS.md) ---------------------------------------
+
+    /** The cards of this server's `/m/<id>` links, as the server answers for me (the engine's; null while signed out). */
+    val messagePreviews: jp.chikuwachat.android.sync.MessagePreviewHub? get() = engine?.messagePreviews
+
+    /** §4.3: the card just removed, for the snackbar's 「元に戻す」 (MainScreen); null when there is nothing to offer. */
+    var previewRemoved by mutableStateOf<PreviewRemovedNow?>(null)
+
+    /**
+     * §4.2: removes (`hidden`) a link's card under my message (an administrator: any message) for everyone, or brings it
+     * back. No confirmation: the snackbar offers 「元に戻す」. The answer (a new updated_seq) replaces the row here;
+     * message.updated brings it to my other devices and everyone else. A refusal shows as the error snackbar.
+     */
+    suspend fun setPreviewHidden(messageId: String, url: String, hidden: Boolean): Boolean {
+        val api = api ?: return false
+        return try {
+            store.upsertMessage(api.setPreviewHidden(messageId, url, hidden))
+            if (hidden) previewRemoved = PreviewRemovedNow(messageId, url)
+            true
+        } catch (e: Exception) {
+            report(e)
+            false
+        }
+    }
+
+    /** 「元に戻す」 after removing a card: the same link back (`hidden: false`). */
+    fun undoPreviewRemoval(removed: PreviewRemovedNow) {
+        scope.launch { setPreviewHidden(removed.messageId, removed.url, hidden = false) }
     }
 
     /** M11c: any member pins / unpins; the updated message (with pinnedAt) replaces the row. */
@@ -4245,3 +4276,6 @@ class AppController(private val app: Application) {
 
 /** M141: one close made on this device (a new instance each time, so closing the same DM again is a new event). */
 class DmClosedNow(val channelId: String, val wasPinned: Boolean)
+
+/** M185: one link card removed on this device (a new instance each time: removing again shows the snackbar again). */
+class PreviewRemovedNow(val messageId: String, val url: String)

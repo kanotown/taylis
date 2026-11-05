@@ -126,6 +126,8 @@ data class MessageState(
     val workflow: MessageWorkflowOut? = null,
     /** M117: the call it started (MessageOut.call, docs/CALLS.md §5); rows persisted earlier lack it. */
     val call: MessageCallOut? = null,
+    /** M185 (docs/LINK_PREVIEWS.md §4): the removed link cards' keys (MessageOut.hidden_previews); rows persisted earlier lack it. */
+    val hiddenPreviews: List<String> = emptyList(),
 ) {
     /** M88: a system row (the join / leave lines): one muted line, never grouped, no actions, never unread. */
     val isSystem: Boolean get() = type != "user"
@@ -148,7 +150,7 @@ data class MessageState(
             pinnedAt = message.pinnedAt, pinnedBy = message.pinnedBy, poll = message.poll,
             priority = message.priority, ackRequested = message.ackRequested, acks = message.acks, type = message.type,
             collection = message.collection, tasks = message.tasks, systemEvent = message.systemEvent, workflow = message.workflow,
-            call = message.call,
+            call = message.call, hiddenPreviews = message.hiddenPreviews,
         )
 
         fun placeholder(
@@ -354,7 +356,7 @@ fun MessageState.toOut(): MessageOut? {
         parentId = parentId, alsoInChannel = alsoInChannel, body = body, mentionedUserIds = mentionedUserIds, mentionAll = mentionAll, reactions = reactions,
         attachments = attachments, replyCount = replyCount, lastReplyAt = lastReplyAt, replyUserIds = replyUserIds, createdAt = createdAt, editedAt = editedAt, deleted = deleted,
         pinnedAt = pinnedAt, pinnedBy = pinnedBy, poll = poll, priority = priority, ackRequested = ackRequested, acks = acks, type = type,
-        collection = collection, tasks = tasks, workflow = workflow, call = call,
+        collection = collection, tasks = tasks, workflow = workflow, call = call, hiddenPreviews = hiddenPreviews,
     )
 }
 

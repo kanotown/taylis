@@ -231,6 +231,9 @@ class SyncEngine(
     /** M166 (docs/DRIVE.md §14, §26): 「ドライブ」 — whether the server has it, its locations, the /d/ cards, the open folder's signals. */
     val drive = DriveHub(api as? DriveApi, scope, isGuest = { store.me?.role == "guest" })
 
+    /** M185 (docs/LINK_PREVIEWS.md §3.3): the cards of this server's message links, asked for in batches as they show. */
+    val messagePreviews = MessagePreviewHub(api as? MessagePreviewApi, scope)
+
     init {
         wiki.restore() // M122: the tree kept on this device shows until the server answers
         store.onDraftEdited = { channelId, parentId -> drafts.edited(channelId, parentId) }
