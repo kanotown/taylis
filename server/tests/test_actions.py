@@ -634,7 +634,9 @@ async def test_the_real_sender(app: FastAPI) -> None:
         service.check_target("http://127.0.0.1:9000/relay", production)
 
     dev = app.state.settings.model_copy(
-        update={"action_allow_private": True, "action_timeout_seconds": 0.4}
+        # 2 s, not less: a slow CI runner once timed out the plain answer at 0.4 s. The trickled
+        # answer below takes ~5 s (one byte per 0.05 s), so the timeout still cuts it off.
+        update={"action_allow_private": True, "action_timeout_seconds": 2.0}
     )
     service.check_target("http://127.0.0.1:9000/relay", dev)
     post = service.build_poster(dev)
@@ -650,7 +652,7 @@ async def test_the_real_sender(app: FastAPI) -> None:
         started = time.monotonic()
         answer = await post(url, {}, b"{}")
         elapsed = time.monotonic() - started
-    assert answer == signed.Answer(None, "timeout") and elapsed < 0.4 + 0.5
+    assert answer == signed.Answer(None, "timeout") and elapsed < 2.0 + 1.5
     # Redirects are not followed.
     moved = b"HTTP/1.1 302 Found\r\nLocation: https://example.com/\r\nContent-Length: 0\r\n\r\n"
     async with _receiver(_answer(moved)) as url:
