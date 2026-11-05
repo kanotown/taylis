@@ -75,6 +75,21 @@ class MessageLinkCardsTest {
         }
     }
 
+    /**
+     * 2026-11-05: a body's links are the links its tokenizer reads (not the closing mark or the Japanese after them); their
+     * keys are what a removed card is kept under, the same as the other clients and the server's.
+     */
+    @Test fun everySharedBodyKeysCase() {
+        val cases = shared.getValue("body_keys").jsonArray
+        assertTrue(cases.size >= 5)
+        for (element in cases) {
+            val case = element.jsonObject
+            val body = case.getValue("body").jsonPrimitive.content
+            val keys = case.getValue("keys").jsonArray.map { it.jsonPrimitive.content }
+            assertEquals(body, keys, Links.all(body).mapNotNull { MessageCards.previewKey(it) }.distinct())
+        }
+    }
+
     @Test fun noBaseMeansNoMessageCards() {
         // Signed out (no server): a /m/ link is an ordinary link.
         val cards = MessageCards.cardLinks("https://chat.example.com/m/0190a1b2-0000-7000-8000-00000000000a", null)

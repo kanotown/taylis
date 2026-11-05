@@ -33,9 +33,11 @@ final class MessageLinkCardsTests: XCTestCase {
             let messages: [Card]
             let external: String?
         }
+        struct BodyKeys: Decodable { let body: String; let keys: [String] }
         let baseUrl: String
         let keys: [Key]
         let cards: [Case]
+        let bodyKeys: [BodyKeys]
     }
 
     private func vectors() throws -> Vectors {
@@ -61,6 +63,20 @@ final class MessageLinkCardsTests: XCTestCase {
             let selection = MessageLinkCards.of(body: c.body, base: base, selfId: c.selfId, hidden: c.hidden ?? [], call: c.call ?? false)
             XCTAssertEqual(selection.messages.map { Vectors.Card(id: $0.id, url: $0.url) }, c.messages, c.name)
             XCTAssertEqual(selection.external, c.external, c.name)
+        }
+    }
+
+    /// 2026-11-05: a body's links are the links its tokenizer reads (not the closing mark or the Japanese after them);
+    /// their keys are what a removed card is kept under, the same as the other clients and the server's.
+    func testEverySharedBodyKeysCase() throws {
+        let v = try vectors()
+        XCTAssertGreaterThanOrEqual(v.bodyKeys.count, 5)
+        for c in v.bodyKeys {
+            var keys: [String] = []
+            for url in Links.all(in: c.body) {
+                if let key = MessageLinkCards.previewKey(url), !keys.contains(key) { keys.append(key) }
+            }
+            XCTAssertEqual(keys, c.keys, c.body)
         }
     }
 

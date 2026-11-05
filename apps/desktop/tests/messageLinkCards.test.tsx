@@ -16,7 +16,7 @@ import type { ApiClient } from "../src/api/client";
 import type { LinkPreviewOut, MessageOut, MessagePreviewOut, UserMe, UserPublic } from "../src/api/types";
 import { AppController, MESSAGE_PREVIEW_BATCH } from "../src/state/app";
 import type { MessageState } from "../src/sync/types";
-import { cardLinks, previewKey } from "../src/ui/links";
+import { bodyLinks, cardLinks, previewKey } from "../src/ui/links";
 import { excerptText } from "../src/ui/messageCards";
 import { Timeline } from "../src/ui/Timeline";
 import { FakeServer } from "./fakeServer";
@@ -27,6 +27,7 @@ interface Vectors {
   base_url: string;
   keys: Array<{ url: string; key: string | null }>;
   cards: Array<{ name: string; body: string; self_id?: string; hidden?: string[]; call?: boolean; messages: Array<{ id: string; url: string }>; external: string | null }>;
+  body_keys: Array<{ body: string; keys: string[] }>;
 }
 
 const vectors = JSON.parse(readFileSync(join(dirname(fileURLToPath(import.meta.url)), "..", "..", "shared", "link-cards.json"), "utf8")) as Vectors;
@@ -39,6 +40,11 @@ describe("link cards (apps/shared/link-cards.json)", () => {
 
   it.each(vectors.cards)("cards: $name", ({ body, self_id, hidden, call, messages, external }) => {
     expect(cardLinks(body, BASE, { selfId: self_id, hidden, call })).toEqual({ messages, external });
+  });
+
+  // 2026-11-05: a body's links are the links its tokenizer reads; their keys are what a removed card is kept under.
+  it.each(vectors.body_keys)("keys of the links of $body", ({ body, keys }) => {
+    expect([...new Set(bodyLinks(body).map((url) => previewKey(url)))]).toEqual(keys);
   });
 
   it("without a server (no session) every link is external", () => {
