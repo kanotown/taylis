@@ -7,6 +7,7 @@ import { openExternalLink } from "../platform/external";
 import type { AppController } from "../state/app";
 import type { ChannelState } from "../sync/types";
 import { canPostTopLevel } from "./channels";
+import { openInternalLink } from "./TopicText";
 import { Button, cn, Input, Modal } from "./primitives";
 import { t } from "../i18n";
 
@@ -61,7 +62,12 @@ export function ChannelLinkChips({ controller, channel, onAdd, onEdit }: {
             target="_blank"
             rel="noreferrer noopener"
             title={link.url}
-            onClick={(event) => openExternalLink(event, link.url)}
+            onClick={(event) => {
+              // A link of this server (a message, a canvas …) opens in the app, as in a message or the topic; it went to
+              // the browser (2026-11-05).
+              if (openInternalLink(controller, controller.api?.baseUrl, link.url)) event.preventDefault();
+              else openExternalLink(event, link.url);
+            }}
             className="inline-flex max-w-[240px] shrink-0 items-center gap-1.5 rounded-md px-2 py-1 text-xs text-ink hover:bg-panel"
           >
             <Link2 size={13} className="shrink-0 text-muted" />

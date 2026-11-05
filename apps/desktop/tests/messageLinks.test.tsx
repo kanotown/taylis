@@ -255,3 +255,18 @@ it("on a phone, a link in a thread to a message of the timeline leaves the threa
   expect(threadRow(replies[1]!.id)).toBeTruthy();
   w.engine.stop();
 });
+
+it("a message link pinned to the conversation's links bar opens in the app", async () => {
+  const { w, controller, posts } = await setup();
+  const target = posts[3]!;
+  act(() => w.store.setChannelLinks(w.channelId, [{ id: "l1", title: "前の話", url: `${BASE}/m/${target.id}`, position: 0, created_by: w.alice.id, created_at: new Date().toISOString() }]));
+  await settle(w);
+  const open = vi.spyOn(window, "open").mockImplementation(() => null);
+  fireEvent.click(within(screen.getByLabelText("リンク")).getByRole("link", { name: /前の話/ }));
+  await settle(w);
+  await settle(w);
+  expect(open).not.toHaveBeenCalled();
+  expect(controller.messageFocus?.messageId).toBe(target.id);
+  expect(timesScrolledTo(`timeline-${target.id}`)).toBe(1);
+  w.engine.stop();
+});
