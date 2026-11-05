@@ -52,7 +52,7 @@ export interface ChannelState extends ChannelOut {
 
 /** A message as stored locally. Pending messages have seq null and id "local:<client_msg_id>". */
 export interface MessageState
-  extends Omit<MessageOut, "seq" | "type" | "mentioned_user_ids" | "mention_all" | "reactions" | "parent_id" | "also_in_channel" | "reply_count" | "last_reply_at" | "reply_user_ids" | "attachments" | "pinned_at" | "pinned_by" | "poll" | "priority" | "ack_requested" | "acks" | "tasks"> {
+  extends Omit<MessageOut, "seq" | "type" | "mentioned_user_ids" | "mention_all" | "reactions" | "parent_id" | "also_in_channel" | "reply_count" | "last_reply_at" | "reply_user_ids" | "attachments" | "pinned_at" | "pinned_by" | "poll" | "priority" | "ack_requested" | "acks" | "tasks" | "hidden_previews"> {
   seq: number | null;
   /** M8 fields: optional so placeholders and rows persisted before M8 still load. */
   type?: string;
@@ -78,6 +78,8 @@ export interface MessageState
   priority?: Priority | null;
   ack_requested?: boolean;
   acks?: AckOut[];
+  /** M185 (docs/LINK_PREVIEWS.md §4): the link cards its sender removed (keys); absent from older servers and rows. */
+  hidden_previews?: string[];
   pending?: boolean;
   failed?: boolean;
 }

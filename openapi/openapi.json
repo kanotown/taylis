@@ -17009,6 +17009,14 @@
             ],
             "title": "Edited At"
           },
+          "hidden_previews": {
+            "default": [],
+            "items": {
+              "type": "string"
+            },
+            "title": "Hidden Previews",
+            "type": "array"
+          },
           "id": {
             "format": "uuid",
             "title": "Id",
@@ -17183,6 +17191,191 @@
           "deleted"
         ],
         "title": "MessageOut",
+        "type": "object"
+      },
+      "MessagePreviewOut": {
+        "description": "M185 (docs/LINK_PREVIEWS.md §3.2): one linked message as the caller may see it. `ok`: the\ncaller can read it (the same rule as GET /messages/{id}); `deleted`: they could, but it was\ndeleted; `unavailable`: anything else (no such message, a conversation they cannot read): no\nother field is filled, so the card says nothing of the message, its author or conversation.",
+        "properties": {
+          "attachment_count": {
+            "default": 0,
+            "title": "Attachment Count",
+            "type": "integer"
+          },
+          "attachment_types": {
+            "default": [],
+            "items": {
+              "type": "string"
+            },
+            "title": "Attachment Types",
+            "type": "array"
+          },
+          "channel_id": {
+            "anyOf": [
+              {
+                "format": "uuid",
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Channel Id"
+          },
+          "channel_name": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Channel Name"
+          },
+          "channel_type": {
+            "anyOf": [
+              {
+                "enum": [
+                  "public",
+                  "private",
+                  "dm",
+                  "group_dm"
+                ],
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Channel Type"
+          },
+          "created_at": {
+            "anyOf": [
+              {
+                "format": "date-time",
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Created At"
+          },
+          "edited_at": {
+            "anyOf": [
+              {
+                "format": "date-time",
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Edited At"
+          },
+          "excerpt": {
+            "default": "",
+            "title": "Excerpt",
+            "type": "string"
+          },
+          "excerpt_truncated": {
+            "default": false,
+            "title": "Excerpt Truncated",
+            "type": "boolean"
+          },
+          "id": {
+            "format": "uuid",
+            "title": "Id",
+            "type": "string"
+          },
+          "parent_id": {
+            "anyOf": [
+              {
+                "format": "uuid",
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Parent Id"
+          },
+          "sender_id": {
+            "anyOf": [
+              {
+                "format": "uuid",
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Sender Id"
+          },
+          "state": {
+            "enum": [
+              "ok",
+              "deleted",
+              "unavailable"
+            ],
+            "title": "State",
+            "type": "string"
+          },
+          "thumbnail_attachment_id": {
+            "anyOf": [
+              {
+                "format": "uuid",
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Thumbnail Attachment Id"
+          }
+        },
+        "required": [
+          "id",
+          "state"
+        ],
+        "title": "MessagePreviewOut",
+        "type": "object"
+      },
+      "MessagePreviewsIn": {
+        "description": "M185: the messages whose link cards a client is about to draw (the ids in `<server>/m/<id>`\nlinks), each once; at most MESSAGE_PREVIEW_BATCH.",
+        "properties": {
+          "ids": {
+            "items": {
+              "format": "uuid",
+              "type": "string"
+            },
+            "maxItems": 20,
+            "minItems": 1,
+            "title": "Ids",
+            "type": "array"
+          }
+        },
+        "required": [
+          "ids"
+        ],
+        "title": "MessagePreviewsIn",
+        "type": "object"
+      },
+      "MessagePreviewsOut": {
+        "description": "One item per distinct requested id, in the order asked.",
+        "properties": {
+          "items": {
+            "items": {
+              "$ref": "#/components/schemas/MessagePreviewOut"
+            },
+            "title": "Items",
+            "type": "array"
+          }
+        },
+        "required": [
+          "items"
+        ],
+        "title": "MessagePreviewsOut",
         "type": "object"
       },
       "MessageRevisionOut": {
@@ -20105,6 +20298,27 @@
           "status"
         ],
         "title": "PresenceUpdate",
+        "type": "object"
+      },
+      "PreviewHiddenIn": {
+        "description": "M185 (docs/LINK_PREVIEWS.md §4): remove (hidden true) or bring back a link's card. `url` is\nthe link as it is in the body; the server keeps its key (fragment dropped, scheme and host in\nlower case).",
+        "properties": {
+          "hidden": {
+            "title": "Hidden",
+            "type": "boolean"
+          },
+          "url": {
+            "maxLength": 2048,
+            "minLength": 8,
+            "title": "Url",
+            "type": "string"
+          }
+        },
+        "required": [
+          "url",
+          "hidden"
+        ],
+        "title": "PreviewHiddenIn",
         "type": "object"
       },
       "PropertyOut": {
@@ -43328,6 +43542,53 @@
         ]
       }
     },
+    "/api/v1/messages/previews": {
+      "post": {
+        "description": "M185 (docs/LINK_PREVIEWS.md §3): the cards of `<server>/m/<id>` links in bodies. Per id,\nwhat the caller may see of the message: `ok` with its excerpt, author, conversation and time\nwhen they can read it (GET /messages/{id}'s rule), `deleted`, or `unavailable` with nothing\nelse (no such message, or one they cannot read). Rate limited per user.",
+        "operationId": "message_previews_api_v1_messages_previews_post",
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/MessagePreviewsIn"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/MessagePreviewsOut"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "security": [
+          {
+            "HTTPBearer": []
+          }
+        ],
+        "summary": "Message Previews",
+        "tags": [
+          "messages"
+        ]
+      }
+    },
     "/api/v1/messages/{message_id}": {
       "delete": {
         "description": "Returns the tombstone so the caller can apply it locally.",
@@ -44312,6 +44573,65 @@
           }
         ],
         "summary": "Vote",
+        "tags": [
+          "messages"
+        ]
+      }
+    },
+    "/api/v1/messages/{message_id}/previews/hidden": {
+      "put": {
+        "description": "M185 (docs/LINK_PREVIEWS.md §4): remove a link's card from the message for everyone\n(`hidden: true`), or bring it back. The sender or an administrator; the link must be in the\nbody. The same state again is a no-op (200, no event); a change sends message.updated\n(change \"previews\").",
+        "operationId": "set_preview_hidden_api_v1_messages__message_id__previews_hidden_put",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "message_id",
+            "required": true,
+            "schema": {
+              "format": "uuid",
+              "title": "Message Id",
+              "type": "string"
+            }
+          }
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/PreviewHiddenIn"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/MessageOut"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "security": [
+          {
+            "HTTPBearer": []
+          }
+        ],
+        "summary": "Set Preview Hidden",
         "tags": [
           "messages"
         ]

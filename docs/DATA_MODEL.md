@@ -1855,6 +1855,7 @@ CREATE TABLE messages (
   workflow_name       varchar(40),                         -- M94: その時のワークフローの名前 (MessageOut.workflow = {id, name})
   call_url            text,                                -- M117 (0091): 通話を始めたメッセージの会議の部屋の URL。M130 からは LiveKit の通話の `/call/<id>` のページ (MessageOut.call、docs/CALLS.md)。ほかは NULL
   call_id             uuid REFERENCES calls(id) ON DELETE SET NULL, -- M130 (0097): このメッセージが知らせる通話 (MessageOut.call.kind = 'livekit')。ほかは NULL
+  hidden_previews     text[] NOT NULL DEFAULT '{}',        -- M185（0131）：送った人（か管理者）が消したリンクのカードのキー（正規化した URL、docs/LINK_PREVIEWS.md §4）。MessageOut.hidden_previews。削除で空
   UNIQUE (channel_id, seq)
 );
 CREATE UNIQUE INDEX messages_client_msg_id_uniq ON messages (sender_id, client_msg_id) WHERE client_msg_id IS NOT NULL;
@@ -1980,6 +1981,7 @@ CREATE INDEX messages_mention_all_idx     ON messages (created_at) WHERE mention
 | リアクション追加 / 削除 | 1 | `reactions` 行、`updated_seq = 新 seq` | `message.updated (change=reactions)` |
 | スレッド返信作成 | 1 | 返信行 (`seq = updated_seq = 新 seq`) と親の `reply_count`, `last_reply_at`, `reply_user_ids` (返信者を先頭へ), `updated_seq = 新 seq` | `message.created` (data に親のスレッド情報を含む) |
 | 回収の提出状況の変化 (L6) | 1 | 親の `updated_seq = 新 seq` (返信の作成・削除の seq の次)。投稿直後に回収が付いたとき・締切後の催促も | `message.updated (change=collection)` |
+| リンクのカードの削除・戻す（M185） | 1 | `hidden_previews`, `updated_seq = 新 seq`（変わったときだけ。同じ状態なら何もしない） | `message.updated (change=previews)` |
 
 ### message_revisions (編集履歴、M14c)
 
@@ -2407,6 +2409,10 @@ CREATE TABLE link_previews (
 `preview:<url>`、新しい 500 件) に残し、会話を開き直しても (再起動後も) カードを最初から描く。まだ無いリンクの行は
 カードと同じ高さの枠を先に出す (カードは中身によらず同じ高さ)。カードが後から来て上の行が動き、開いた会話の
 位置が飛んでいた (テスター、2026-10-01)。
+
+M185（docs/LINK_PREVIEWS.md）から、外部のリンクのカードは「メッセージ・ドライブのリンクでない最初のリンク」に出し、送った人が
+消したカード（`messages.hidden_previews` にキー）は出さない。このサーバのメッセージのリンク（`/m/<id>`）のカードは
+`link_previews` を使わず、`POST /messages/previews` が読む人の権限でメッセージの抜粋を返す（キャッシュは端末だけ）。
 
 ### audit_logs (M10)
 

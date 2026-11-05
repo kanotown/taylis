@@ -4778,6 +4778,29 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/api/v1/messages/previews": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /**
+         * Message Previews
+         * @description M185 (docs/LINK_PREVIEWS.md §3): the cards of `<server>/m/<id>` links in bodies. Per id,
+         *     what the caller may see of the message: `ok` with its excerpt, author, conversation and time
+         *     when they can read it (GET /messages/{id}'s rule), `deleted`, or `unavailable` with nothing
+         *     else (no such message, or one they cannot read). Rate limited per user.
+         */
+        post: operations["message_previews_api_v1_messages_previews_post"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/api/v1/messages/{message_id}": {
         parameters: {
             query?: never;
@@ -5022,6 +5045,29 @@ export interface paths {
         post?: never;
         /** Unvote */
         delete: operations["unvote_api_v1_messages__message_id__poll_votes__index__delete"];
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/messages/{message_id}/previews/hidden": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        /**
+         * Set Preview Hidden
+         * @description M185 (docs/LINK_PREVIEWS.md §4): remove a link's card from the message for everyone
+         *     (`hidden: true`), or bring it back. The sender or an administrator; the link must be in the
+         *     body. The same state again is a no-op (200, no event); a change sends message.updated
+         *     (change "previews").
+         */
+        put: operations["set_preview_hidden_api_v1_messages__message_id__previews_hidden_put"];
+        post?: never;
+        delete?: never;
         options?: never;
         head?: never;
         patch?: never;
@@ -13748,6 +13794,11 @@ export interface components {
             /** Edited At */
             edited_at: string | null;
             /**
+             * Hidden Previews
+             * @default []
+             */
+            hidden_previews: string[];
+            /**
              * Id
              * Format: uuid
              */
@@ -13809,6 +13860,78 @@ export interface components {
             /** Updated Seq */
             updated_seq: number;
             workflow?: components["schemas"]["MessageWorkflowOut"] | null;
+        };
+        /**
+         * MessagePreviewOut
+         * @description M185 (docs/LINK_PREVIEWS.md §3.2): one linked message as the caller may see it. `ok`: the
+         *     caller can read it (the same rule as GET /messages/{id}); `deleted`: they could, but it was
+         *     deleted; `unavailable`: anything else (no such message, a conversation they cannot read): no
+         *     other field is filled, so the card says nothing of the message, its author or conversation.
+         */
+        MessagePreviewOut: {
+            /**
+             * Attachment Count
+             * @default 0
+             */
+            attachment_count: number;
+            /**
+             * Attachment Types
+             * @default []
+             */
+            attachment_types: string[];
+            /** Channel Id */
+            channel_id?: string | null;
+            /** Channel Name */
+            channel_name?: string | null;
+            /** Channel Type */
+            channel_type?: ("public" | "private" | "dm" | "group_dm") | null;
+            /** Created At */
+            created_at?: string | null;
+            /** Edited At */
+            edited_at?: string | null;
+            /**
+             * Excerpt
+             * @default
+             */
+            excerpt: string;
+            /**
+             * Excerpt Truncated
+             * @default false
+             */
+            excerpt_truncated: boolean;
+            /**
+             * Id
+             * Format: uuid
+             */
+            id: string;
+            /** Parent Id */
+            parent_id?: string | null;
+            /** Sender Id */
+            sender_id?: string | null;
+            /**
+             * State
+             * @enum {string}
+             */
+            state: "ok" | "deleted" | "unavailable";
+            /** Thumbnail Attachment Id */
+            thumbnail_attachment_id?: string | null;
+        };
+        /**
+         * MessagePreviewsIn
+         * @description M185: the messages whose link cards a client is about to draw (the ids in `<server>/m/<id>`
+         *     links), each once; at most MESSAGE_PREVIEW_BATCH.
+         */
+        MessagePreviewsIn: {
+            /** Ids */
+            ids: string[];
+        };
+        /**
+         * MessagePreviewsOut
+         * @description One item per distinct requested id, in the order asked.
+         */
+        MessagePreviewsOut: {
+            /** Items */
+            items: components["schemas"]["MessagePreviewOut"][];
         };
         /**
          * MessageRevisionOut
@@ -15003,6 +15126,18 @@ export interface components {
             tz?: string | null;
             /** Until */
             until?: string | null;
+        };
+        /**
+         * PreviewHiddenIn
+         * @description M185 (docs/LINK_PREVIEWS.md §4): remove (hidden true) or bring back a link's card. `url` is
+         *     the link as it is in the body; the server keeps its key (fragment dropped, scheme and host in
+         *     lower case).
+         */
+        PreviewHiddenIn: {
+            /** Hidden */
+            hidden: boolean;
+            /** Url */
+            url: string;
         };
         /** PropertyOut */
         PropertyOut: {
@@ -27241,6 +27376,39 @@ export interface operations {
             };
         };
     };
+    message_previews_api_v1_messages_previews_post: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["MessagePreviewsIn"];
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["MessagePreviewsOut"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
     get_message_api_v1_messages__message_id__get: {
         parameters: {
             query?: never;
@@ -27828,6 +27996,41 @@ export interface operations {
             cookie?: never;
         };
         requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["MessageOut"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    set_preview_hidden_api_v1_messages__message_id__previews_hidden_put: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                message_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["PreviewHiddenIn"];
+            };
+        };
         responses: {
             /** @description Successful Response */
             200: {

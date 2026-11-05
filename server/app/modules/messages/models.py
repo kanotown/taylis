@@ -102,6 +102,11 @@ class Message(Base):
     # M130 (docs/CALLS.md §5.4): the in-app call this message announces (call_url is then its
     # /call/<id> page).
     call_id: Mapped[uuid.UUID | None] = mapped_column(ForeignKey("calls.id", ondelete="SET NULL"))
+    # M185 (docs/LINK_PREVIEWS.md §4): the cards the sender (or an administrator) removed, as the
+    # links' keys (normalized URLs, link_cards.preview_key); every viewer leaves those cards out.
+    hidden_previews: Mapped[list[str]] = mapped_column(
+        ARRAY(Text()), default=list, server_default=text("'{}'::text[]")
+    )
 
     __table_args__ = (
         UniqueConstraint("channel_id", "seq", name="uq_messages_channel_seq"),

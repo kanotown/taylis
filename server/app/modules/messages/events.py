@@ -23,8 +23,19 @@ class MessageUpdatedData(BaseModel):
     # "tasks" (L9): the shared tasks made from it changed (MessageOut.tasks).
     # "attachments" (M79): the server learned a video's size, length or poster (the backfill).
     # "call" (M130, docs/CALLS.md §5.4): the call it announces ended (MessageOut.call).
+    # "previews" (M185, docs/LINK_PREVIEWS.md §4): its sender removed a link card or brought it
+    # back (MessageOut.hidden_previews).
     change: Literal[
-        "body", "reactions", "pin", "poll", "ack", "collection", "tasks", "attachments", "call"
+        "body",
+        "reactions",
+        "pin",
+        "poll",
+        "ack",
+        "collection",
+        "tasks",
+        "attachments",
+        "call",
+        "previews",
     ]
 
 

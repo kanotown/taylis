@@ -8,7 +8,7 @@ from app.core.db import Db
 from app.core.errors import rate_limited
 from app.modules.auth.deps import CurrentUser
 from app.modules.drive.schemas import DriveMessageFilesOut
-from app.modules.messages import service
+from app.modules.messages import link_cards, service
 from app.modules.messages.schemas import (
     EMOJI_MAX_LENGTH,
     EMOJI_PATTERN,
@@ -19,9 +19,12 @@ from app.modules.messages.schemas import (
     MessageCreate,
     MessageEdit,
     MessageOut,
+    MessagePreviewsIn,
+    MessagePreviewsOut,
     MessageRevisionOut,
     PollAnswersIn,
     PollDecideIn,
+    PreviewHiddenIn,
 )
 from app.modules.reminders import service as reminders
 
@@ -72,6 +75,21 @@ async def list_delta(
     limit: int = Query(default=200, ge=1, le=200),
 ) -> DeltaOut:
     return await service.list_delta(db, user, channel_id, since_seq=since_seq, limit=limit)
+
+
+@router.post("/messages/previews", response_model=MessagePreviewsOut)
+async def message_previews(
+    body: MessagePreviewsIn, user: CurrentUser, db: Db, request: Request
+) -> MessagePreviewsOut:
+    """M185 (docs/LINK_PREVIEWS.md §3): the cards of `<server>/m/<id>` links in bodies. Per id,
+    what the caller may see of the message: `ok` with its excerpt, author, conversation and time
+    when they can read it (GET /messages/{id}'s rule), `deleted`, or `unavailable` with nothing
+    else (no such message, or one they cannot read). Rate limited per user."""
+    limiter = request.app.state.limiters["message_preview"]
+    key = str(user.id)
+    if not limiter.try_acquire(key):
+        raise rate_limited(limiter.retry_after_seconds(key))
+    return MessagePreviewsOut(items=await link_cards.previews(db, user, body.ids))
 
 
 @router.get("/messages/{message_id}", response_model=MessageOut)
@@ -129,6 +147,17 @@ async def message_drive_files(message_id: UUID, user: CurrentUser, db: Db) -> Dr
     drive_files=auto would put it in the trash, and why not. Empty for a message whose files are
     not in a drive."""
     return await service.message_drive_files(db, user, message_id)
+
+
+@router.put("/messages/{message_id}/previews/hidden", response_model=MessageOut)
+async def set_preview_hidden(
+    message_id: UUID, body: PreviewHiddenIn, user: CurrentUser, db: Db
+) -> MessageOut:
+    """M185 (docs/LINK_PREVIEWS.md §4): remove a link's card from the message for everyone
+    (`hidden: true`), or bring it back. The sender or an administrator; the link must be in the
+    body. The same state again is a no-op (200, no event); a change sends message.updated
+    (change "previews")."""
+    return await service.set_preview_hidden(db, user, message_id, body.url, hidden=body.hidden)
 
 
 @router.get("/mentions", response_model=MentionListOut)

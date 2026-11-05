@@ -45,11 +45,9 @@ import { channelTitle, myDisplayName } from "./MainScreen";
 import { isSelfNotes, selfNotesIntro } from "./channels";
 import { intlLocale, t } from "../i18n";
 import { EmojiPicker, useRecentEmoji } from "./EmojiPicker";
-import { autoLinkPreview, LinkPreviewCard } from "./LinkPreviewCard";
+import { LinkCards } from "./MessageLinkCard";
 import { LONG_PRESS_MS, MessageActionsSheet, QuickReactionGlyph, quickReactions } from "./MessageActionsSheet";
-import { firstLink } from "./links";
 import { CustomEmojiImage, customEmojiName } from "./customEmoji";
-import { parseDriveLink, parsePermalink } from "./permalink";
 import { reminderPresets, scheduleLabel, toLocalInput } from "./schedule";
 import { BOTTOM_SLACK_PX, jumpToLatestShown, ListAnchor, stillAtBottom, unseenBelow as countUnseen } from "./scrollAnchor";
 import { conversationScrollKey, restoreDecision, scrollMemoryFor } from "./scrollMemory";
@@ -725,7 +723,7 @@ export function ChannelIntro({ controller, channel }: { controller: AppControlle
  * channel's unread count), and re-rendering 1,000 rows took 330 ms each time. Messages are replaced, never changed in
  * place (store.upsertMessage), so a changed message is a new object. `rowsVersion` stands for me, the users, the groups
  * and the custom emoji (mutable maps). Anything else a row shows must come in as a prop here, or be subscribed to by the
- * part that shows it (LinkPreviewCard, useAvatarUrl, UserPopover while open, ShareDialog).
+ * part that shows it (LinkPreviewCard, MessageLinkCard, useAvatarUrl, UserPopover while open, ShareDialog).
  */
 export function MessageRow({ controller, message, compact = false, onOpenThread, thread = false, readOnly = false, threadParent, feed }: {
   controller: AppController; message: MessageState; compact?: boolean; onOpenThread?: (id: string) => void; thread?: boolean;
@@ -978,10 +976,6 @@ const MessageRowView = memo(function MessageRowView({ controller, message, compa
   const mine = me?.id === message.sender_id;
   const reactions = message.reactions ?? [];
   const size = thread ? 30 : 36;
-  const rawLink = message.body ? firstLink(message.body) : null;
-  // Our own permalinks get no card, nor a call's room (M117: its card has 「参加する」).
-  // M165: nor a drive link (its own card, not the landing page's preview).
-  const link = (rawLink && api && (parsePermalink(api.baseUrl, rawLink) || parseDriveLink(api.baseUrl, rawLink))) || message.call ? null : rawLink;
   const pinnedBy = message.pinned_at ? (store.users.get(message.pinned_by ?? "")?.display_name ?? "?") : null;
   const threadId = message.parent_id ?? message.id;
   // The same actions as the long-press sheet (messageActions.ts): the bar shows a few, ⋯ the rest.
@@ -1156,7 +1150,8 @@ const MessageRowView = memo(function MessageRowView({ controller, message, compa
               <MessageBody body={message.body} users={store.users} internalBase={api?.baseUrl} onOpenMessage={(id) => void controller.openPermalink(id)} customEmoji={store.customEmoji} controller={controller} keywords={store.me?.notify_keywords} groups={store.groups} jumbo />
             )}
             <AttachmentList attachments={message.attachments ?? []} controller={controller} downloadable={!message.pending && !message.failed} channelId={message.channel_id} />
-            {!message.pending && link && <LinkPreviewCard controller={controller} url={link} auto={autoLinkPreview(store, message.sender_id)} />}
+            {/* M185 (docs/LINK_PREVIEWS.md §2): message links' cards, then the external link's (M11g). */}
+            {!!message.body && !message.pending && <LinkCards controller={controller} message={message} canRemove={(mine || isAdmin) && !readOnly && message.seq !== null} />}
           </>
         )}
         {message.failed && (

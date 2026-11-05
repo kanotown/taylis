@@ -767,6 +767,7 @@ def create_app(settings: Settings | None = None) -> FastAPI:
         "upload": RateLimiter(settings.upload_rate_limit_per_user),
         "search": RateLimiter(settings.search_rate_limit_per_user),
         "link_preview": RateLimiter(settings.link_preview_rate_limit_per_user),
+        "message_preview": RateLimiter(settings.message_preview_rate_limit_per_user),
         "message": RateLimiter(settings.message_rate_limit_per_user),
         "canvas_save": RateLimiter(settings.canvas_save_rate_limit_per_user),
         "ws_connect": RateLimiter(settings.ws_connect_rate_limit_per_ip),

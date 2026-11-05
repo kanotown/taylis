@@ -137,6 +137,9 @@ export type TemporaryPasswordOut = components["schemas"]["TemporaryPasswordOut"]
 
 /** Link previews (M11g). */
 export type LinkPreviewOut = components["schemas"]["LinkPreviewOut"];
+/** M185 (docs/LINK_PREVIEWS.md §3): a linked message as the reader may see it (`POST /messages/previews`). */
+export type MessagePreviewOut = components["schemas"]["MessagePreviewOut"];
+export type MessagePreviewsOut = components["schemas"]["MessagePreviewsOut"];
 
 /** Recent mentions (M11h). */
 export type MentionListOut = components["schemas"]["MentionListOut"];
