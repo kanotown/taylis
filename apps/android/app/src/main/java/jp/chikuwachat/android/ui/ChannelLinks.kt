@@ -75,6 +75,7 @@ fun ChannelLinkChip(
     modifier: Modifier = Modifier,
 ) {
     val uriHandler = LocalUriHandler.current
+    val pageLinks = LocalPageLinks.current
     val scope = rememberCoroutineScope()
     var menu by remember { mutableStateOf(false) }
     Box(modifier) {
@@ -85,7 +86,8 @@ fun ChannelLinkChip(
             modifier = Modifier.touchTarget { source ->
                 Modifier.combinedClickable(
                     interactionSource = source, indication = null,
-                    onClick = { runCatching { uriHandler.openUri(link.url) } },
+                    // A link of this server (a message, a canvas …) opens in the app, as in a message (2026-11-05).
+                    onClick = { if (!openInApp(controller, link.url, pageLinks)) runCatching { uriHandler.openUri(link.url) } },
                     onLongClickLabel = if (editable) L10n.str(R.string.channel_links_link_actions) else null,
                     onLongClick = if (editable) ({ menu = true }) else null,
                 )

@@ -47,11 +47,32 @@ object Permalink {
     /** The item id when `url` is an equipment link on `baseUrl` (another server's /eq/ is a plain link). */
     fun equipmentId(baseUrl: String, url: String): String? = idAfter(baseUrl, url, "/eq/")
 
+    /**
+     * The id when `url` is `<server><path><uuid>` on `baseUrl` (apps/shared/message-links.json): the same host (any case)
+     * and port (the default one written out or not) and the server's path, http or https alike (2026-11-05: a link written
+     * with the other scheme opened in the browser), then the UUID (any case), ending there or with `/` `?` `#`.
+     */
     private fun idAfter(baseUrl: String, url: String, path: String): String? {
-        val prefix = baseUrl.trimEnd('/') + path
-        if (!url.startsWith(prefix, ignoreCase = true)) return null
-        val id = url.substring(prefix.length).substringBefore('/').substringBefore('?').substringBefore('#')
-        return if (UUID.matches(id)) id.lowercase() else null
+        val base = serverPart(baseUrl) ?: return null
+        val link = serverPart(url) ?: return null
+        if (link.first != base.first) return null
+        val head = base.second.trimEnd('/') + path
+        if (!link.second.startsWith(head, ignoreCase = true)) return null
+        val rest = link.second.substring(head.length)
+        val id = rest.take(36)
+        val after = rest.drop(36)
+        return if (UUID.matches(id) && (after.isEmpty() || after[0] in "/?#")) id.lowercase() else null
+    }
+
+    private val SERVER = Regex("^(https?)://([^/?#]*)(.*)$", setOf(RegexOption.IGNORE_CASE, RegexOption.DOT_MATCHES_ALL))
+
+    /** An http(s) URL's host and port (lower case, without the scheme's default port) and the rest; null for anything else. */
+    private fun serverPart(url: String): Pair<String, String>? {
+        val match = SERVER.matchEntire(url) ?: return null
+        val authority = match.groupValues[2].lowercase()
+        if (authority.isEmpty() || '@' in authority) return null // user info: someone else's host after it
+        val port = if (match.groupValues[1].lowercase() == "https") ":443" else ":80"
+        return authority.removeSuffix(port) to match.groupValues[3]
     }
 }
 
