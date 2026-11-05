@@ -289,7 +289,13 @@ async def message_context(
 ) -> list[MessageOut]:
     message = await get_readable_message(db, actor, message_id)
     if message.parent_id is not None:
-        message = await get_readable_message(db, actor, message.parent_id)
+        # A reply's window is around its thread's root, in the same channel. A root deleted
+        # since (THREADS.md §5) keeps its place in the channel: the window is around that
+        # place, and the reply's link opens its thread saying the root is gone (2026-11-05:
+        # this answered 404, and the link said 「メッセージが見つかりません」 instead).
+        root = await repo.get_message(db, message.parent_id)
+        if root is not None:
+            message = root
     return await messages_out(db, await repo.list_context(db, message, limit), actor.id)
 
 

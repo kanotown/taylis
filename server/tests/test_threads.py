@@ -164,6 +164,28 @@ async def test_search_context_is_bounded_ordered_and_anchored_to_thread_parent(
     assert (await client.get(f"/api/v1/messages/{deleted['id']}/context")).status_code == 404
 
 
+async def test_context_of_a_reply_whose_root_was_deleted(
+    client: AsyncClient, db: AsyncSession, as_user: Callable[[User], None]
+) -> None:
+    """2026-11-05: a link to a reply whose root was deleted since (THREADS.md §5) still opens: its
+    window is around the root's place, without the root. It answered 404 `message_not_found`, and
+    the link said the message was not found instead of opening its thread."""
+    alice = await make_user(db, "alice")
+    as_user(alice)
+    cid = (await client.post("/api/v1/channels", json={"name": "context"})).json()["id"]
+    before = await _post(client, cid, "before")
+    parent = await _post(client, cid, "anchor")
+    reply = await _post(client, cid, "reply", parent["id"])
+    after = await _post(client, cid, "after")
+    await client.delete(f"/api/v1/messages/{parent['id']}")
+    assert (await client.get(f"/api/v1/messages/{reply['id']}")).status_code == 200
+    response = await client.get(f"/api/v1/messages/{reply['id']}/context", params={"limit": 1})
+    assert response.status_code == 200
+    assert [row["id"] for row in response.json()] == [before["id"], after["id"]]
+    # The root itself stays not found.
+    assert (await client.get(f"/api/v1/messages/{parent['id']}/context")).status_code == 404
+
+
 async def test_search_context_requires_channel_membership(
     client: AsyncClient, db: AsyncSession, as_user: Callable[[User], None]
 ) -> None:
