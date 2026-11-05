@@ -34,6 +34,15 @@ export function focusWindow(context: readonly MessageState[], live: readonly Mes
   return { rows: tail.length > 0 ? [...shown, ...tail] : shown, joined };
 }
 
+/**
+ * What a view watches to scroll to the focused message (2026-11-05): the message and the reveal that asked for it, so a
+ * reveal of the message already in focus (the same link clicked again after scrolling away) scrolls to it again. Empty
+ * without a focus.
+ */
+export function focusRequest(focus: { messageId: string; request?: number } | null | undefined): string {
+  return focus ? `${focus.messageId}:${focus.request ?? ""}` : "";
+}
+
 /** 「最新の会話に戻る」: while newer rows are not in the window, or the reader is away from its end (the round button's rule). */
 export function backToLatestShown(joined: boolean, awayFromEnd: boolean): boolean {
   return !joined || awayFromEnd;

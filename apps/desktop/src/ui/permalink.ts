@@ -80,10 +80,28 @@ export function parseEquipmentLink(baseUrl: string, url: string): string | null 
   return parseLink(baseUrl, url, "/eq/");
 }
 
+/**
+ * The id when `url` is `<server><prefix><uuid>` on `baseUrl` (apps/shared/message-links.json): the same host (any case)
+ * and port (the default one written out or not) and the server's path, http or https alike (2026-11-05: a link written
+ * with the other scheme opened in the browser), then the UUID (any case), ending there or with `/` `?` `#`.
+ */
 function parseLink(baseUrl: string, url: string, prefix: "/m/" | "/c/" | "/p/" | "/e/" | "/d/" | "/eq/"): string | null {
-  const base = baseUrl.replace(/\/+$/, "");
-  const head = base.length + prefix.length;
-  if (url.slice(0, head).toLowerCase() !== (base + prefix).toLowerCase()) return null;
-  const id = url.slice(head).replace(/[/?#].*$/, "");
-  return UUID.test(id) ? id.toLowerCase() : null;
+  const base = serverPart(baseUrl);
+  const link = serverPart(url);
+  if (!base || !link || link.authority !== base.authority) return null;
+  const head = base.path.replace(/\/+$/, "") + prefix;
+  if (link.path.slice(0, head.length).toLowerCase() !== head.toLowerCase()) return null;
+  const id = link.path.slice(head.length, head.length + 36);
+  const after = link.path.slice(head.length + 36);
+  return UUID.test(id) && (after === "" || "/?#".includes(after[0]!)) ? id.toLowerCase() : null;
+}
+
+/** An http(s) URL's host and port (lower case, without the scheme's default port) and the rest; null for anything else. */
+function serverPart(url: string): { authority: string; path: string } | null {
+  const match = /^(https?):\/\/([^/?#]*)(.*)$/i.exec(url);
+  if (!match) return null;
+  const authority = match[2]!.toLowerCase();
+  if (authority === "" || authority.includes("@")) return null; // user info: someone else's host after it
+  const port = match[1]!.toLowerCase() === "https" ? ":443" : ":80";
+  return { authority: authority.endsWith(port) ? authority.slice(0, -port.length) : authority, path: match[3]! };
 }

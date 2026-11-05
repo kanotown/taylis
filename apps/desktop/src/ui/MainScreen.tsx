@@ -530,7 +530,11 @@ export function MainScreen({ controller }: { controller: AppController }) {
   // lands on its tab (M34), unless its conversation is the one on screen.
   useEffect(() => {
     const focus = controller.messageFocus;
-    if (focus && threadListFocus.current === focus.messageId) return;
+    if (focus && threadListFocus.current === focus.messageId) {
+      // Taken once (2026-11-05): a link to that same reply later, left marked, did nothing.
+      threadListFocus.current = null;
+      return;
+    }
     if (focus) threadListFocus.current = null;
     if (!focus || (compact && revealing.current === focus.messageId)) return;
     if (focus.channelId === currentId && view === "channel" && (!compact || pane === "main")) {
@@ -541,6 +545,15 @@ export function MainScreen({ controller }: { controller: AppController }) {
         setThreadChannelId(focus.channelId);
         setThreadId(focus.parentId);
       }
+      // 2026-11-05: a message of its timeline shows there, whatever covered the timeline: the link was in its 「キャンバス」,
+      // 「タスク」 or 「ドライブ」 tab (a phone's 「ピン留め」 / 「ファイル」 too) or in its details, and the timeline scrolled to
+      // the message unseen underneath. On a phone a thread over the timeline goes too, unless the message is its root
+      // (the thread shows that at its top).
+      if (focus.parentId === null) {
+        if (tab !== "messages") setTab("messages");
+        if (compact && threadId !== null && threadId !== focus.messageId) setThreadId(null);
+      }
+      if (detailsOpen) setDetailsOpen(false);
       return;
     }
     // M39: a reply opened from the activity tab: its thread is over that tab's root, and shows the reply itself.

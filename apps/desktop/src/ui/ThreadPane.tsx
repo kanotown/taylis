@@ -9,6 +9,7 @@ import { tapClosesKeyboard } from "../platform/viewport";
 import { Composer } from "./Composer";
 import { composerKey, deliverToComposer, DropOverlay, useFileDropZone } from "./FileDropZone";
 import { continuesGroup, rowKey } from "./format";
+import { focusRequest } from "./focusWindow";
 import { channelTitle } from "./MainScreen";
 import { PaneBackButton, PaneCloseButton } from "./compact";
 import { Button, Menu, MenuContent, MenuTrigger } from "./primitives";
@@ -229,17 +230,21 @@ export function ThreadPane({ controller, channel, parentId, onClose }: { control
     };
   }, [parentId, replies.length, lastReplyId, engine, ready, state?.last_read_seq]);
 
+  // A message of this thread revealed while it is open (a link in it to another reply or to its root, a search hit): the
+  // thread scrolls to it. By the reveal, not the id (2026-11-05): the same link clicked again after scrolling away
+  // scrolls there again.
+  const request = focusRequest(controller.messageFocus);
   useEffect(() => {
     const id = controller.messageFocus?.messageId;
-    if (id && focused.current !== id) {
+    if (id && focused.current !== request) {
       const row = document.getElementById(`thread-${id}`);
       if (row) {
         row.scrollIntoView({ block: "center" });
         anchor.placed();
-        focused.current = id;
+        focused.current = request;
       }
     }
-  }, [parentId, controller.messageFocus?.messageId, replies.length]);
+  }, [parentId, request, replies.length]);
 
   // 「新しい返信」: the divider sits before the first reply from someone else past my read position when the whole thread
   // was first held (the newest replies alone would put it in the wrong place), and stays there while it is open, like

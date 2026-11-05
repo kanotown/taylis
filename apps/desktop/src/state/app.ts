@@ -160,7 +160,13 @@ export class AppController {
   set me(me: UserMe | null) {
     if (this.active) this.active.me = me;
   }
-  messageFocus: { channelId: string; messageId: string; parentId: string | null; context: MessageOut[] } | null = null;
+  /**
+   * A message to show (a permalink, a search hit, a notification …) and the server's window around it. `request` is new
+   * for every reveal (2026-11-05, as iOS / Android's serial): the timeline and the thread pane scroll to the message again
+   * when it is revealed again (the same link clicked after scrolling away), not only when another one is.
+   */
+  messageFocus: { channelId: string; messageId: string; parentId: string | null; context: MessageOut[]; request?: number } | null = null;
+  private focusRequests = 0;
 
   /** Which key sends a message; the other inserts a newline. Stored per device. */
   sendKey: SendKey = readSendKey();
@@ -194,6 +200,13 @@ export class AppController {
     if (!this.api) return false;
     try {
       const context = await this.api.messageContext(message.id);
+      // 2026-11-05: a public channel I have not joined that the store does not hold (an archived one: the browsable list
+      // leaves those out; or that list not loaded yet) joins it as browsable, so its preview opens (as on Android). Its
+      // conversation was dropped at once as gone, and the link did nothing.
+      if (!this.store.getChannel(message.channel_id)) {
+        const channel = await this.api.channel(message.channel_id);
+        if (!channel.membership && !this.store.getChannel(channel.id)) this.store.upsertChannel(channel, { isMember: false });
+      }
       // A channel I have not joined is read without the store (its preview, SYNC_PROTOCOL.md §7.6.1): the thread pane
       // fetches the replies itself there.
       const mine = this.store.getChannel(message.channel_id)?.isMember === true;
@@ -207,7 +220,8 @@ export class AppController {
           else this.store.forgetThread(message.channel_id, message.parent_id);
         }
       }
-      this.messageFocus = { channelId: message.channel_id, messageId: message.id, parentId: message.parent_id ?? null, context };
+      this.focusRequests += 1;
+      this.messageFocus = { channelId: message.channel_id, messageId: message.id, parentId: message.parent_id ?? null, context, request: this.focusRequests };
       this.emit();
       return true;
     } catch (error) { this.setError(error); return false; }

@@ -9,6 +9,9 @@ export type EntryRoute = { kind: "message"; id: string } | { kind: "canvas"; id:
 export function parseEntryPath(pathname: string): EntryRoute | null {
   const parts = pathname.split("/").filter(Boolean);
   if (parts.length !== 2) return null;
+  // 2026-11-05: a link another app (a chat, a mail) linked with the closing mark after it (「…/m/<id>）」, `…/m/<id>.`)
+  // asks for the id with that mark, encoded: the id is still the UUID it starts with, unless letters or digits run on.
+  if (parts[0] !== "invite" && parts[1]!.length > 36 && /^[^0-9A-Za-z_-]/.test(parts[1]!.slice(36))) parts[1] = parts[1]!.slice(0, 36);
   if (parts[0] === "m" && UUID.test(parts[1]!)) return { kind: "message", id: parts[1]!.toLowerCase() };
   if (parts[0] === "c" && UUID.test(parts[1]!)) return { kind: "canvas", id: parts[1]!.toLowerCase() };
   if (parts[0] === "p" && UUID.test(parts[1]!)) return { kind: "page", id: parts[1]!.toLowerCase() };
