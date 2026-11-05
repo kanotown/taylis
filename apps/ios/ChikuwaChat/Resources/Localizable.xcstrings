@@ -466,6 +466,50 @@
         }
       }
     },
+    "linkCards.directMessage" : {
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Direct message"
+          }
+        },
+        "ja" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "ダイレクトメッセージ"
+          }
+        },
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "私信"
+          }
+        }
+      }
+    },
+    "linkCards.undo" : {
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Undo"
+          }
+        },
+        "ja" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "元に戻す"
+          }
+        },
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "撤销"
+          }
+        }
+      }
+    },
     "presence.clear" : {
       "localizations" : {
         "en" : {
@@ -698,6 +742,22 @@
           "stringUnit" : {
             "state" : "translated",
             "value" : "此数据库未保存在此设备上。"
+          }
+        }
+      }
+    },
+    "このメッセージを見る権限が無いか、見つかりません。" : {
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "You can't view this message, or it doesn't exist."
+          }
+        },
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "你无权查看此消息，或该消息不存在。"
           }
         }
       }
@@ -1550,6 +1610,38 @@
         }
       }
     },
+    "プレビューを削除" : {
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Remove preview"
+          }
+        },
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "删除预览"
+          }
+        }
+      }
+    },
+    "プレビューを削除しました" : {
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Preview removed"
+          }
+        },
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "已删除预览"
+          }
+        }
+      }
+    },
     "プロパティはまだありません" : {
       "localizations" : {
         "en" : {
@@ -1594,6 +1686,22 @@
           "stringUnit" : {
             "state" : "translated",
             "value" : "多选"
+          }
+        }
+      }
+    },
+    "メッセージを読み込み中…" : {
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Loading the message…"
+          }
+        },
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "正在加载消息…"
           }
         }
       }
@@ -2458,6 +2566,22 @@
           "stringUnit" : {
             "state" : "translated",
             "value" : "分类用于看板的排列和“在室 n 人”的计数。"
+          }
+        }
+      }
+    },
+    "削除されたメッセージ" : {
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Deleted message"
+          }
+        },
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "已删除的消息"
           }
         }
       }
@@ -4170,6 +4294,22 @@
           "stringUnit" : {
             "state" : "translated",
             "value" : "查找行"
+          }
+        }
+      }
+    },
+    "表示できないメッセージ" : {
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Message unavailable"
+          }
+        },
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "无法显示的消息"
           }
         }
       }

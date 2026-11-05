@@ -470,6 +470,19 @@ final class ApiClient: SyncApi, DraftApi, ChannelLinksApi, ActivityApi, CanvasAp
         try await request("GET", Self.pathWithQuery("/api/v1/link-previews", [URLQueryItem(name: "url", value: url)]))
     }
 
+    // MARK: message link cards (M185, docs/LINK_PREVIEWS.md §3, §4)
+
+    /// The cards of `<server>/m/<id>` links, at most MessagePreviews.batch ids at a time; one item per id, in order.
+    func messagePreviews(ids: [String]) async throws -> [MessagePreviewOut] {
+        let out: MessagePreviewsOut = try await request("POST", "/api/v1/messages/previews", body: .object(["ids": .array(ids.map(JSONValue.string))]))
+        return out.items
+    }
+
+    /// Removes a link's card from my message for everyone (`hidden`), or brings it back: the message as it is now.
+    func setPreviewHidden(messageId: String, url: String, hidden: Bool) async throws -> MessageOut {
+        try await request("PUT", "/api/v1/messages/\(messageId)/previews/hidden", body: .object(["url": .string(url), "hidden": .bool(hidden)]))
+    }
+
     // MARK: reminders (M12e)
 
     func createReminder(messageId: String, remindAt: Date, note: String?) async throws -> ReminderOut {

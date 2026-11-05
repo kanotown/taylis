@@ -801,11 +801,14 @@ struct MessageOut: Codable, Identifiable, Equatable {
     var workflow: MessageWorkflow? = nil
     /// M117 (docs/CALLS.md §5): the call it started (its card and 「参加する」); nil otherwise, once deleted, and from older servers.
     var call: MessageCall? = nil
+    /// M185 (docs/LINK_PREVIEWS.md §4.1): the keys of the links whose cards the sender (or an administrator) removed for
+    /// everyone; none from older servers.
+    var hiddenPreviews: [String] = []
 
     enum CodingKeys: String, CodingKey {
         case id, channelId, senderId, seq, updatedSeq, clientMsgId, body, createdAt, editedAt, deleted
         case type, mentionedUserIds, mentionAll, reactions, parentId, alsoInChannel, replyCount, lastReplyAt, replyUserIds, attachments, pinnedAt, pinnedBy, poll
-        case priority, ackRequested, acks, collection, tasks, systemEvent, workflow, call
+        case priority, ackRequested, acks, collection, tasks, systemEvent, workflow, call, hiddenPreviews
     }
 
     func mentions(_ userId: String) -> Bool { mentionAll || mentionedUserIds.contains(userId) }
@@ -918,6 +921,7 @@ extension MessageOut {
         systemEvent = try? c.decodeIfPresent(SystemEvent.self, forKey: .systemEvent)
         workflow = try? c.decodeIfPresent(MessageWorkflow.self, forKey: .workflow)
         call = try? c.decodeIfPresent(MessageCall.self, forKey: .call)
+        hiddenPreviews = (try? c.decodeIfPresent([String].self, forKey: .hiddenPreviews)) ?? []
     }
 }
 
@@ -1753,6 +1757,68 @@ struct ServerInfoOut: Codable, Equatable {
 struct UnreadSummaryOut: Codable, Equatable {
     let badge: Int
     let hasUnread: Bool
+}
+
+/// M185 (docs/LINK_PREVIEWS.md §3.2): a linked message as I may see it (POST /messages/previews). `ok`: readable, every
+/// field filled; `deleted`: I could read it, it was deleted; `unavailable`: anything else. Only `id` and `state` are taken
+/// unless the state is `ok`: a card that cannot be read shows nothing of the message.
+struct MessagePreviewOut: Decodable, Equatable {
+    let id: String
+    let state: String
+    var channelId: String? = nil
+    var channelType: String? = nil
+    /// A channel's name; nil for a DM or a group DM (the card names it from my list).
+    var channelName: String? = nil
+    /// A thread reply's parent (「#x のスレッド」).
+    var parentId: String? = nil
+    var senderId: String? = nil
+    var createdAt: String? = nil
+    var editedAt: String? = nil
+    /// The body's first lines as written (light markdown and `<@uuid>` tokens kept), at most 6 lines / 300 characters.
+    var excerpt = ""
+    var excerptTruncated = false
+    var attachmentCount = 0
+    /// The attachments' content types (at most 10), for 「画像を送信しました」 when there is no text.
+    var attachmentTypes: [String] = []
+    /// The first photo or video poster (GET /attachments/{id}/thumbnail).
+    var thumbnailAttachmentId: String? = nil
+
+    var isOk: Bool { state == "ok" }
+
+    enum CodingKeys: String, CodingKey {
+        case id, state, channelId, channelType, channelName, parentId, senderId, createdAt, editedAt, excerpt, excerptTruncated
+        case attachmentCount, attachmentTypes, thumbnailAttachmentId
+    }
+
+    init(id: String, state: String) {
+        self.id = id
+        self.state = state
+    }
+
+    init(from decoder: Decoder) throws {
+        let c = try decoder.container(keyedBy: CodingKeys.self)
+        id = try c.decode(String.self, forKey: .id).lowercased()
+        // A state this build does not know is as good as unreadable.
+        let state = try c.decode(String.self, forKey: .state)
+        self.state = ["ok", "deleted"].contains(state) ? state : "unavailable"
+        guard self.state == "ok" else { return }
+        channelId = try c.decodeIfPresent(String.self, forKey: .channelId)
+        channelType = try c.decodeIfPresent(String.self, forKey: .channelType)
+        channelName = try c.decodeIfPresent(String.self, forKey: .channelName)
+        parentId = try c.decodeIfPresent(String.self, forKey: .parentId)
+        senderId = try c.decodeIfPresent(String.self, forKey: .senderId)
+        createdAt = try c.decodeIfPresent(String.self, forKey: .createdAt)
+        editedAt = try c.decodeIfPresent(String.self, forKey: .editedAt)
+        excerpt = try c.decodeIfPresent(String.self, forKey: .excerpt) ?? ""
+        excerptTruncated = try c.decodeIfPresent(Bool.self, forKey: .excerptTruncated) ?? false
+        attachmentCount = try c.decodeIfPresent(Int.self, forKey: .attachmentCount) ?? 0
+        attachmentTypes = try c.decodeIfPresent([String].self, forKey: .attachmentTypes) ?? []
+        thumbnailAttachmentId = try c.decodeIfPresent(String.self, forKey: .thumbnailAttachmentId)
+    }
+}
+
+struct MessagePreviewsOut: Decodable {
+    let items: [MessagePreviewOut]
 }
 
 /// Open Graph data for a link (M11g); `status == "failed"` means the page gave nothing usable.

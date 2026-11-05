@@ -36,11 +36,15 @@ extension MessageState {
 enum Timeline {
     /// What a message without text sent (tester, 2026-09-30: 「画像を送信」 rather than a placeholder); the server's push and
     /// the other clients use the same words. "" without attachments.
-    static func attachmentText(_ attachments: [AttachmentOut]) -> String {
-        let n = attachments.count
+    static func attachmentText(_ attachments: [AttachmentOut]) -> String { attachmentText(contentTypes: attachments.map(\.contentType)) }
+
+    /// The same from the files' content types; `count` when there are more files than types (M185: a message card's
+    /// `attachment_types` holds the first ten).
+    static func attachmentText(contentTypes: [String], count: Int? = nil) -> String {
+        let n = max(count ?? 0, contentTypes.count)
         guard n > 0 else { return "" }
-        if attachments.allSatisfy({ $0.contentType.hasPrefix("image/") }) { return n == 1 ? tr("画像を送信しました") : tr("画像を \(n) 枚送信しました") }
-        if attachments.allSatisfy({ $0.contentType.hasPrefix("video/") }) { return n == 1 ? tr("動画を送信しました") : tr("動画を \(n) 本送信しました") }
+        if contentTypes.allSatisfy({ $0.hasPrefix("image/") }) { return n == 1 ? tr("画像を送信しました") : tr("画像を \(n) 枚送信しました") }
+        if contentTypes.allSatisfy({ $0.hasPrefix("video/") }) { return n == 1 ? tr("動画を送信しました") : tr("動画を \(n) 本送信しました") }
         return n == 1 ? tr("ファイルを送信しました") : tr("ファイルを \(n) 件送信しました")
     }
 

@@ -155,11 +155,13 @@ struct MessageState: Codable, Identifiable, Equatable {
     var workflow: MessageWorkflow? = nil
     /// M117 (docs/CALLS.md §5): the call it started (its card instead of the link); rows persisted earlier lack it.
     var call: MessageCall? = nil
+    /// M185 (docs/LINK_PREVIEWS.md §4.1): the keys of the links whose cards were removed; rows persisted earlier lack it.
+    var hiddenPreviews: [String] = []
 
     enum CodingKeys: String, CodingKey {
         case id, channelId, senderId, seq, updatedSeq, clientMsgId, body, createdAt, editedAt, deleted, pending, failed, type
         case reactions, mentionedUserIds, mentionAll, parentId, alsoInChannel, replyCount, lastReplyAt, replyUserIds, attachments, pinnedAt, pinnedBy, poll
-        case priority, ackRequested, acks, collection, tasks, systemEvent, workflow, call
+        case priority, ackRequested, acks, collection, tasks, systemEvent, workflow, call, hiddenPreviews
     }
 
     /// M88: a line the server writes (the join / leave lines): one muted line, never grouped, no actions.
@@ -209,6 +211,7 @@ struct MessageState: Codable, Identifiable, Equatable {
         systemEvent = message.systemEvent
         workflow = message.workflow
         call = message.call
+        hiddenPreviews = message.hiddenPreviews
     }
 
     /// Rows persisted before M8a lack the reaction / mention fields.
@@ -247,6 +250,7 @@ struct MessageState: Codable, Identifiable, Equatable {
         systemEvent = try? c.decodeIfPresent(SystemEvent.self, forKey: .systemEvent)
         workflow = try? c.decodeIfPresent(MessageWorkflow.self, forKey: .workflow)
         call = try? c.decodeIfPresent(MessageCall.self, forKey: .call)
+        hiddenPreviews = (try? c.decodeIfPresent([String].self, forKey: .hiddenPreviews)) ?? []
     }
 
     init(placeholderFor clientMsgId: String, channelId: String, senderId: String, body: String, createdAt: String, parentId: String? = nil,
@@ -292,7 +296,8 @@ extension MessageOut {
                   alsoInChannel: state.alsoInChannel, replyCount: state.replyCount, lastReplyAt: state.lastReplyAt, replyUserIds: state.replyUserIds, attachments: state.attachments,
                   pinnedAt: state.pinnedAt, pinnedBy: state.pinnedBy, poll: state.poll,
                   priority: state.priority, ackRequested: state.ackRequested, acks: state.acks, collection: state.collection,
-                  tasks: state.tasks, systemEvent: state.systemEvent, workflow: state.workflow, call: state.call)
+                  tasks: state.tasks, systemEvent: state.systemEvent, workflow: state.workflow, call: state.call,
+                  hiddenPreviews: state.hiddenPreviews)
     }
 }
 
@@ -964,6 +969,9 @@ final class Store {
     }
 
     func setLinkPreviewFailed(_ url: String) { sessionPreviewFailures.insert(url) }
+
+    /// M185 (docs/LINK_PREVIEWS.md §3.3): the message link cards' answers, this session only (MessagePreviews).
+    let messagePreviews = MessagePreviews()
 
     /// Whether the row should ask the server: never asked, or kept longer than the server keeps it (LinkPreviewSlot.stale).
     func linkPreviewWanted(_ url: String, now: Date = Date()) -> Bool {

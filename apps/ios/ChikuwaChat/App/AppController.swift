@@ -56,6 +56,8 @@ final class AppController {
     var driveViewer: DriveViewing?
     /// M122: the notice on screen opens this page when tapped (an in-app page mention or share); kept with its text.
     var noticePage: (notice: String, pageId: String)?
+    /// M185: the notice on screen has a button (「プレビューを削除しました」's 「元に戻す」); kept with its text.
+    var noticeAction: NoticeAction?
     /// L8: the Times feed's rows while the app runs (TIMES_FEED.md §5), one per open workspace.
     private(set) var timesFeed = TimesFeedModel()
     /// The conversations' 「ピン留め」 tabs (PinsView), kept live by the same rows as the Times feed.
