@@ -31,11 +31,25 @@ ATTACHMENT_TYPES_MAX = 10
 # empty path is "/"; the path and the query stay as written. No percent-decoding, no IDN: plain
 # string work that Swift, Kotlin and TypeScript do the same way.
 _LINK_KEY = re.compile(r"(https?)://([^/?#\s]+)([^#\s]*)(?:#\S*)?", re.IGNORECASE)
-# The clients' link detection (ui/links.ts): an http(s) URL up to a space, `<`, `>`, `)` or `]`,
-# trailing punctuation dropped. Matched here without taking code out (a superset is fine: the
-# body only has to contain the link a client removes).
-_BODY_LINK = re.compile(r"https?://[^\s<>)\]]+", re.IGNORECASE)
-_TRAILING = ".,!?;:。、」』）"
+# The clients' links (2026-11-05, apps/shared/inline-format.json): the links a body shows, as its
+# tokenizer reads them. A `[label](url)` link's URL; a bare URL up to a space, `<`, `>` or a
+# full-width / CJK mark, without trailing `.,:;!?'"…` or a `)` / `]` it does not open itself, and a
+# Taylis link (`/m/` `/c/` … and a UUID) ending at its UUID unless `/` `?` `#` follows. Read here
+# from every `http(s)://` in the body, code included: a superset is fine (the body only has to
+# contain the link a client removes).
+_START = re.compile(r"https?://", re.IGNORECASE)
+_BARE = re.compile(r"https?://[^\s<>　-〿＀-￯]+", re.IGNORECASE)
+_LABELLED = re.compile(r"\[[^\]\n]+\]\((https?://[^\s)]+)\)")
+_OWN_LINK = re.compile(
+    r"(https?://\S*?/(?:m|c|p|e|d|eq)/[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12})"
+    r"(?![/?#])",
+    re.IGNORECASE,
+)
+_CLOSING = ".,:;!?'\"…"
+# The links before 2026-11-05 (up to a space, `<`, `>`, `)` or `]`, these marks dropped at the
+# end): keys a client computed then stay keys of the body (migration 0132 moved the stored ones).
+_LEGACY_LINK = re.compile(r"https?://[^\s<>)\]]+", re.IGNORECASE)
+_LEGACY_TRAILING = ".,!?;:。、」』）"
 # Mention tokens an excerpt must not cut through (DATA_MODEL.md 本文の形式).
 _TOKEN = re.compile(r"<@group:[0-9a-f-]{36}>|<@[0-9a-f-]{36}>|<!(?:channel|here)>")
 
@@ -51,14 +65,44 @@ def preview_key(url: str) -> str | None:
     return f"{scheme.lower()}://{host.lower()}{rest}"
 
 
+def bare_url(match: str) -> str:
+    """What of a bare URL match is the URL (the clients' bareUrl, inline-format.json)."""
+    own = _OWN_LINK.match(match)
+    if own is not None:
+        return own.group(1)
+    url = match
+    while url:
+        last = url[-1]
+        if last in _CLOSING or (
+            (last == ")" and url.count(")") > url.count("("))
+            or (last == "]" and url.count("]") > url.count("["))
+        ):
+            url = url[:-1]
+        else:
+            break
+    return url
+
+
 def link_keys(body: str) -> set[str]:
-    """The keys of every link in a body (with and without its trailing punctuation)."""
+    """The keys of every link in a body, as the clients read it now and as they did before
+    2026-11-05 (a superset)."""
     keys: set[str] = set()
-    for raw in _BODY_LINK.findall(body):
-        for candidate in (raw, raw.rstrip(_TRAILING)):
-            key = preview_key(candidate)
-            if key is not None:
-                keys.add(key)
+
+    def add(url: str) -> None:
+        key = preview_key(url)
+        if key is not None:
+            keys.add(key)
+
+    for start in _START.finditer(body):
+        bare = _BARE.match(body, start.start())
+        if bare is not None:
+            add(bare_url(bare.group(0)))
+        legacy = _LEGACY_LINK.match(body, start.start())
+        if legacy is not None:
+            add(legacy.group(0))
+            add(legacy.group(0).rstrip(_LEGACY_TRAILING))
+    for labelled in _LABELLED.finditer(body):
+        add(labelled.group(1))
     return keys
 
 
