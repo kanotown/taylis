@@ -1,0 +1,14 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+    <string name="link_cards_open">Open the message</string>
+    <string name="link_cards_loading">Loading the message…</string>
+    <string name="link_cards_unavailable">Message unavailable</string>
+    <string name="link_cards_unavailable_note">You can\'t view this message, or it doesn\'t exist.</string>
+    <string name="link_cards_deleted">Deleted message</string>
+    <string name="link_cards_in_thread">Thread in %1$s</string>
+    <string name="link_cards_direct_message">Direct message</string>
+    <string name="link_cards_remove">Remove preview</string>
+    <string name="link_cards_remove_named">Remove preview: %1$s</string>
+    <string name="link_cards_removed">Preview removed</string>
+    <string name="link_cards_undo">Undo</string>
+</resources>

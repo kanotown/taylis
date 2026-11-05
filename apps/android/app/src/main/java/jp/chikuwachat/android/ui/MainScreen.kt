@@ -340,6 +340,13 @@ fun MainScreen(controller: AppController) {
         if (controller.dmClosed === closed) controller.dmClosed = null
         if (result == SnackbarResult.ActionPerformed) controller.undoCloseDm(closed)
     }
+    // M185 (docs/LINK_PREVIEWS.md §4.3): a link card removed for everyone, without a confirmation: 「元に戻す」 brings it back.
+    LaunchedEffect(controller.previewRemoved) {
+        val removed = controller.previewRemoved ?: return@LaunchedEffect
+        val result = snackbar.showSnackbar(L10n.str(R.string.link_cards_removed), actionLabel = L10n.str(R.string.link_cards_undo), duration = SnackbarDuration.Short)
+        if (controller.previewRemoved === removed) controller.previewRemoved = null
+        if (result == SnackbarResult.ActionPerformed) controller.undoPreviewRemoval(removed)
+    }
     // A tapped notification (or /dm, /join, a profile's DM button) opens its channel once the store knows it. M28c: a
     // reply's notification opens its thread at the reply, as a permalink does (the reveal fetches its context first).
     LaunchedEffect(controller.pendingChannelId, version) {

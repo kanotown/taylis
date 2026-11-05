@@ -1,0 +1,14 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+    <string name="link_cards_open">打开消息</string>
+    <string name="link_cards_loading">正在加载消息…</string>
+    <string name="link_cards_unavailable">无法显示的消息</string>
+    <string name="link_cards_unavailable_note">你无权查看此消息，或该消息不存在。</string>
+    <string name="link_cards_deleted">已删除的消息</string>
+    <string name="link_cards_in_thread">%1$s 中的话题</string>
+    <string name="link_cards_direct_message">私信</string>
+    <string name="link_cards_remove">删除预览</string>
+    <string name="link_cards_remove_named">删除预览：%1$s</string>
+    <string name="link_cards_removed">已删除预览</string>
+    <string name="link_cards_undo">撤销</string>
+</resources>

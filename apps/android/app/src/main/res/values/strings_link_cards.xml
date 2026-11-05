@@ -1,0 +1,15 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!-- M185 (docs/LINK_PREVIEWS.md): message link cards and removing a preview; the desktop's linkCards.* texts. -->
+<resources>
+    <string name="link_cards_open">メッセージを開く</string>
+    <string name="link_cards_loading">メッセージを読み込み中…</string>
+    <string name="link_cards_unavailable">表示できないメッセージ</string>
+    <string name="link_cards_unavailable_note">このメッセージを見る権限が無いか、見つかりません。</string>
+    <string name="link_cards_deleted">削除されたメッセージ</string>
+    <string name="link_cards_in_thread">%1$s のスレッド</string>
+    <string name="link_cards_direct_message">ダイレクトメッセージ</string>
+    <string name="link_cards_remove">プレビューを削除</string>
+    <string name="link_cards_remove_named">プレビューを削除：%1$s</string>
+    <string name="link_cards_removed">プレビューを削除しました</string>
+    <string name="link_cards_undo">元に戻す</string>
+</resources>

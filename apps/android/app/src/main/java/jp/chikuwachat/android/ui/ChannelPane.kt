@@ -601,6 +601,9 @@ fun MessageRow(
     var sharing by rememberSaveable { mutableStateOf(false) }
     var showingRevisions by remember { mutableStateOf(false) }
     var reporting by remember { mutableStateOf(false) }  // M104
+    // M185 (docs/LINK_PREVIEWS.md §8 7.): the card whose long press opened the sheet (its 「プレビューを削除」 only); null:
+    // the row's long press (every card shown).
+    var menuCard by remember { mutableStateOf<String?>(null) }
     // M25: TalkBack names the long press (its actions menu, double-tap and hold) after the sheet it opens; a pending
     // row has no sheet, so no long press is offered. Links and buttons inside stay their own nodes.
     val rowClick = Modifier.combinedClickable(
@@ -618,6 +621,13 @@ fun MessageRow(
     val highlighted = controller.messageFocus?.messageId == message.id
     // Where the row is shown: a link to a message on the same screen scrolls there (PermalinkJump).
     val linkContext = LocalMessageLinkContext.current
+    // M185 (docs/LINK_PREVIEWS.md §2): the cards under the body, minus the ones its sender removed (hidden_previews).
+    val cards = remember(message.body, message.id, message.hiddenPreviews, message.call, message.deleted, controller.serverBase) {
+        MessageCards.cardLinks(message.body, controller.serverBase, message.id, message.hiddenPreviews, call = message.call != null && !message.deleted)
+    }
+    // §4.3: the sender or an administrator removes a sent message's cards for everyone (not in a preview before joining).
+    val removesPreviews = !cards.isEmpty && (message.senderId == store.me?.id || controller.isAdmin) && !readOnly && message.seq != null && !message.pending
+    val removePreview: (String) -> Unit = { url -> controller.scope.launch { controller.setPreviewHidden(message.id, url, hidden = true) } }
     Box(Modifier.fillMaxWidth().background(if (highlighted) MaterialTheme.colorScheme.tertiaryContainer else Color.Transparent).then(rowClick)) {
         Row(Modifier.fillMaxWidth().padding(horizontal = 12.dp, vertical = if (compact) 4.dp else 5.dp).alpha(if (message.pending) 0.6f else 1f)) {
             if (newDot != null) {
@@ -721,13 +731,15 @@ fun MessageRow(
                 if (message.collection != null) CollectionChip(message, store, version)  // L6 (M60)
                 if (message.tasks.isNotEmpty()) MessageTaskChips(message, controller, version)  // L9 (M64)
                 AttachmentList(message.attachments, controller, channelId = message.channelId)
-                // Not for this server's /m/, /p/, /e/ and /c/ links: a message shows in place, a canvas as its card (M58).
                 // M166 (docs/DRIVE.md §26): this server's /d/ links as cards (at most three), never the web page's preview.
                 if (!message.pending && !message.deleted && call == null) DriveLinkCards(controller, message.body)
-                if (!message.pending && call == null) Links.first(message.body)?.takeIf { link -> controller.serverBase?.let { Permalink.messageId(it, link) ?: Permalink.pageId(it, link) ?: Permalink.eventId(it, link) ?: Permalink.driveId(it, link) } == null && !CanvasCards.isCanvasLink(controller.serverBase, link) }?.let { link ->
-                    // Review v0.1.18 #5: an AI bot's link is not previewed until tapped (decided by the sender, here).
-                    LinkPreviewCard(controller, link, message.id, auto = LinkPreviewPolicy.autoLoads(message.senderId, store.users[message.senderId]?.role, controller.aiStatus, store.users[message.senderId]?.botKind))
-                }
+                // M185 (docs/LINK_PREVIEWS.md §2): this server's message links as cards, then the Open Graph card of the
+                // first other link (not this server's /d/, /c/, /p/ or /e/: a canvas has its card in the body, M58).
+                if (!message.pending) MessageLinkCards(
+                    controller, message, cards, version,
+                    onLongPress = if (readOnly) null else ({ url -> menuCard = url; menuOpen = true }),
+                    onRemove = if (removesPreviews) removePreview else null,
+                )
                 ReactionChips(
                     message, store, onToggle = if (readOnly) null else onReact, onNeedEmojiImage = { controller.loadEmojiImage(it) },
                     onAdd = if (message.pending || readOnly) null else ({ pickingReaction = true }), version = version,  // M25 「＋」
@@ -746,7 +758,13 @@ fun MessageRow(
         var reminding by remember { mutableStateOf(false) }
         if (reminding) ReminderDialog(onDismiss = { reminding = false }) { at, note -> reminding = false; controller.scope.launch { controller.setReminder(message.id, at, note) } }
         MessageMenu(
-            expanded = menuOpen, canEdit = canEdit, canDelete = canDelete, onDismiss = { menuOpen = false },
+            expanded = menuOpen, canEdit = canEdit, canDelete = canDelete, onDismiss = { menuOpen = false; menuCard = null },
+            // M185 (§8 7.): the pressed card's 「プレビューを削除」, else each card on screen (read when the sheet opens).
+            removePreviews = if (!menuOpen || !removesPreviews) emptyList() else {
+                (menuCard?.let { listOf(it) } ?: (cards.messages.map { it.url } + listOfNotNull(cards.external)))
+                    .filter { cardShown(controller, cards, it) }
+                    .map { url -> cardLabel(controller, cards, url) to { removePreview(url) } }
+            },
             onReact = onReact, onEdit = { editing = true }, onDelete = { confirmingDelete = true }, onReply = onOpenThread, onMarkUnread = onMarkUnread,
             pinned = message.pinnedAt != null, onPin = { controller.scope.launch { controller.togglePin(message) } },
             bookmarked = store.isBookmarked(message.id), onBookmark = { controller.scope.launch { controller.toggleBookmark(message.id) } },

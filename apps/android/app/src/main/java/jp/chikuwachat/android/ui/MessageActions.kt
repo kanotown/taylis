@@ -37,6 +37,7 @@ import androidx.compose.material.icons.outlined.Delete
 import androidx.compose.material.icons.outlined.Edit
 import androidx.compose.material.icons.outlined.Flag
 import androidx.compose.material.icons.outlined.Link
+import androidx.compose.material.icons.outlined.LinkOff
 import androidx.compose.material.icons.outlined.MarkEmailUnread
 import androidx.compose.material.icons.outlined.People
 import androidx.compose.material.icons.outlined.PhotoLibrary
@@ -193,6 +194,11 @@ fun MessageMenu(
     showInDrive: List<Pair<String, () -> Unit>> = emptyList(),
     /** AL4 (docs/ALBUMS.md §9): 「この投稿の写真をアルバムに」, for a message with photos or videos. */
     onAddToAlbum: (() -> Unit)? = null,
+    /**
+     * M185 (docs/LINK_PREVIEWS.md §4.3, §8 7.): 「プレビューを削除」 for each link card the sender (or an administrator) may
+     * remove (its name, remove); one reads 「プレビューを削除」, several 「プレビューを削除：名前」. Right after 「編集」.
+     */
+    removePreviews: List<Pair<String, () -> Unit>> = emptyList(),
     reacted: Set<String> = emptySet(),
     quick: List<String> = REACTION_PALETTE,
     /** For a custom emoji among `quick` (2026-10-13): drawn as its image from the Store, loaded on demand. */
@@ -251,6 +257,12 @@ fun MessageMenu(
             if (onShowReactors != null) item(stringResource(R.string.common_people_who_reacted), Icons.Outlined.People, action = onShowReactors)
             if (onReply != null) item(stringResource(R.string.message_actions_reply_in_thread), Icons.Outlined.ChatBubbleOutline, action = onReply)
             if (canEdit) item(stringResource(R.string.common_edit), Icons.Outlined.Edit, action = onEdit)
+            removePreviews.forEach { (name, remove) ->
+                item(
+                    if (removePreviews.size == 1) stringResource(R.string.link_cards_remove) else stringResource(R.string.link_cards_remove_named, name),
+                    Icons.Outlined.LinkOff, action = remove,
+                )
+            }
             if (onCopyText != null) item(stringResource(R.string.message_actions_copy_text), Icons.Outlined.ContentCopy, action = onCopyText)
             showInDrive.forEach { (name, open) ->
                 item(

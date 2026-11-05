@@ -583,6 +583,11 @@ data class MessageOut(
      * other message, a deleted one, and from a server before M117.
      */
     val call: MessageCallOut? = null,
+    /**
+     * M185 (docs/LINK_PREVIEWS.md §4): the keys of the link cards its sender (or an administrator) removed for everyone;
+     * empty without any and from a server before M185. A change arrives as message.updated (change "previews").
+     */
+    val hiddenPreviews: List<String> = emptyList(),
 ) {
     /** Mentions me by name, group or @channel, or by one of my notification keywords (M12g). */
     fun mentions(userId: String, keywords: List<String> = emptyList()): Boolean =
@@ -1182,6 +1187,38 @@ data class LinkPreviewOut(
     val siteName: String? = null,
     val fetchedAt: String,
 )
+
+/**
+ * M185 (docs/LINK_PREVIEWS.md §3.2): a linked message (`<server>/m/<id>`) as the reader may see it. `ok`: every field;
+ * `deleted` (said only to whoever could read it) and `unavailable` (anything else): only [id] and [state] count.
+ */
+@Serializable
+data class MessagePreviewOut(
+    val id: String,
+    /** ok / deleted / unavailable. */
+    val state: String,
+    val channelId: String? = null,
+    /** public / private / dm / group_dm. */
+    val channelType: String? = null,
+    /** A channel's name; null for a DM or a group DM (the reader is in it: their own list names it). */
+    val channelName: String? = null,
+    /** A thread reply's parent (the card reads 「#x のスレッド」). */
+    val parentId: String? = null,
+    val senderId: String? = null,
+    val createdAt: String? = null,
+    val editedAt: String? = null,
+    /** The body's first lines as written (mention tokens kept), at most 6 lines / 300 characters. */
+    val excerpt: String = "",
+    val excerptTruncated: Boolean = false,
+    val attachmentCount: Int = 0,
+    val attachmentTypes: List<String> = emptyList(),
+    /** The first photo or video poster, read at `/attachments/{id}/thumbnail`. */
+    val thumbnailAttachmentId: String? = null,
+)
+
+/** M185: `POST /messages/previews`, one item per distinct id asked for, in that order. */
+@Serializable
+data class MessagePreviewsOut(val items: List<MessagePreviewOut> = emptyList())
 
 /** M15e: one member's 「確認しました」. */
 @Serializable

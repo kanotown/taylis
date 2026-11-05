@@ -216,3 +216,32 @@ SYNC_PROTOCOL.md §6（`message.updated` の change `previews`）、`apps/shared
 9. **文言**：「メッセージを開く」「メッセージを読み込み中…」「表示できないメッセージ」「このメッセージを見る権限が無いか、見つかりません。」
    「削除されたメッセージ」「{name} のスレッド」「ダイレクトメッセージ」「プレビューを削除」「プレビューを削除しました」「元に戻す」
    （en / zh-Hans は Desktop の `linkCards.*` に合わせる）。
+
+### Android の実装（M185）
+
+- **モデル**：`MessageOut.hiddenPreviews` / `MessageState.hiddenPreviews`（Room は行を JSON で持つので、前からの行は空のまま読める）。
+  `MessagePreviewOut` / `MessagePreviewsOut`、`ApiClient.messagePreviews` / `setPreviewHidden`。change `"previews"` は何もせず、
+  今までどおり新しい `updated_seq` の行で置き換わる。
+- **どのカードか**：`MessageCards.cardLinks`（`ui/MessageLinkCard.kt`）とキーの `MessageCards.previewKey`。リンクは `Links.all`
+  （M11g の `Links.first` と同じ規則）。全角の空白など（`\p{Z}`）でもリンクが終わるようにした（JVM の `\s` は ASCII だけで、
+  Web とサーバ（Unicode の `\s`）と違っていた。端末の ICU では前から Unicode）。
+- **Android だけの違い**：このサーバの `/c/`（キャンバス。本文にカードがある、M58）・`/p/`・`/e/` のリンクにも、Android は前から
+  外部のカードを出していなかった。M185 でもそれらは飛ばし、ドライブのリンクと同じに次のリンクが外部のカードになる。
+- **聞き方**：`MessagePreviewHub`（`sync/MessagePreviews.kt`、`SyncEngine.messagePreviews`）。カードが組み立てられたとき
+  （`LazyColumn` は画面の近くの行だけを組み立てる）に聞き、30 ms の間の id を 1 つの要求に、20 件ずつ。答えはセッションの中で
+  5 分。失敗（429・オフライン・古いサーバ）は 1 分あけてから聞き直し、カードを出さない。読んであったカードは読み直しに失敗しても
+  そのまま出し、1 分後にもう一度聞く（描くたびには聞かない）。
+- **描き方**：1 dp の `outlineVariant` の枠（角丸 8 dp、最大幅 420 dp）。最小の高さ 64 dp の同じ枠を、読み込み中（「メッセージを
+  読み込み中…」）・読めない（鍵と 2 行、押せない）・削除（ゴミ箱、押せない）にも使う。1 行目は 18 dp のアイコン・名前・会話・
+  日時（`Timeline.stampLabel`、「今日 10:24」）、その下に抜粋（`EmojiLineText`、カスタム絵文字は画像、最大 4 行）と 56 dp の写真。
+  本文が無ければ「画像を送信しました」など（`attachmentSummary`）。リンク先の会話の行を端末が持っていれば、その本文・添付で描く。
+- **押す**：`controller.openPermalink(id, LocalMessageLinkContext)`（本文の「メッセージを表示」と同じ動作）。
+- **消す**：カードの長押しはメッセージの長押しのシートを開き、その「プレビューを削除」はそのカードの分だけ。行の長押しでは
+  画面に出ているカードごとに並べる（1 枚なら「プレビューを削除」、複数なら「プレビューを削除：名前」。名前は作者と会話、外部の
+  カードはサイト名）。いきなり消さずにシートを挟むのは、長押しはリアクションなどにも使うため。TalkBack ではカードのカスタム
+  操作「プレビューを削除」がすぐ消す。消すとスナックバーに「プレビューを削除しました」と「元に戻す」（`AppController.previewRemoved`、
+  `MainScreen`）。消せるのは自分のメッセージか管理者、送信済み（`seq` あり）、`readOnly` でない行（参加前のプレビュー、
+  アーカイブした Times のフィード）。
+- **テスト**：`MessageLinkCardsTest`（`link-cards.json` の `keys` と `cards` の全ケース、全角の空白、`/c/`・`/p/`・`/e/`・`/d/` を
+  飛ばすこと、抜粋の描き方、写真の選び方、会話の名前とシートの名前、`hidden_previews` の読み込み・Room の JSON・古い行、
+  change `"previews"` で行が置き換わること、まとめて聞くこと・20 件ずつ・5 分・失敗の後の 1 分）。

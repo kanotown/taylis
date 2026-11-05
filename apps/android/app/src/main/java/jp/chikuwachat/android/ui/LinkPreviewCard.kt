@@ -1,7 +1,9 @@
 package jp.chikuwachat.android.ui
 
+import androidx.compose.foundation.ExperimentalFoundationApi
 import androidx.compose.foundation.border
 import androidx.compose.foundation.clickable
+import androidx.compose.foundation.combinedClickable
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.padding
@@ -39,19 +41,24 @@ import jp.chikuwachat.android.app.AppController
 import jp.chikuwachat.android.R
 import androidx.compose.ui.res.stringResource
 
-/** The first http(s) link in a body, outside code (M11g); null when there is none. */
+/** The http(s) links in a body, outside code (M11g, M185). */
 object Links {
     private val FENCE = Regex("```[\\s\\S]*?```")
     private val CODE = Regex("`[^`\\n]*`")
-    private val URL = Regex("https?://[^\\s<>)\\]]+")
+    // \p{Z} as well: a full-width space ends a link here as it does on the web and the server (JavaScript's and Python's
+    // \s are Unicode; the JVM's is ASCII only).
+    private val URL = Regex("https?://[^\\s\\p{Z}<>)\\]]+")
     // i18n: keep (trailing punctuation of a URL)
     private const val TRAILING = ".,!?;:。、」』）"
 
-    fun first(body: String): String? {
+    /** Every link in order, trailing punctuation dropped (the desktop's bodyLinks). */
+    fun all(body: String): List<String> {
         val text = body.replace(FENCE, " ").replace(CODE, " ")
-        val found = URL.find(text)?.value ?: return null
-        return found.trimEnd { it in TRAILING }
+        return URL.findAll(text).map { it.value.trimEnd { c -> c in TRAILING } }.toList()
     }
+
+    /** The first link; null when there is none. */
+    fun first(body: String): String? = all(body).firstOrNull()
 
     /** The preview card's first line: the site name as given (not uppercased), else the link's host; null when neither. */
     fun siteLabel(siteName: String?, url: String): String? =
@@ -79,9 +86,11 @@ object LinkPreviewPolicy {
  * loads the card only after that tap.
  * A 1 dp outline, no fill and no accent bar (the same look on desktop and iOS): the site name (else the link's host),
  * the title and the description on the left, the thumbnail on the right.
+ * M185 (docs/LINK_PREVIEWS.md §4.3): `onLongPress` opens the message's long-press sheet with 「プレビューを削除」 for this
+ * card; `onRemove` (whoever may remove it) is TalkBack's action for the same.
  */
 @Composable
-fun LinkPreviewCard(controller: AppController, url: String, messageId: String, auto: Boolean = true) {
+fun LinkPreviewCard(controller: AppController, url: String, messageId: String, auto: Boolean = true, onLongPress: (() -> Unit)? = null, onRemove: (() -> Unit)? = null) {
     val asked = auto || controller.previewsAsked[messageId] == true
     if (!asked) {
         PlainLinkRow(url) { controller.previewsAsked[messageId] = true }
@@ -94,7 +103,7 @@ fun LinkPreviewCard(controller: AppController, url: String, messageId: String, a
         if (!auto) PlainLinkRow(url, status = if (controller.linkPreviews.containsKey(url)) stringResource(R.string.link_preview_card_no_preview) else stringResource(R.string.common_loading))
         return
     }
-    PreviewCard(preview)
+    PreviewCard(preview, onLongPress, onRemove)
 }
 
 /**
@@ -118,8 +127,9 @@ private fun PlainLinkRow(url: String, status: String? = null, onShow: (() -> Uni
     }
 }
 
+@OptIn(ExperimentalFoundationApi::class)
 @Composable
-private fun PreviewCard(preview: LinkPreviewOut) {
+private fun PreviewCard(preview: LinkPreviewOut, onLongPress: (() -> Unit)?, onRemove: (() -> Unit)?) {
     val uriHandler = LocalUriHandler.current
     val shape = RoundedCornerShape(8.dp)
     val secondary = MaterialTheme.colorScheme.onSurfaceVariant
@@ -129,7 +139,11 @@ private fun PreviewCard(preview: LinkPreviewOut) {
             .widthIn(max = 420.dp)
             .clip(shape)
             .border(1.dp, MaterialTheme.colorScheme.outlineVariant, shape)
-            .clickable { runCatching { uriHandler.openUri(preview.url) } }
+            .combinedClickable(
+                onLongClickLabel = stringResource(R.string.channel_pane_message_actions), onLongClick = onLongPress,
+                onClick = { runCatching { uriHandler.openUri(preview.url) } },
+            )
+            .removeAction(stringResource(R.string.link_cards_remove), onRemove)
             .padding(12.dp),
     ) {
         Column(Modifier.weight(1f)) {

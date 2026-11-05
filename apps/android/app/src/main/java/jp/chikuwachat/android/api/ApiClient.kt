@@ -75,6 +75,7 @@ class ApiClient(
 ) : SyncApi, DraftApi, ChannelLinksApi, ReservationsApi, AttendanceApi, ActionsApi, ActivityApi, CanvasApi, MyCanvasesApi, ChannelApi, CalendarApi, CalendarFeedApi, TaskApi, AiApi, WikiApi,
     jp.chikuwachat.android.sync.WikiDbApi, jp.chikuwachat.android.sync.WikiTemplatesApi, jp.chikuwachat.android.sync.DriveApi,
     jp.chikuwachat.android.sync.DriveWriteApi, jp.chikuwachat.android.sync.LendingApi, jp.chikuwachat.android.sync.AlbumApi,
+    jp.chikuwachat.android.sync.MessagePreviewApi,
     jp.chikuwachat.android.sync.DrivePostApi {
     @Volatile private var sessionVersion = 0
     @Volatile var accessToken: String? = null
@@ -502,6 +503,16 @@ class ApiClient(
     // --- link previews (M11g) -------------------------------------------------------------------
 
     suspend fun linkPreview(url: String): LinkPreviewOut = request("GET", "/api/v1/link-previews?url=" + Enc.encode(url, "UTF-8"))
+
+    // --- message link cards (M185, docs/LINK_PREVIEWS.md §3, §4) ---------------------------------
+
+    /** The linked messages as I may see them (1–20 ids; 429 rate_limited past 120 a minute). */
+    override suspend fun messagePreviews(ids: List<String>): MessagePreviewsOut =
+        request("POST", "/api/v1/messages/previews", buildJsonObject { put("ids", buildJsonArray { ids.forEach { add(JsonPrimitive(it)) } }) })
+
+    /** Removes (`hidden`) or brings back a link's card under my message, for everyone; the message as it is now. */
+    suspend fun setPreviewHidden(messageId: String, url: String, hidden: Boolean): MessageOut =
+        request("PUT", "/api/v1/messages/$messageId/previews/hidden", buildJsonObject { put("url", url); put("hidden", hidden) })
 
     // --- reminders (M12e) -----------------------------------------------------------------------
 
