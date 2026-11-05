@@ -403,8 +403,10 @@ async def test_flood_cap_posts_the_newest_oldest_first(
     fetch.docs[FEED_URL] = rss([])
     feed = (await client.post(f"/api/v1/channels/{cid}/feeds", json={"url": FEED_URL})).json()
     # Eight new entries, out of order; and one dated long before the feed was added (backlog).
+    # Dated within the last day (relative to now: fixed dates fell out of the backlog window).
+    start = utcnow() - timedelta(hours=10)
     fresh = [
-        (f"n{i}", f"記事{i}", f"Sun, 0{i} Nov 2026 09:00:00 +0900")
+        (f"n{i}", f"記事{i}", format_datetime(start + timedelta(hours=i)))
         for i in (3, 1, 8, 5, 2, 7, 4, 6)
     ]
     fetch.docs[FEED_URL] = rss([*fresh, ("old", "昔の記事", "Mon, 01 Jun 2020 09:00:00 +0900")])
