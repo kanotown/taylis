@@ -30,6 +30,20 @@ enum PermalinkJump: Equatable {
             return .open
         }
     }
+
+    /// A message of the conversation to show (any focus but a thread-only one): a thread the conversation pushed itself
+    /// (`open`, its 「N 件の返信」) goes, unless the message is in that thread, so the timeline (or the reply's thread,
+    /// landed over it) comes in front (2026-11-05: a link in that thread to a message of its timeline did nothing visible).
+    static func closesOwnThread(open: String?, focusParentId: String?) -> Bool {
+        guard let open else { return false }
+        return open != focusParentId
+    }
+
+    /// The same from the thread's side (ThreadView.onRevealElsewhere): a reveal in the thread's conversation of a message
+    /// that is neither in the thread nor its parent. A thread-only focus (a link between this thread's messages) never is.
+    static func revealsElsewhere(_ focus: AppController.MessageFocus, channelId: String, threadParentId: String) -> Bool {
+        focus.channelId == channelId && !focus.threadOnly && focus.parentId != threadParentId && focus.messageId != threadParentId
+    }
 }
 
 private struct MessageLinkContextKey: EnvironmentKey {
@@ -44,10 +58,44 @@ extension EnvironmentValues {
     }
 }
 
+/// Links to the server's own things (`/m/` messages, `/c/` canvases, `/p/` pages, `/e/` events, `/d/` drive items, `/eq/`
+/// equipment), apps/shared/message-links.json, as the desktop's permalink.ts parseLink: only the server signed in to, by
+/// its host (any case) and port (the default one written out or not) and its path, http and https alike (2026-11-05: a link
+/// written with the other scheme opened in the browser), then the UUID (any case), ending there or with `/` `?` `#`.
+enum ServerLink {
+    private static let uuid = try! NSRegularExpression(pattern: "^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$", options: [.caseInsensitive])
+    private static let split = try! NSRegularExpression(pattern: "^(https?)://([^/?#]*)(.*)$", options: [.caseInsensitive, .dotMatchesLineSeparators])
+
+    /// The id when `url` is `<base><path><uuid>`; `path` is the kind's, e.g. "/m/".
+    static func id(base: URL?, url: String, path: String) -> String? {
+        guard let base, let server = parts(base.absoluteString), let link = parts(url), link.authority == server.authority else { return nil }
+        var root = server.path
+        while root.hasSuffix("/") { root.removeLast() }
+        let head = root + path
+        guard link.path.count >= head.count, link.path.prefix(head.count).lowercased() == head.lowercased() else { return nil }
+        let tail = link.path.dropFirst(head.count)
+        let id = String(tail.prefix(36))
+        let after = tail.dropFirst(36)
+        guard uuid.firstMatch(in: id, range: NSRange(location: 0, length: (id as NSString).length)) != nil,
+              after.first.map({ "/?#".contains($0) }) ?? true else { return nil }
+        return id.lowercased()
+    }
+
+    /// An http(s) URL's host and port (lower case, without the scheme's default port) and the rest; nil for anything else.
+    private static func parts(_ url: String) -> (authority: String, path: String)? {
+        let ns = url as NSString
+        guard let match = split.firstMatch(in: url, range: NSRange(location: 0, length: ns.length)) else { return nil }
+        var authority = ns.substring(with: match.range(at: 2)).lowercased()
+        guard !authority.isEmpty, !authority.contains("@") else { return nil } // user info: someone else's host after it
+        let port = ns.substring(with: match.range(at: 1)).lowercased() == "https" ? ":443" : ":80"
+        if authority.hasSuffix(port) { authority.removeLast(port.count) }
+        return (authority, ns.substring(with: match.range(at: 3)))
+    }
+}
+
 /// Message permalinks (M12b): `<server>/m/<message_id>`, recognised only for the server we are logged into.
 enum Permalink {
     static let scheme = "chikuwa-message"
-    private static let uuid = try! NSRegularExpression(pattern: "^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$", options: [.caseInsensitive])
 
     static func url(base: URL, messageId: String) -> String {
         var text = base.absoluteString
@@ -57,15 +105,7 @@ enum Permalink {
 
     /// The message id when `url` is a permalink on `base` (case-insensitive prefix, query / fragment ignored).
     static func messageId(base: URL?, url: String) -> String? {
-        guard let base else { return nil }
-        var prefix = base.absoluteString
-        while prefix.hasSuffix("/") { prefix.removeLast() }
-        prefix += "/m/"
-        guard url.count >= prefix.count, url.prefix(prefix.count).lowercased() == prefix.lowercased() else { return nil }
-        var id = String(url.dropFirst(prefix.count))
-        for stop in ["/", "?", "#"] { if let range = id.range(of: stop) { id = String(id[..<range.lowerBound]) } }
-        let range = NSRange(location: 0, length: (id as NSString).length)
-        return uuid.firstMatch(in: id, range: range) != nil ? id.lowercased() : nil
+        ServerLink.id(base: base, url: url, path: "/m/")
     }
 
     /// The in-app link put into a body's attributed text; the row's `openURL` handler turns it into a reveal.
@@ -83,19 +123,10 @@ enum UserLink {
 /// M45 (CANVAS.md §4.13): canvas links, `<server>/c/<canvas_id>`, recognised only for the server we are logged into.
 enum CanvasLink {
     static let scheme = "chikuwa-canvas"
-    private static let uuid = try! NSRegularExpression(pattern: "^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$", options: [.caseInsensitive])
 
     /// The canvas id when `url` is a canvas link on `base` (case-insensitive prefix, query / fragment ignored).
     static func canvasId(base: URL?, url: String) -> String? {
-        guard let base else { return nil }
-        var prefix = base.absoluteString
-        while prefix.hasSuffix("/") { prefix.removeLast() }
-        prefix += "/c/"
-        guard url.count >= prefix.count, url.prefix(prefix.count).lowercased() == prefix.lowercased() else { return nil }
-        var id = String(url.dropFirst(prefix.count))
-        for stop in ["/", "?", "#"] { if let range = id.range(of: stop) { id = String(id[..<range.lowerBound]) } }
-        let range = NSRange(location: 0, length: (id as NSString).length)
-        return uuid.firstMatch(in: id, range: range) != nil ? id.lowercased() : nil
+        ServerLink.id(base: base, url: url, path: "/c/")
     }
 
     static func url(base: URL, canvasId: String) -> String {
@@ -112,19 +143,10 @@ enum CanvasLink {
 /// server we are logged into.
 enum EventLink {
     static let scheme = "chikuwa-event"
-    private static let uuid = try! NSRegularExpression(pattern: "^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$", options: [.caseInsensitive])
 
     /// The event id when `url` is an event link on `base` (case-insensitive prefix, query / fragment ignored).
     static func eventId(base: URL?, url: String) -> String? {
-        guard let base else { return nil }
-        var prefix = base.absoluteString
-        while prefix.hasSuffix("/") { prefix.removeLast() }
-        prefix += "/e/"
-        guard url.count >= prefix.count, url.prefix(prefix.count).lowercased() == prefix.lowercased() else { return nil }
-        var id = String(url.dropFirst(prefix.count))
-        for stop in ["/", "?", "#"] { if let range = id.range(of: stop) { id = String(id[..<range.lowerBound]) } }
-        let range = NSRange(location: 0, length: (id as NSString).length)
-        return uuid.firstMatch(in: id, range: range) != nil ? id.lowercased() : nil
+        ServerLink.id(base: base, url: url, path: "/e/")
     }
 
     /// The in-app link put into a body's attributed text; the row's `openURL` handler opens the event.
@@ -136,19 +158,10 @@ enum EventLink {
 /// me; otherwise it stays a plain link (the browser's Web opens the item).
 enum EquipmentLink {
     static let scheme = "chikuwa-equipment"
-    private static let uuid = try! NSRegularExpression(pattern: "^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$", options: [.caseInsensitive])
 
     /// The item id when `url` is an equipment link on `base` (case-insensitive prefix, query / fragment ignored).
     static func itemId(base: URL?, url: String) -> String? {
-        guard let base else { return nil }
-        var prefix = base.absoluteString
-        while prefix.hasSuffix("/") { prefix.removeLast() }
-        prefix += "/eq/"
-        guard url.count >= prefix.count, url.prefix(prefix.count).lowercased() == prefix.lowercased() else { return nil }
-        var id = String(url.dropFirst(prefix.count))
-        for stop in ["/", "?", "#"] { if let range = id.range(of: stop) { id = String(id[..<range.lowerBound]) } }
-        let range = NSRange(location: 0, length: (id as NSString).length)
-        return uuid.firstMatch(in: id, range: range) != nil ? id.lowercased() : nil
+        ServerLink.id(base: base, url: url, path: "/eq/")
     }
 
     static func url(base: URL, itemId: String) -> String {

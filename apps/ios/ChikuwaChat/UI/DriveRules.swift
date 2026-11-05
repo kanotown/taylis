@@ -6,19 +6,10 @@ enum DriveLink {
     static let scheme = "chikuwa-drive"
     /// A message shows at most this many cards (the desktop reads the first three links for its warning too).
     static let cardLimit = 3
-    private static let uuid = try! NSRegularExpression(pattern: "^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$", options: [.caseInsensitive])
 
     /// The item id when `url` is a drive link on `base` (case-insensitive prefix, query / fragment ignored).
     static func itemId(base: URL?, url: String) -> String? {
-        guard let base else { return nil }
-        var prefix = base.absoluteString
-        while prefix.hasSuffix("/") { prefix.removeLast() }
-        prefix += "/d/"
-        guard url.count >= prefix.count, url.prefix(prefix.count).lowercased() == prefix.lowercased() else { return nil }
-        var id = String(url.dropFirst(prefix.count))
-        for stop in ["/", "?", "#"] { if let range = id.range(of: stop) { id = String(id[..<range.lowerBound]) } }
-        let range = NSRange(location: 0, length: (id as NSString).length)
-        return uuid.firstMatch(in: id, range: range) != nil ? id.lowercased() : nil
+        ServerLink.id(base: base, url: url, path: "/d/")
     }
 
     static func url(base: URL, itemId: String) -> String {

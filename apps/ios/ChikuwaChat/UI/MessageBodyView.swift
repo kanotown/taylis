@@ -103,7 +103,7 @@ enum BodyTokenizer {
     // the closing one not followed by a letter, digit or `_`, so snake_case and e-mail addresses stay as they are.
     // `\_` `\*` `\~` `\`` are the literal character (also inside emphasis). E-mail addresses (and the shrug, which keeps its
     // backslash) are text tokens of their own, so emphasis and escapes are never read inside them.
-    private static let inline = #"(\*\*((?:\\.|[^*\n\\])+?)\*\*)|(``(?!`)(?:[^`\n]|`(?!`))+?``(?!`)|`([^`\n]+)`)|(\*((?:\\.|[^*\n\\])+)\*)|((?<![\p{L}\p{N}_])_(?![\s\u3000_])((?:\\.|[^\n\\])*?(?:\\.|[^\s\u3000_\\]))_(?![\p{L}\p{N}_]))|(~~((?:\\.|[^~\n\\])+)~~)|(\[([^\]\n]+)\]\((https?://[^\s)]+|(?:page|attachment):[0-9a-fA-F-]{36})\))|(<@group:([0-9a-f-]{36})>)|(<@([0-9a-f-]{36})>)|(<!(channel|here)>)|(https?://[^\s<>]+)|(\\([_*~`$]))|([A-Za-z0-9._%+-]{1,64}@[A-Za-z0-9-]{1,63}(?:\.[A-Za-z0-9-]{1,63}){1,8}|¯\\_\(ツ\)_/¯)|(\$\$((?:\\.|[^$\n\\])+?)\$\$)|(\$(?![\s$])((?:\\.|[^$\n\\])*?(?:\\.|[^\s$\\]))\$(?![0-9A-Za-z]))"#
+    private static let inline = #"(\*\*((?:\\.|[^*\n\\])+?)\*\*)|(``(?!`)(?:[^`\n]|`(?!`))+?``(?!`)|`([^`\n]+)`)|(\*((?:\\.|[^*\n\\])+)\*)|((?<![\p{L}\p{N}_])_(?![\s\u3000_])((?:\\.|[^\n\\])*?(?:\\.|[^\s\u3000_\\]))_(?![\p{L}\p{N}_]))|(~~((?:\\.|[^~\n\\])+)~~)|(\[([^\]\n]+)\]\((https?://[^\s)]+|(?:page|attachment):[0-9a-fA-F-]{36})\))|(<@group:([0-9a-f-]{36})>)|(<@([0-9a-f-]{36})>)|(<!(channel|here)>)|(https?://[^\s<>\u3000-\u303F\uFF00-\uFFEF]+)|(\\([_*~`$]))|([A-Za-z0-9._%+-]{1,64}@[A-Za-z0-9-]{1,63}(?:\.[A-Za-z0-9-]{1,63}){1,8}|¯\\_\(ツ\)_/¯)|(\$\$((?:\\.|[^$\n\\])+?)\$\$)|(\$(?![\s$])((?:\\.|[^$\n\\])*?(?:\\.|[^\s$\\]))\$(?![0-9A-Za-z]))"#
     private static let escaped = try! NSRegularExpression(pattern: #"\\([_*~`$])"#)
 
     /// TeX math (apps/shared/math.json, markdown.ts MATH_MAX_LENGTH): inline `$…$` as Pandoc reads it (the opening `$`
@@ -180,7 +180,10 @@ enum BodyTokenizer {
         func unescape(_ value: String) -> String {
             escaped.stringByReplacingMatches(in: value, range: NSRange(location: 0, length: (value as NSString).length), withTemplate: "$1")
         }
-        for match in pattern.matches(in: body, range: NSRange(location: 0, length: ns.length)) {
+        // One match at a time from where the last token ended (transparent bounds: the lookbehinds still see the text
+        // before), since a bare URL may end before its match does and the rest is read again (bareUrl).
+        while last < ns.length, let match = pattern.firstMatch(in: body, options: [.withTransparentBounds, .withoutAnchoringBounds],
+                                                               range: NSRange(location: last, length: ns.length - last)) {
             text(ns.substring(with: NSRange(location: last, length: match.range.location - last)))
             func group(_ index: Int) -> String? {
                 let shifted = withBlocks ? index + 2 : index
@@ -203,7 +206,16 @@ enum BodyTokenizer {
             else if group(14) != nil { tokens.append(.mentionGroup(group(15) ?? "")) }
             else if group(16) != nil { tokens.append(.mention(group(17) ?? "")) }
             else if group(18) != nil { tokens.append(.mentionAll(group(19) ?? "")) }
-            else if let url = group(20) { tokens.append(.link(url)) }
+            else if let found = group(20) {
+                // A bare URL leaves its closing marks to the text, which is read again after it.
+                let url = bareUrl(found)
+                tokens.append(.link(url))
+                let length = (url as NSString).length
+                if length < match.range.length {
+                    last = match.range.location + length
+                    continue
+                }
+            }
             else if group(21) != nil { text(group(22) ?? "") }
             else if let literal = group(23) { text(literal) }
             else if group(24) != nil || group(26) != nil {
@@ -221,6 +233,31 @@ enum BodyTokenizer {
         }
         if last < ns.length { text(ns.substring(from: last)) }
         return tokens
+    }
+
+    private static let ownLink = try! NSRegularExpression(
+        pattern: #"^(https?://\S*?/(?:m|c|p|e|d|eq)/[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12})(?![/?#])"#, options: [.caseInsensitive])
+    private static let closing: Set<Character> = [".", ",", ":", ";", "!", "?", "'", "\"", "…"]
+
+    /// 2026-11-05 (apps/shared/inline-format.json, markdown.ts bareUrl): what of a bare URL match is the URL. The match
+    /// already stops at a space, `<` `>` and the full-width / CJK marks (「」（）、。！？: Japanese puts them right after a
+    /// URL); here a link to one of the server's things (`/m/` `/c/` `/p/` `/e/` `/d/` `/eq/` and a UUID) ends with its
+    /// UUID unless `/` `?` `#` follows (`…/m/<id>を見て`), and closing punctuation (`.` `,` `)` without its `(` …) goes
+    /// back to the text. Before, those stayed in the URL, so a message link was not recognised as one and opened in the
+    /// browser (user report 2026-11-05).
+    static func bareUrl(_ match: String) -> String {
+        let ns = match as NSString
+        if let own = ownLink.firstMatch(in: match, range: NSRange(location: 0, length: ns.length)) {
+            return ns.substring(with: own.range(at: 1))
+        }
+        var url = match
+        while let last = url.last {
+            if closing.contains(last) { url.removeLast() }
+            else if last == ")", url.filter({ $0 == ")" }).count > url.filter({ $0 == "(" }).count { url.removeLast() }
+            else if last == "]", url.filter({ $0 == "]" }).count > url.filter({ $0 == "[" }).count { url.removeLast() }
+            else { break }
+        }
+        return url
     }
 
     /// What a reader sees of an inline token as text; mention tokens stay as they are (callers name them first).

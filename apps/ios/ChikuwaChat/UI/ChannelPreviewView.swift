@@ -237,6 +237,12 @@ struct ChannelPreviewView: View {
     private var previewBeforeJoin: Bool { controller.store.workspaceSettings.previewBeforeJoin }
     private var refused: Bool { PreviewJoin.refused(previewBeforeJoin: previewBeforeJoin, refusedByServer: model.refusedByServer) }
     private var messages: [MessageState] { model.messages }
+    /// A link's message in this preview (AppController.openPermalink): highlighted, scrolled to, a reply's thread opened.
+    private var focus: AppController.MessageFocus? { controller.messageFocus.flatMap { $0.channelId == channelId && !$0.threadOnly ? $0 : nil } }
+    /// The focus request this view has shown (a view coming back on screen does not move again).
+    @State private var shownRequest: String?
+    /// The row to bring to the middle once the rows are there.
+    @State private var scrollTarget: String?
 
     init(controller: AppController, channelId: String, focusMessageId: String? = nil) {
         _controller = Bindable(controller)
@@ -262,7 +268,15 @@ struct ChannelPreviewView: View {
         .navigationBarTitleDisplayMode(.inline)
         // Not `.task`: opened after going back from another conversation, the view went away and came back once as it
         // appeared, which cancelled the load, and a view that stays is not given its task again (it spun for ever).
-        .onAppear { model.loadIfNeeded(focus: focusMessageId) }
+        .onAppear {
+            if let focus, focus.request != shownRequest { Task { await reveal(focus) } } else { model.loadIfNeeded(focus: focusMessageId) }
+        }
+        // 2026-11-05: another link into this preview while it is open (or the same one again): the rows around that
+        // message, scrolled to it. It loaded once and stayed where it was.
+        .onChange(of: focus?.request) { _, request in
+            guard let focus, request == focus.request, request != shownRequest else { return }
+            Task { await reveal(focus) }
+        }
         // M89: the setting changed while open: off, the rows go and the panel shows (and what is on its way is dropped,
         // Review v0.1.22 #6); on, the page loads.
         .onChange(of: previewBeforeJoin) { _, on in
@@ -319,58 +333,71 @@ struct ChannelPreviewView: View {
 
     private var preview: some View {
         VStack(spacing: 0) {
-            ScrollView {
-                LazyVStack(alignment: .leading, spacing: 0) {
-                    if model.hasMore {
-                        Group {
-                            if model.loadingOlder {
-                                ProgressView().controlSize(.small)
-                            } else {
-                                Button("以前のメッセージを読み込む") { Task { await model.loadOlder() } }
+            ScrollViewReader { proxy in
+                ScrollView {
+                    LazyVStack(alignment: .leading, spacing: 0) {
+                        if model.hasMore {
+                            Group {
+                                if model.loadingOlder {
+                                    ProgressView().controlSize(.small)
+                                } else {
+                                    Button("以前のメッセージを読み込む") { Task { await model.loadOlder() } }
+                                }
+                            }
+                            .frame(maxWidth: .infinity)
+                            .font(.footnote)
+                            .padding(.vertical, 8)
+                        } else if model.loaded, let channel {
+                            ChannelIntroView(controller: controller, channel: channel).padding(.horizontal, Self.margin)
+                        }
+                        ForEach(Timeline.build(messages, firstUnreadAfterSeq: nil, meId: controller.store.me?.id, grouping: grouping)) { item in
+                            switch item {
+                            case .date(let label, _):
+                                DaySeparator(label: label).padding(.horizontal, Self.margin)
+                            case .unread:
+                                EmptyView()
+                            case .message(let message, let compact):
+                                MessageRow(message: message, controller: controller, compact: compact, margin: Self.margin,
+                                           onOpenThread: { thread = ThreadTarget(id: message.parentId ?? message.id) }, readOnly: true)
                             }
                         }
-                        .frame(maxWidth: .infinity)
-                        .font(.footnote)
-                        .padding(.vertical, 8)
-                    } else if model.loaded, let channel {
-                        ChannelIntroView(controller: controller, channel: channel).padding(.horizontal, Self.margin)
                     }
-                    ForEach(Timeline.build(messages, firstUnreadAfterSeq: nil, meId: controller.store.me?.id, grouping: grouping)) { item in
-                        switch item {
-                        case .date(let label, _):
-                            DaySeparator(label: label).padding(.horizontal, Self.margin)
-                        case .unread:
-                            EmptyView()
-                        case .message(let message, let compact):
-                            MessageRow(message: message, controller: controller, compact: compact, margin: Self.margin,
-                                       onOpenThread: { thread = ThreadTarget(id: message.parentId ?? message.id) }, readOnly: true)
+                    .padding(.vertical, 8)
+                    .containerRelativeFrame(.horizontal) // never wider than the list (ChannelView)
+                }
+                .defaultScrollAnchor(model.showingContext ? .center : .bottom)
+                .overlay(alignment: .bottomTrailing) {
+                    if model.showingContext {
+                        Button { Task { await model.load(focus: focusMessageId, latest: true) } } label: {
+                            Label("最新へ", systemImage: "arrow.down").font(.footnote.bold())
+                                .padding(.horizontal, 12).padding(.vertical, 8).background(.thinMaterial, in: Capsule())
                         }
+                        .padding(12)
                     }
                 }
-                .padding(.vertical, 8)
-                .containerRelativeFrame(.horizontal) // never wider than the list (ChannelView)
-            }
-            .defaultScrollAnchor(model.showingContext ? .center : .bottom)
-            .overlay(alignment: .bottomTrailing) {
-                if model.showingContext {
-                    Button { Task { await model.load(focus: focusMessageId, latest: true) } } label: {
-                        Label("最新へ", systemImage: "arrow.down").font(.footnote.bold())
-                            .padding(.horizontal, 12).padding(.vertical, 8).background(.thinMaterial, in: Capsule())
+                .overlay {
+                    if let failure = model.failure {
+                        ContentUnavailableView {
+                            Label("読み込めませんでした", systemImage: "exclamationmark.triangle")
+                        } description: {
+                            Text(failure)
+                        } actions: {
+                            Button("再読み込み") { Task { await model.load(focus: focusMessageId) } }
+                        }
+                    } else if !model.loaded {
+                        ProgressView()
                     }
-                    .padding(12)
                 }
-            }
-            .overlay {
-                if let failure = model.failure {
-                    ContentUnavailableView {
-                        Label("読み込めませんでした", systemImage: "exclamationmark.triangle")
-                    } description: {
-                        Text(failure)
-                    } actions: {
-                        Button("再読み込み") { Task { await model.load(focus: focusMessageId) } }
+                .onChange(of: scrollTarget) { _, key in
+                    // LazyVStack places by estimated heights: again while the row is not laid out yet (as ChannelView).
+                    guard let key else { return }
+                    Task {
+                        for _ in 0..<3 {
+                            proxy.scrollTo(key, anchor: .center)
+                            try? await Task.sleep(nanoseconds: 200_000_000)
+                        }
+                        if scrollTarget == key { scrollTarget = nil }
                     }
-                } else if !model.loaded {
-                    ProgressView()
                 }
             }
             joinBar
@@ -395,6 +422,17 @@ struct ChannelPreviewView: View {
         }
         .padding(12)
         .background(.bar)
+    }
+
+    /// The rows around a link's message (its thread's parent for a reply, as the server's context), the row in the middle,
+    /// and a reply's thread opened over the preview.
+    private func reveal(_ focus: AppController.MessageFocus) async {
+        shownRequest = focus.request
+        await model.load(focus: focus.messageId)
+        guard controller.messageFocus?.request == focus.request else { return }
+        let anchor = focus.parentId ?? focus.messageId
+        scrollTarget = model.messages.first { $0.id == anchor }?.rowKey
+        if let parentId = focus.parentId { thread = ThreadTarget(id: parentId) }
     }
 
     private func join() async {
@@ -423,23 +461,30 @@ struct PreviewThreadView: View {
         let thread = model.threads[parentId]
         let replies = thread?.replies ?? []
         let loaded = thread?.loaded ?? false
+        // A link's reply (AppController.openPermalink): scrolled to once the replies are there, highlighted (MessageRow).
+        let focusId = controller.messageFocus.flatMap { $0.channelId == model.channelId && $0.parentId == parentId ? $0.messageId : nil }
         NavigationStack {
-            ScrollView {
-                VStack(alignment: .leading, spacing: 12) {
-                    if let parent = thread?.parent ?? model.messages.first(where: { $0.id == parentId }) {
-                        MessageRow(message: parent, controller: controller, margin: Self.margin, readOnly: true)
-                        Text(replies.isEmpty ? (loaded ? "返信はまだありません" : "読み込み中…") : "\(replies.count) 件の返信")
-                            .font(.caption).foregroundStyle(.secondary).padding(.horizontal, Self.margin)
-                        Divider().padding(.horizontal, Self.margin)
-                        ForEach(replies) { reply in
-                            MessageRow(message: reply, controller: controller, margin: Self.margin, readOnly: true)
+            ScrollViewReader { proxy in
+                ScrollView {
+                    VStack(alignment: .leading, spacing: 12) {
+                        if let parent = thread?.parent ?? model.messages.first(where: { $0.id == parentId }) {
+                            MessageRow(message: parent, controller: controller, margin: Self.margin, readOnly: true)
+                            Text(replies.isEmpty ? (loaded ? "返信はまだありません" : "読み込み中…") : "\(replies.count) 件の返信")
+                                .font(.caption).foregroundStyle(.secondary).padding(.horizontal, Self.margin)
+                            Divider().padding(.horizontal, Self.margin)
+                            ForEach(replies) { reply in
+                                MessageRow(message: reply, controller: controller, margin: Self.margin, readOnly: true).id(reply.id)
+                            }
+                        } else if loaded {
+                            Text("メッセージが見つかりません").foregroundStyle(.secondary).padding(.horizontal, Self.margin)
                         }
-                    } else if loaded {
-                        Text("メッセージが見つかりません").foregroundStyle(.secondary).padding(.horizontal, Self.margin)
                     }
+                    .padding(.vertical)
+                    .containerRelativeFrame(.horizontal)
                 }
-                .padding(.vertical)
-                .containerRelativeFrame(.horizontal)
+                .onChange(of: focusId.map { id in replies.contains { $0.id == id } } ?? false, initial: true) { _, shown in
+                    if shown, let focusId { proxy.scrollTo(focusId, anchor: .center) }
+                }
             }
             .navigationTitle("スレッド")
             .navigationBarTitleDisplayMode(.inline)

@@ -88,10 +88,21 @@ final class AppController {
         await revealMessage(id: message.id, channelId: message.channelId, parentId: message.parentId)
     }
 
+    /// A conversation the store does not hold yet (a public channel I have not joined that is archived, so not among the
+    /// browsable ones; the list not loaded yet): asked for, and kept as browsable when I am not a member, so its preview
+    /// can open (2026-11-05, as Android's revealMessage: a link into it showed 「会話が見つかりません」). A member's channel
+    /// comes with the sync.
+    func ensureChannel(_ channelId: String) async {
+        guard store.channel(channelId) == nil, let api, let channel = try? await api.channel(id: channelId),
+              channel.membership == nil, store.channel(channelId) == nil else { return }
+        store.upsertChannel(channel, isMember: false)
+    }
+
     /// Focus a message known only by its ids (M11i files list): the context comes from the server.
     func revealMessage(id: String, channelId: String, parentId: String?) async -> Bool {
         guard let api else { return false }
         do {
+            await ensureChannel(channelId)
             let context = try await api.messageContext(id)
             if let parentId {
                 do {
@@ -1262,10 +1273,17 @@ final class AppController {
         guard let api else { return }
         do {
             let message = try await api.message(id: messageId)
-            // M27: a public channel I have not joined opens as its preview, read-only, around the linked message.
+            // Not held yet (archived, or the browsable list not loaded): it would show 「会話が見つかりません」.
+            await ensureChannel(message.channelId)
+            // M27: a public channel I have not joined opens as its preview, read-only, around the linked message. Focused
+            // too (2026-11-05): the preview highlights it, scrolls to it, opens a reply's thread, and a second link into
+            // the same preview moves it (it loaded once and stayed where it was).
             if store.channel(message.channelId)?.isMember == false {
+                let context = try await api.messageContext(message.id)
+                messageFocus = MessageFocus(channelId: message.channelId, messageId: message.id, parentId: message.parentId,
+                                            context: context.map(MessageState.init), serial: nextFocusSerial())
                 NotificationCenter.default.post(name: .chikuwaOpenChannel, object: nil,
-                                                userInfo: ["id": message.channelId, "messageId": messageId])
+                                                userInfo: ["id": message.channelId, "messageId": message.id])
                 return
             }
             switch PermalinkJump.of(channelId: message.channelId, messageId: message.id, parentId: message.parentId, from: context) {
