@@ -217,7 +217,43 @@ SYNC_PROTOCOL.md §6（`message.updated` の change `previews`）、`apps/shared
    「削除されたメッセージ」「{name} のスレッド」「ダイレクトメッセージ」「プレビューを削除」「プレビューを削除しました」「元に戻す」
    （en / zh-Hans は Desktop の `linkCards.*` に合わせる）。
 
-### Android の実装（M185）
+### 8.1 iOS の実装（2026-11-05）
+
+- **モデル**：`MessageOut` / `MessageState` の `hiddenPreviews`（無い・null は空。端末の DB の行（JSON）にも入り、M185 より前に
+  保存した行は空）。`MessagePreviewOut` は `ok` 以外では id と state だけを読み（知らない state は `unavailable`）、id は小文字に
+  する。`message.updated`（change `previews`）は今までどおり行を置き換えるだけ。
+- **どのカードか**：`MessageLinkCards.of(body:base:selfId:hidden:call:)`（`UI/MessageLinkCards.swift`）。リンクの検出は M11g の
+  `Links.all`、パーマリンクの判定は `Permalink.messageId`、キーは `MessageLinkCards.previewKey`。iOS は以前から、このサーバの
+  キャンバス（`/c/`）・予定（`/e/`）・ページ（`/p/`）のリンクにも Open Graph のカードを出していなかったので、それらもドライブの
+  リンクと同じく飛ばし、次のリンクを外部のカードにする（`link-cards.json` のケースには関係しない）。
+- **聞き方**：`MessagePreviews`（アカウントの `Store` が持つ。このセッションだけで、端末の DB には置かない）。行が画面に来たとき
+  （行の `.task`）に id を積み、30 ms 後に 20 件ずつ `POST /messages/previews`（1 つ終わってから次）。答えは 5 分は聞き直さず、
+  その後は次に描くときに聞く（その間は前のカード）。失敗（429・オフライン・5xx）は 1 分聞き直さず、前の答えが無ければカードを
+  出さない（本文のリンクのチップからは開ける）。
+- **高さ**：カードはどの状態（読み込み中・読める・読めない・削除）でも「見出しの 1 行 + 本文 2 行」以上の枠（Dynamic Type の
+  文字の大きさで決める）。答えが来ても行はほとんど伸びない（抜粋が 3〜4 行のときだけ伸びる）。1 行の状態（削除・読めない・
+  読み込み中）は枠の中で上下の中央。写真は右に 56 pt の正方形（アルバムのサムネイルのキャッシュを使う）。
+- **描き方**：細い枠（`separator` の 1 pt、角丸 8）だけで、左の色の線は付けない。見出しは 18 pt のアイコン・名前（太字）・会話・
+  「今日 10:24」。抜粋は 1 行ずつ `Timeline.plainText`（一覧の 1 行と同じ規則）にし、メンションは名前、カスタム絵文字は画像、
+  空行を除いて最大 4 行（超えれば「…」）。本文が無ければ「画像を 2 枚送信しました」など（`attachment_types` と `attachment_count`
+  から）。リンク先の行を端末が持っていれば、その本文と添付で描く（編集がすぐ出る。削除は手元の行が消えるので、次に聞いたとき）。
+  ブロックした人は名前・アイコン・本文・写真を出さず「ブロック中のユーザーのメッセージ」（会話と日時は出す）。
+- **押したとき**：`AppController.openPermalink(id, from:)`（本文のリンクと同じ。行の `messageLinkContext` を渡す）。読めない・
+  削除のカードはボタンにしない。
+- **消す**：行の長押し（カードの上でも）で開くメッセージの操作に「プレビューを削除」。カードが 1 枚ならその行、複数ならどれかを
+  選ぶメニュー（「名前 · #会話」、「表示できないメッセージ」、外部のカードは題名かホスト）。出ているカードだけを出す（失敗して
+  出ていないもの・プレビューの無いリンクは出さない）。行の長押しが行全体を取るので、カードだけの長押しは作らない。VoiceOver は
+  カードの操作「プレビューを削除」。確認は出さず、`PUT …/previews/hidden` の応答で行を置き換え、トーストに「プレビューを削除
+  しました」と「元に戻す」（5 秒、`NoticeAction`）。エラーはいつものエラーのトースト。消せるのは自分のメッセージか管理者で、
+  送信済み、参加前のプレビュー（`readOnly`）でないとき（`MessageLinkCards.canRemove`）。
+- **文言**：Desktop の `linkCards.*` に合わせて Localizable.xcstrings に。「元に戻す」（Undo）と「ダイレクトメッセージ」
+  （Direct message）は同じ日本語で別の訳（Reset、Direct messages）が既にあるので、キー付き（`linkCards.undo`、
+  `linkCards.directMessage`）。
+- **テスト**：`ChikuwaChatTests/MessageLinkCardsTests.swift`（`link-cards.json` の `keys` と `cards` の全ケース、`hidden_previews`
+  のデコードと保存、`message.updated`（change `previews`）、まとめて聞くこと・5 分・1 分、抜粋・会話・日時・写真の規則、枠の高さ、
+  消せる人、出ているカードの一覧、削除と「元に戻す」、エラー、ライトとダークのスナップショット）。
+
+### 8.2 Android の実装（M185、2026-11-05）
 
 - **モデル**：`MessageOut.hiddenPreviews` / `MessageState.hiddenPreviews`（Room は行を JSON で持つので、前からの行は空のまま読める）。
   `MessagePreviewOut` / `MessagePreviewsOut`、`ApiClient.messagePreviews` / `setPreviewHidden`。change `"previews"` は何もせず、

@@ -1085,16 +1085,13 @@ struct MessageRow: View {
         onOpenThread?()
     }
 
-    /// The link a preview card is shown for (M11g): the body's first, unless it opens a message, a canvas or an event here.
-    private var previewLink: String? {
-        // M117: a call's link is its card, without a preview.
-        guard !message.pending, message.call == nil, let link = Links.first(in: message.body), Permalink.messageId(base: controller.api?.baseUrl, url: link) == nil,
-              CanvasLink.canvasId(base: controller.api?.baseUrl, url: link) == nil,
-              EventLink.eventId(base: controller.api?.baseUrl, url: link) == nil,
-              PageLink.pageId(base: controller.api?.baseUrl, url: link) == nil,
-              DriveLink.itemId(base: controller.api?.baseUrl, url: link) == nil else { return nil }
-        return link
-    }
+    /// M185 (docs/LINK_PREVIEWS.md §2): the cards under the body: the linked messages' (at most three), then the Open
+    /// Graph card (M11g) of the first link that opens nothing here (not a message, drive, canvas, event or page link);
+    /// none for a call's message (M117: its card) or a card the sender removed.
+    private var cardLinks: MessageLinkCards.Selection { MessageLinkCards.of(message, base: controller.api?.baseUrl) }
+
+    /// The link a preview card is shown for (M11g).
+    private var previewLink: String? { cardLinks.external }
 
     /// 「プレビューを表示」 was tapped on this message.
     private var revealed: Bool { controller.revealedPreviews.contains(message.id) }
@@ -1252,11 +1249,30 @@ struct MessageRow: View {
                                        inlineOnly: Array(driveIds.dropFirst(DriveLink.cardLimit)))
                     }
                 }
-                if let link = previewLink {
+                let cards = cardLinks
+                // M185: the linked messages' cards (asked for by the row, below); the sender or an administrator removes
+                // one from the message's long press (VoiceOver: the card's action).
+                if !cards.messages.isEmpty {
+                    let removable = controller.canRemovePreviews(message, readOnly: readOnly)
+                    VStack(alignment: .leading, spacing: 6) {
+                        ForEach(cards.messages, id: \.id) { card in
+                            MessageLinkCard(controller: controller, messageId: card.id,
+                                            onRemove: removable ? { Task { await controller.setPreviewHidden(message, url: card.url, hidden: true) } } : nil)
+                        }
+                    }
+                    .padding(.top, 2)
+                }
+                if let link = cards.external {
                     if loadsPreview {
                         // The card's frame from the start, so the row does not grow when the preview comes (LinkPreviewSlot).
                         switch controller.linkPreviewSlot(link) {
-                        case .card(let preview): LinkPreviewCard(preview: preview, url: link)
+                        case .card(let preview):
+                            LinkPreviewCard(preview: preview, url: link)
+                                .accessibilityActions {
+                                    if controller.canRemovePreviews(message, readOnly: readOnly) {
+                                        Button("プレビューを削除") { Task { await controller.setPreviewHidden(message, url: link, hidden: true) } }
+                                    }
+                                }
                         case .placeholder: LinkPreviewCard(preview: nil, url: link)
                         // Asked for by hand and the page gives none: the plain link stays, without the button.
                         case .none: if revealed { LinkPreviewOffer(url: link, offer: false) {} }
@@ -1360,6 +1376,10 @@ struct MessageRow: View {
         // card ever showed (audit 2026-09-30).
         // Only for a link whose preview the row may ask for (LinkPreviewRules; a bot's after 「プレビューを表示」).
         .task(id: loadsPreview ? previewLink : nil) { if loadsPreview, let previewLink { await controller.loadLinkPreview(previewLink) } }
+        // M185 (docs/LINK_PREVIEWS.md §3.3): the linked messages' cards, asked for as the row comes on screen (the cards
+        // asked within a moment go in one request), and again when drawn after the answer went stale. By the row for
+        // the same reason as the preview: a card that failed shows nothing to run a task on.
+        .task(id: cardLinks.messages.map(\.id)) { for card in cardLinks.messages { controller.requestMessagePreview(card.id) } }
         // Slack: a tap opens the thread (in the channel); the links, buttons, name and pictures in the row keep their
         // own taps.
         .onTapGesture(perform: tapped)

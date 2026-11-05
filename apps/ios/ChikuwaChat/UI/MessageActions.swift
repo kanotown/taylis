@@ -461,6 +461,25 @@ struct MessageActionsSheet: View {
                 row(message.pinnedAt != nil ? tr("ピン留めを外す") : tr("チャンネルにピン留め"), message.pinnedAt != nil ? "pin.slash" : "pin") {
                     run { await controller.togglePin(message) }
                 }
+                // M185 (docs/LINK_PREVIEWS.md §4.3): the sender or an administrator removes a card for everyone, at once
+                // (the toast has 「元に戻す」); with several cards, the one chosen.
+                let cards = controller.canRemovePreviews(message, readOnly: false) ? controller.shownCards(message) : []
+                if cards.count == 1, let only = cards.first {
+                    row(tr("プレビューを削除"), "xmark.rectangle") {
+                        run { await controller.setPreviewHidden(message, url: only.url, hidden: true) }
+                    }
+                } else if cards.count > 1 {
+                    Menu {
+                        ForEach(cards, id: \.url) { card in
+                            Button(card.label) { run { await controller.setPreviewHidden(message, url: card.url, hidden: true) } }
+                        }
+                    } label: {
+                        VStack(spacing: 0) {
+                            rowLabel(tr("プレビューを削除"), "xmark.rectangle").foregroundStyle(Color.primary)
+                            Divider().padding(.leading, 56)
+                        }
+                    }
+                }
                 // M104 (MODERATION.md §3): someone else's stored message.
                 if Moderation.canReport(message, meId: store.me?.id) {
                     row(tr("報告する"), "flag") { then(.report) }

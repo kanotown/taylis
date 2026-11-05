@@ -428,6 +428,16 @@ final class FakeServer {
         return updated
     }
 
+    /// M185: the sender removed (or brought back) a link's card: a new seq and message.updated (change=previews).
+    @discardableResult
+    func setHiddenPreviews(channelId: String, messageId: String, _ keys: [String]) -> MessageOut? {
+        guard let message = channels[channelId]?.messages.first(where: { $0.id == messageId }) else { return nil }
+        var updated = rebuild(message, updatedSeq: bumpSeq(channelId))
+        updated.hiddenPreviews = keys
+        replace(channelId, updated, event: "message.updated", change: "previews")
+        return updated
+    }
+
     /// user → saved message ids, newest first.
     var bookmarks: [String: [String]] = [:]
     /// Custom emoji by name (M12f); everyone gets emoji.updated.
@@ -1030,7 +1040,7 @@ final class FakeServer {
                    body: body ?? m.body, createdAt: m.createdAt, editedAt: editedAt ?? m.editedAt, deleted: deleted ?? m.deleted, type: m.type,
                    mentionedUserIds: mentionedUserIds ?? m.mentionedUserIds, mentionAll: mentionAll ?? m.mentionAll, reactions: reactions ?? m.reactions,
                    parentId: m.parentId, replyCount: replyCount ?? m.replyCount, lastReplyAt: lastReplyAt ?? m.lastReplyAt, attachments: m.attachments,
-                   pinnedAt: m.pinnedAt, pinnedBy: m.pinnedBy, collection: m.collection)
+                   pinnedAt: m.pinnedAt, pinnedBy: m.pinnedBy, collection: m.collection, hiddenPreviews: m.hiddenPreviews)
     }
 
     private func replace(_ channelId: String, _ updated: MessageOut, event: String, change: String? = nil) {
