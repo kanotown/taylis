@@ -4117,6 +4117,14 @@
                 ],
                 "title": "Edited At"
               },
+              "hidden_previews": {
+                "default": [],
+                "items": {
+                  "type": "string"
+                },
+                "title": "Hidden Previews",
+                "type": "array"
+              },
               "id": {
                 "format": "uuid",
                 "title": "Id",
@@ -5365,6 +5373,14 @@
                   }
                 ],
                 "title": "Edited At"
+              },
+              "hidden_previews": {
+                "default": [],
+                "items": {
+                  "type": "string"
+                },
+                "title": "Hidden Previews",
+                "type": "array"
               },
               "id": {
                 "format": "uuid",
@@ -6616,6 +6632,14 @@
                 ],
                 "title": "Edited At"
               },
+              "hidden_previews": {
+                "default": [],
+                "items": {
+                  "type": "string"
+                },
+                "title": "Hidden Previews",
+                "type": "array"
+              },
               "id": {
                 "format": "uuid",
                 "title": "Id",
@@ -7311,7 +7335,8 @@
               "collection",
               "tasks",
               "attachments",
-              "call"
+              "call",
+              "previews"
             ],
             "title": "Change",
             "type": "string"

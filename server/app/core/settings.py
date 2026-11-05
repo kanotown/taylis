@@ -156,6 +156,9 @@ class Settings(BaseSettings):
     search_max_concurrent: int = 4
     # Link previews (M11g, SECURITY.md §14): bounded fetches of public pages, cached.
     link_preview_rate_limit_per_user: int = 60
+    # M185 (docs/LINK_PREVIEWS.md §3): POST /messages/previews per user per minute (each up to 20
+    # ids; the database only, nothing fetched outside).
+    message_preview_rate_limit_per_user: int = 120
     # SECURITY.md §5: posts per user per minute, and WebSocket sockets / attempts.
     message_rate_limit_per_user: int = 60
     # CANVAS.md §4.3: canvas saves (and creates, restores) per user per minute.

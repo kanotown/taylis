@@ -419,6 +419,66 @@ class MessageOut(BaseModel):
     # On a message that started a call (M130: POST /channels/{id}/huddle; M117's links are
     # `kind: "link"`); null otherwise and once deleted.
     call: MessageCallOut | None = None
+    # M185 (docs/LINK_PREVIEWS.md §4): the link cards its sender (or an administrator) removed for
+    # everyone, as normalized URLs; clients leave out a card whose link's key is here. Empty once
+    # deleted.
+    hidden_previews: list[str] = []
+
+
+# M185 (docs/LINK_PREVIEWS.md §3): how many messages one POST /messages/previews may ask about.
+MESSAGE_PREVIEW_BATCH = 20
+
+
+class MessagePreviewsIn(BaseModel):
+    """M185: the messages whose link cards a client is about to draw (the ids in `<server>/m/<id>`
+    links), each once; at most MESSAGE_PREVIEW_BATCH."""
+
+    ids: list[UUID] = Field(min_length=1, max_length=MESSAGE_PREVIEW_BATCH)
+
+
+class MessagePreviewOut(BaseModel):
+    """M185 (docs/LINK_PREVIEWS.md §3.2): one linked message as the caller may see it. `ok`: the
+    caller can read it (the same rule as GET /messages/{id}); `deleted`: they could, but it was
+    deleted; `unavailable`: anything else (no such message, a conversation they cannot read): no
+    other field is filled, so the card says nothing of the message, its author or conversation."""
+
+    id: UUID
+    state: Literal["ok", "deleted", "unavailable"]
+    channel_id: UUID | None = None
+    channel_type: Literal["public", "private", "dm", "group_dm"] | None = None
+    # A public or private channel's name; null for a DM (the caller is a member: clients name it
+    # from their own list of conversations).
+    channel_name: str | None = None
+    # A thread reply: its thread's parent (cards say 「スレッド」).
+    parent_id: UUID | None = None
+    sender_id: UUID | None = None
+    created_at: datetime | None = None
+    edited_at: datetime | None = None
+    # The body's first lines as written (markdown and mention tokens kept: clients render them
+    # like a one-line preview, per line), at most EXCERPT_LINES lines and EXCERPT_CHARS characters,
+    # never cutting a mention token; `excerpt_truncated` when something was left out.
+    excerpt: str = ""
+    excerpt_truncated: bool = False
+    attachment_count: int = 0
+    # The attachments' content types (at most 10), for 「画像を送信」-style words without a body.
+    attachment_types: list[str] = []
+    # The first photo (or video poster) the caller can load at GET /attachments/{id}/thumbnail.
+    thumbnail_attachment_id: UUID | None = None
+
+
+class MessagePreviewsOut(BaseModel):
+    """One item per distinct requested id, in the order asked."""
+
+    items: list[MessagePreviewOut]
+
+
+class PreviewHiddenIn(BaseModel):
+    """M185 (docs/LINK_PREVIEWS.md §4): remove (hidden true) or bring back a link's card. `url` is
+    the link as it is in the body; the server keeps its key (fragment dropped, scheme and host in
+    lower case)."""
+
+    url: str = Field(min_length=8, max_length=2048)
+    hidden: bool
 
 
 class MessageRevisionOut(BaseModel):
@@ -587,6 +647,7 @@ def to_message_out(
         if deleted or message.workflow_id is None
         else MessageWorkflowOut(id=message.workflow_id, name=message.workflow_name or ""),
         call=None if deleted else call_out(message, call),
+        hidden_previews=[] if deleted else list(message.hidden_previews or []),
     )
 
 

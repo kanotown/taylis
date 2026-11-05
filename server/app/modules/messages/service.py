@@ -25,6 +25,7 @@ from app.modules.channels.schemas import LastMessageOut
 from app.modules.drive import channel_files
 from app.modules.drive.schemas import DriveMessageFilesOut
 from app.modules.groups import service as groups
+from app.modules.messages import link_cards
 from app.modules.messages import repository as repo
 from app.modules.messages.events import (
     MESSAGE_CREATED,
@@ -581,6 +582,11 @@ async def edit_message(
         db, message.channel_id, message.sender_id, data.body, message.mentioned_user_ids
     )
     message.edited_at = now
+    if message.hidden_previews:
+        # M185: a removed card stays removed while its link is in the body; one the edit took out
+        # is forgotten (it would come back with the link, as a new card).
+        present = link_cards.link_keys(data.body)
+        message.hidden_previews = [k for k in message.hidden_previews if k in present]
     message.updated_seq = seq
     await db.flush()
     out = await message_out(db, message)
@@ -720,6 +726,46 @@ async def list_revisions(
         MessageRevisionOut(body=r.body, written_at=r.written_at, replaced_at=r.replaced_at)
         for r in await repo.revisions_for(db, message.id)
     ]
+
+
+async def set_preview_hidden(
+    db: AsyncSession, actor: User, message_id: uuid.UUID, url: str, *, hidden: bool
+) -> MessageOut:
+    """M185 (docs/LINK_PREVIEWS.md §4): remove a link's card from a message for everyone, or bring
+    it back. The sender, or an administrator (channels.moderate, as for deleting it); a member of
+    the conversation, not archived, not a system message. Idempotent: the same state again changes
+    nothing and announces nothing; a change takes a seq and sends message.updated (change
+    "previews") so every client drops (or draws) the card."""
+    message = await _require_live_message(db, actor, message_id)
+    _require_user_message(message)
+    if message.sender_id != actor.id and not has_capability(actor, "channels.moderate"):
+        raise forbidden(
+            "not_message_owner", "Only the author or an admin can remove a message's previews"
+        )
+    key = link_cards.preview_key(url)
+    present = link_cards.link_keys(message.body)
+    if key is None or (hidden and key not in present):
+        raise bad_request("preview_not_in_message", "This message has no such link")
+    current = list(message.hidden_previews or [])
+    if (key in current) == hidden:
+        return await message_out(db, message, actor.id)
+    seq = await repo.allocate_seq(db, message.channel_id, touch_last_message=False)
+    # Keys of links an edit took out go too (the list never outgrows the body's links).
+    kept = [k for k in current if k != key and k in present]
+    message.hidden_previews = [*kept, key] if hidden else kept
+    message.updated_seq = seq
+    await db.flush()
+    out = await message_out(db, message)
+    await write_outbox(
+        db,
+        event_type=MESSAGE_UPDATED,
+        audience_type="channel",
+        channel_id=message.channel_id,
+        seq=seq,
+        payload=MessageUpdatedData(message=out, change="previews").model_dump(mode="json"),
+    )
+    await db.commit()
+    return out
 
 
 async def _bump_and_announce(

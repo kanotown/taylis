@@ -5,19 +5,19 @@ import { afterEach, describe, expect, it, vi } from "vitest";
 import type { LinkPreviewOut, UserMe } from "../src/api/types";
 import type { AppController } from "../src/state/app";
 import { Store } from "../src/sync/store";
-import { firstLink } from "../src/ui/links";
+import { cardLinks } from "../src/ui/links";
 import { Timeline } from "../src/ui/Timeline";
 import { FakeServer } from "./fakeServer";
 
 // Called once per row render: counts how many rows a change re-rendered.
 vi.mock("../src/ui/links", async (importOriginal) => {
   const actual = await importOriginal<typeof import("../src/ui/links")>();
-  return { ...actual, firstLink: vi.fn(actual.firstLink) };
+  return { ...actual, cardLinks: vi.fn(actual.cardLinks) };
 });
 
 afterEach(() => {
   cleanup();
-  vi.mocked(firstLink).mockClear();
+  vi.mocked(cardLinks).mockClear();
 });
 
 /** A channel of 30 messages from bob (one with a link), shown like the app: re-rendered on every store or controller change. */
@@ -85,7 +85,7 @@ function world() {
     return <Timeline controller={controller as unknown as AppController} channel={store.getChannel(channel.id)!} onOpenThread={() => {}} />;
   }
   render(<View />);
-  vi.mocked(firstLink).mockClear();
+  vi.mocked(cardLinks).mockClear();
   return { server, me, bob, channel, other, store, controller, posted };
 }
 
@@ -98,13 +98,13 @@ describe("memoized message rows (M21)", () => {
       w.store.updateChannel(w.other.id, { unreadCount: 3 });
       w.controller.emit();
     });
-    expect(firstLink).not.toHaveBeenCalled();
+    expect(cardLinks).not.toHaveBeenCalled();
 
     const target = w.posted[10]!;
     act(() => {
       w.store.upsertMessage({ ...target, reactions: [{ emoji: "👍", count: 1, user_ids: [w.me.id] }], updated_seq: target.updated_seq + 100 });
     });
-    expect(vi.mocked(firstLink).mock.calls.map(([body]) => body)).toEqual([target.body]);
+    expect(vi.mocked(cardLinks).mock.calls.map(([body]) => body)).toEqual([target.body]);
     expect(document.querySelector(`[data-reacted-by="${w.me.display_name}"]`)!.textContent).toContain("👍");
   });
 

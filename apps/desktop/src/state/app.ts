@@ -23,7 +23,7 @@ import { localZone } from "../ui/calendarDates";
 import { ApiError, describeError, describeFeatureError, NetworkError, UserMessageError } from "../api/errors";
 import { hostLabel, isServerInfo, loadWorkspaces, moveWorkspace, normalizeServerUrl, sameServer, saveWorkspaces as persistWorkspaces, signInName, type WorkspaceEntry } from "./workspaces";
 import type { DriveItemDetailOut, DriveMessageFileOut, DriveReachOut } from "../api/types";
-import type { AttachmentOut, AuthMethodsOut, CalendarEventOut, PollAnswer, PollAnswersIn, ScheduleSlotIn, CanvasMeta, CanvasOut, CanvasPage, CanvasRevisionMeta, CanvasRevisionOut, CanvasRevisionPage, CanvasTemplateOut, CustomEmojiOut, CustomEmojiUpdate, EmojiPackImportOut, TextEmojiCreate, InvitePreviewOut, LinkPreviewOut, MemberOut, MemberRole, MessageOut, NotificationLevel, PoolCreate, PoolOut, PoolUpdate, PostingPolicy, ReadAllScope, ReminderOut, ScheduledOut, ServerInfoOut, SessionOut, DefaultSectionKey, SidebarSectionOut, SidebarSort, TaskOut, TemplateCreate, TemplateOut, TemplateUpdate, TokenResponse, TotpEnabledOut, TotpSetupOut, TotpStatusOut, UserMe, UserUpdate, MyLabProfileUpdate, PresenceUpdate } from "../api/types";
+import type { AttachmentOut, AuthMethodsOut, CalendarEventOut, PollAnswer, PollAnswersIn, ScheduleSlotIn, CanvasMeta, CanvasOut, CanvasPage, CanvasRevisionMeta, CanvasRevisionOut, CanvasRevisionPage, CanvasTemplateOut, CustomEmojiOut, CustomEmojiUpdate, EmojiPackImportOut, TextEmojiCreate, InvitePreviewOut, LinkPreviewOut, MemberOut, MemberRole, MessageOut, MessagePreviewOut, NotificationLevel, PoolCreate, PoolOut, PoolUpdate, PostingPolicy, ReadAllScope, ReminderOut, ScheduledOut, ServerInfoOut, SessionOut, DefaultSectionKey, SidebarSectionOut, SidebarSort, TaskOut, TemplateCreate, TemplateOut, TemplateUpdate, TokenResponse, TotpEnabledOut, TotpSetupOut, TotpStatusOut, UserMe, UserUpdate, MyLabProfileUpdate, PresenceUpdate } from "../api/types";
 import { canOpenDownloaded, openDownloaded, revealDownloaded, saveDownload } from "../platform/download";
 import { browserDownload, downloadRoute, saveStreamToFile, ticketUrl } from "../drive/download";
 import { driveFileOf } from "../drive/listing";
@@ -88,6 +88,17 @@ async function withDeadline(work: Promise<unknown>, ms: number, onTimeout: () =>
 
 /** A notice's button: its label and what it does (the toast closes after). */
 export type NoticeAction = { label: string; run: () => void };
+
+/** M185 (docs/LINK_PREVIEWS.md §3): a linked message's card as last read, and when (ms). `preview` null: the read failed. */
+export interface MessagePreviewEntry {
+  preview: MessagePreviewOut | null;
+  at: number;
+}
+/** How long a card is shown as read before a new look reads it again (an edit of the linked message), and a failure waits. */
+export const MESSAGE_PREVIEW_TTL_MS = 5 * 60_000;
+export const MESSAGE_PREVIEW_RETRY_MS = 60_000;
+/** Ids per POST /messages/previews (the server's MESSAGE_PREVIEW_BATCH). */
+export const MESSAGE_PREVIEW_BATCH = 20;
 
 /**
  * A download's toast (docs/PREVIEWS.md §9): the bytes so far while it comes in, then 「ダウンロードしました：名前」 with
@@ -934,6 +945,75 @@ export class AppController {
       });
     this.previewLoads.set(url, load);
     return undefined;
+  }
+
+  // --- message link cards (M185, docs/LINK_PREVIEWS.md §3) ------------------------------------
+
+  /** What the server said of each linked message, and when (`preview` null: the request failed, asked again later). */
+  readonly messagePreviews = new Map<string, MessagePreviewEntry>();
+  private readonly messagePreviewQueue = new Set<string>();
+  private readonly messagePreviewLoading = new Set<string>();
+  private messagePreviewTimer: ReturnType<typeof setTimeout> | null = null;
+  private readonly messagePreviewListeners = new Set<() => void>();
+
+  subscribeMessagePreviews(listener: () => void): () => void {
+    this.messagePreviewListeners.add(listener);
+    return () => this.messagePreviewListeners.delete(listener);
+  }
+
+  /**
+   * A card asks for its linked message (once it comes near the screen). Unknown, stale (MESSAGE_PREVIEW_TTL_MS: an edit
+   * shows on the next look) or failed a while ago: queued, and the cards asking within a moment go in one request (up
+   * to MESSAGE_PREVIEW_BATCH ids each). A stale card stays on screen while it is read again.
+   */
+  requestMessagePreview(id: string): void {
+    const held = this.messagePreviews.get(id);
+    if (held && Date.now() - held.at < (held.preview ? MESSAGE_PREVIEW_TTL_MS : MESSAGE_PREVIEW_RETRY_MS)) return;
+    if (!this.api || this.messagePreviewLoading.has(id)) return;
+    this.messagePreviewQueue.add(id);
+    this.messagePreviewTimer ??= setTimeout(() => {
+      this.messagePreviewTimer = null;
+      void this.flushMessagePreviews();
+    }, 30);
+  }
+
+  private async flushMessagePreviews(): Promise<void> {
+    const api = this.api;
+    if (!api) return;
+    const ids = [...this.messagePreviewQueue];
+    this.messagePreviewQueue.clear();
+    for (let start = 0; start < ids.length; start += MESSAGE_PREVIEW_BATCH) {
+      const batch = ids.slice(start, start + MESSAGE_PREVIEW_BATCH);
+      for (const id of batch) this.messagePreviewLoading.add(id);
+      try {
+        const answer = await api.messagePreviews(batch);
+        const at = Date.now();
+        for (const item of answer.items) this.messagePreviews.set(item.id, { preview: item, at });
+      } catch {
+        // Rate limited or offline: no card for now (the link itself still opens the message); asked again later.
+        const at = Date.now();
+        for (const id of batch) if (!this.messagePreviews.get(id)?.preview) this.messagePreviews.set(id, { preview: null, at });
+      } finally {
+        for (const id of batch) this.messagePreviewLoading.delete(id);
+        for (const listener of this.messagePreviewListeners) listener();
+      }
+    }
+  }
+
+  /**
+   * M185 (§4): remove a link's card from my message for everyone (or bring it back). The answer (a new updated_seq)
+   * replaces the row here; message.updated brings it to everyone else. Removing says so with 「元に戻す」.
+   */
+  async setPreviewHidden(message: Pick<MessageState, "id">, url: string, hidden: boolean): Promise<boolean> {
+    if (!this.api) return false;
+    try {
+      this.store.upsertMessage(await this.api.setPreviewHidden(message.id, url, hidden));
+      if (hidden) this.setNotice(t("linkCards.removed"), { label: t("linkCards.undo"), run: () => void this.setPreviewHidden(message, url, false) });
+      return true;
+    } catch (error) {
+      this.setError(error);
+      return false;
+    }
   }
 
   /** M11c: any member pins / unpins; the updated message (with pinned_at) replaces the row. */

@@ -646,6 +646,7 @@ export class FakeServer {
       deleted: false,
       pinned_at: null,
       pinned_by: null,
+      hidden_previews: [],
       ...(options.systemEvent ? { system_event: options.systemEvent } : {}),
     };
     if (options.poll) {

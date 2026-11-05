@@ -1,0 +1,102 @@
+{
+  "_comment": "M185 (docs/LINK_PREVIEWS.md §2, §4.1): the link cards under a message, the same on the three clients. keys: a link's key for MessageOut.hidden_previews (scheme and host in lower case, fragment dropped, '/' for an empty path, the rest as written; null for anything but http(s)); the server's link_cards.preview_key gives the same. cards: which cards a message shows (the clients' rule, base_url being the server the app is logged into): `messages` are the message links' cards (each linked message once, at most 3, not the message itself, the URL of its first link), `external` the link that gets the Open Graph card (the first link that is not a message or drive link of this server; none when the message announces a call); links in code count for nothing; a card whose link's key is in `hidden` is left out and nothing takes its place. Server: tests/test_message_link_cards.py (keys); Desktop / Web: tests/messageLinkCards.test.tsx (both); iOS and Android read both.",
+  "base_url": "https://chat.example.com",
+  "keys": [
+    { "url": "HTTPS://Example.COM/Path?Q=1#frag", "key": "https://example.com/Path?Q=1" },
+    { "url": "http://example.com", "key": "http://example.com/" },
+    { "url": "http://example.com?x=1", "key": "http://example.com/?x=1" },
+    { "url": "  https://example.com:8443/a  ", "key": "https://example.com:8443/a" },
+    { "url": "https://Chat.Example.com/m/0190A1B2-0000-7000-8000-00000000000A#reply", "key": "https://chat.example.com/m/0190A1B2-0000-7000-8000-00000000000A" },
+    { "url": "https://ja.wikipedia.org/wiki/竹輪", "key": "https://ja.wikipedia.org/wiki/竹輪" },
+    { "url": "ftp://example.com/", "key": null },
+    { "url": "javascript:alert(1)", "key": null },
+    { "url": "https://example.com/a b", "key": null },
+    { "url": "https://", "key": null }
+  ],
+  "cards": [
+    {
+      "name": "an external link only (M11g as before)",
+      "body": "see https://example.com/a?b=1, then https://other.test",
+      "messages": [],
+      "external": "https://example.com/a?b=1"
+    },
+    {
+      "name": "a message link and an external link: both cards",
+      "body": "前の話 https://chat.example.com/m/0190a1b2-0000-7000-8000-00000000000a と https://example.com/x。",
+      "messages": [{ "id": "0190a1b2-0000-7000-8000-00000000000a", "url": "https://chat.example.com/m/0190a1b2-0000-7000-8000-00000000000a" }],
+      "external": "https://example.com/x"
+    },
+    {
+      "name": "each message once, at most three",
+      "body": "https://chat.example.com/m/0190a1b2-0000-7000-8000-00000000000a https://chat.example.com/m/0190a1b2-0000-7000-8000-00000000000b?thread=1 https://chat.example.com/m/0190a1b2-0000-7000-8000-00000000000a https://chat.example.com/m/0190a1b2-0000-7000-8000-00000000000c https://chat.example.com/m/0190a1b2-0000-7000-8000-00000000000d",
+      "messages": [
+        { "id": "0190a1b2-0000-7000-8000-00000000000a", "url": "https://chat.example.com/m/0190a1b2-0000-7000-8000-00000000000a" },
+        { "id": "0190a1b2-0000-7000-8000-00000000000b", "url": "https://chat.example.com/m/0190a1b2-0000-7000-8000-00000000000b?thread=1" },
+        { "id": "0190a1b2-0000-7000-8000-00000000000c", "url": "https://chat.example.com/m/0190a1b2-0000-7000-8000-00000000000c" }
+      ],
+      "external": null
+    },
+    {
+      "name": "not the message itself",
+      "self_id": "0190a1b2-0000-7000-8000-00000000000a",
+      "body": "https://chat.example.com/m/0190a1b2-0000-7000-8000-00000000000a https://chat.example.com/m/0190a1b2-0000-7000-8000-00000000000b",
+      "messages": [{ "id": "0190a1b2-0000-7000-8000-00000000000b", "url": "https://chat.example.com/m/0190a1b2-0000-7000-8000-00000000000b" }],
+      "external": null
+    },
+    {
+      "name": "the host in another case, an id in capitals, a markdown label",
+      "body": "[前の話](https://CHAT.EXAMPLE.COM/m/0190A1B2-0000-7000-8000-00000000000A)",
+      "messages": [{ "id": "0190a1b2-0000-7000-8000-00000000000a", "url": "https://CHAT.EXAMPLE.COM/m/0190A1B2-0000-7000-8000-00000000000A" }],
+      "external": null
+    },
+    {
+      "name": "another server's message link is an external link",
+      "body": "https://other.example.com/m/0190a1b2-0000-7000-8000-00000000000a",
+      "messages": [],
+      "external": "https://other.example.com/m/0190a1b2-0000-7000-8000-00000000000a"
+    },
+    {
+      "name": "a drive link has its own card: the next link gets the Open Graph card",
+      "body": "https://chat.example.com/d/0190a1b2-0000-7000-8000-0000000000d1 と https://example.com/",
+      "messages": [],
+      "external": "https://example.com/"
+    },
+    {
+      "name": "a call's message: no Open Graph card",
+      "call": true,
+      "body": "https://meet.example.com/room",
+      "messages": [],
+      "external": null
+    },
+    {
+      "name": "links in code are no cards",
+      "body": "`https://chat.example.com/m/0190a1b2-0000-7000-8000-00000000000a` and ```\nhttps://example.com/\n```",
+      "messages": [],
+      "external": null
+    },
+    {
+      "name": "removed cards: by key (host case, fragment)",
+      "hidden": ["https://example.com/page", "https://chat.example.com/m/0190a1b2-0000-7000-8000-00000000000b"],
+      "body": "https://chat.example.com/m/0190a1b2-0000-7000-8000-00000000000a https://chat.example.com/m/0190a1b2-0000-7000-8000-00000000000b https://Example.com/page#top",
+      "messages": [{ "id": "0190a1b2-0000-7000-8000-00000000000a", "url": "https://chat.example.com/m/0190a1b2-0000-7000-8000-00000000000a" }],
+      "external": null
+    },
+    {
+      "name": "a removed card leaves its place empty",
+      "hidden": ["https://one.example/"],
+      "body": "https://one.example/ https://two.example/ https://chat.example.com/m/0190a1b2-0000-7000-8000-00000000000a https://chat.example.com/m/0190a1b2-0000-7000-8000-00000000000b https://chat.example.com/m/0190a1b2-0000-7000-8000-00000000000c https://chat.example.com/m/0190a1b2-0000-7000-8000-00000000000d",
+      "messages": [
+        { "id": "0190a1b2-0000-7000-8000-00000000000a", "url": "https://chat.example.com/m/0190a1b2-0000-7000-8000-00000000000a" },
+        { "id": "0190a1b2-0000-7000-8000-00000000000b", "url": "https://chat.example.com/m/0190a1b2-0000-7000-8000-00000000000b" },
+        { "id": "0190a1b2-0000-7000-8000-00000000000c", "url": "https://chat.example.com/m/0190a1b2-0000-7000-8000-00000000000c" }
+      ],
+      "external": null
+    },
+    {
+      "name": "trailing punctuation is not part of the link",
+      "body": "これを見て：https://chat.example.com/m/0190a1b2-0000-7000-8000-00000000000a。",
+      "messages": [{ "id": "0190a1b2-0000-7000-8000-00000000000a", "url": "https://chat.example.com/m/0190a1b2-0000-7000-8000-00000000000a" }],
+      "external": null
+    }
+  ]
+}

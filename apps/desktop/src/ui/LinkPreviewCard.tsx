@@ -1,6 +1,8 @@
+import { X } from "lucide-react";
 import { useCallback, useEffect, useRef, useState, useSyncExternalStore } from "react";
 
 import { openExternalLink } from "../platform/external";
+import { cn } from "./primitives";
 import type { AppController } from "../state/app";
 import type { Store } from "../sync/store";
 import { t } from "../i18n";
@@ -26,7 +28,7 @@ export function autoLinkPreview(store: Pick<Store, "aiStatus" | "aiAgentOf" | "u
  * viewport: 「最初の未読へ」 can add 800 rows at once, and asking for all of them hits the server's rate limit (429),
  * after which no card shows for the rest of the session (SYNC_PROTOCOL.md §10.1 6.).
  */
-export function LinkPreviewCard({ controller, url, auto = true }: { controller: AppController; url: string; auto?: boolean }) {
+export function LinkPreviewCard({ controller, url, auto = true, onRemove }: { controller: AppController; url: string; auto?: boolean; onRemove?: () => void }) {
   // Its own subscription (M21): the rows are memoized, and a preview arriving re-renders only the cards.
   const subscribe = useCallback((listener: () => void) => controller.subscribeLinkPreviews(listener), [controller]);
   // undefined: not fetched yet; null: the page had no preview.
@@ -72,21 +74,45 @@ export function LinkPreviewCard({ controller, url, auto = true }: { controller: 
   if (!known) return <span ref={probe} aria-hidden className="block h-0" />;
   if (!preview) return null;
   return (
-    <a
-      href={preview.url}
-      target="_blank"
-      rel="noreferrer noopener"
-      onClick={(event) => openExternalLink(event, preview.url)}
-      // A plain outlined card, the site first (tester, 2026-09-30: the accent bar at the left looked "AI-like").
-      className="mt-1.5 flex max-w-xl gap-3 rounded-lg border border-line px-3 py-2.5 text-sm no-underline transition-colors hover:bg-panel"
+    // M185 (docs/LINK_PREVIEWS.md §4): the sender's × sits beside the link, not in it.
+    <div data-link-card={url} className="group/card relative mt-1.5 max-w-xl">
+      <a
+        href={preview.url}
+        target="_blank"
+        rel="noreferrer noopener"
+        onClick={(event) => openExternalLink(event, preview.url)}
+        // A plain outlined card, the site first (tester, 2026-09-30: the accent bar at the left looked "AI-like").
+        className={cn("flex gap-3 rounded-lg border border-line px-3 py-2.5 text-sm no-underline transition-colors hover:bg-panel", onRemove && "pr-8")}
+      >
+        <div className="min-w-0 flex-1">
+          <div className="truncate text-xs text-muted">{preview.site_name || hostOf(preview.url)}</div>
+          {preview.title && <div className="mt-0.5 line-clamp-2 font-semibold text-ink">{preview.title}</div>}
+          {preview.description && <div className="mt-0.5 line-clamp-2 text-[13px] text-muted">{preview.description}</div>}
+        </div>
+        {preview.image_url && <img src={preview.image_url} alt="" loading="lazy" className="h-16 w-16 shrink-0 rounded-md object-cover" />}
+      </a>
+      {onRemove && <RemoveCardButton onRemove={onRemove} />}
+    </div>
+  );
+}
+
+/** M185 (docs/LINK_PREVIEWS.md §4): a card's × (only for whoever may remove it): on hover or focus with a mouse, always on a touch screen. */
+export function RemoveCardButton({ onRemove }: { onRemove: () => void }) {
+  return (
+    <button
+      type="button"
+      data-remove-preview=""
+      aria-label={t("linkCards.remove")}
+      title={t("linkCards.removeHint")}
+      className="absolute right-1 top-1 flex h-6 w-6 items-center justify-center rounded-md border border-line bg-canvas text-muted opacity-0 shadow-sm transition-opacity hover:text-ink focus-visible:opacity-100 group-focus-within/card:opacity-100 group-hover/card:opacity-100 [@media(hover:none)]:opacity-100"
+      onClick={(event) => {
+        event.preventDefault();
+        event.stopPropagation();
+        onRemove();
+      }}
     >
-      <div className="min-w-0 flex-1">
-        <div className="truncate text-xs text-muted">{preview.site_name || hostOf(preview.url)}</div>
-        {preview.title && <div className="mt-0.5 line-clamp-2 font-semibold text-ink">{preview.title}</div>}
-        {preview.description && <div className="mt-0.5 line-clamp-2 text-[13px] text-muted">{preview.description}</div>}
-      </div>
-      {preview.image_url && <img src={preview.image_url} alt="" loading="lazy" className="h-16 w-16 shrink-0 rounded-md object-cover" />}
-    </a>
+      <X size={14} aria-hidden="true" />
+    </button>
   );
 }
 
