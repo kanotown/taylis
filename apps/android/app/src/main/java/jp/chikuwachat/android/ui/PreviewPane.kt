@@ -68,9 +68,12 @@ fun PreviewPane(controller: AppController, channelId: String, version: Int, onOp
     // M28c: a failed older page offers 「再読み込み」 instead of spinning for good (the effect only ran again on a new row).
     var olderFailed by remember(channelId) { mutableStateOf(false) }
     var olderAttempt by remember(channelId) { mutableIntStateOf(0) }
-    // A link's message (or its thread's parent) centred once its rows are there.
-    LaunchedEffect(channelId, focus?.messageId, items.isEmpty()) {
-        val id = focus?.let { it.parentId ?: it.messageId } ?: return@LaunchedEffect
+    // A link's message (or its thread's parent) centred once its rows are there. Keyed on the request, not the id: the
+    // same link tapped again after scrolling away shows the message again (2026-11-05, as in a member's conversation).
+    LaunchedEffect(channelId, focus?.request, items.isEmpty()) {
+        // 「最新の会話へ」 (the focus gone): the newest rows, as in a member's conversation. The list stayed where the
+        // linked message had been centred, among the oldest rows (2026-11-05).
+        val id = focus?.let { it.parentId ?: it.messageId } ?: return@LaunchedEffect listState.scrollToItem(0)
         val index = Timeline.indexOf(items, id)
         if (index >= 0) listState.centerOn(index)
     }
@@ -151,8 +154,9 @@ fun PreviewThreadPane(controller: AppController, channelId: String, parentId: St
     LaunchedEffect(parentId, controller.engineStatus, repliesAttempt) {
         if (replies == null && controller.engineStatus == EngineStatus.ONLINE) repliesFailed = !controller.loadPreviewReplies(channelId, parentId)
     }
-    // A link to a reply: centred once the replies are there (the parent and the count line come first).
-    LaunchedEffect(parentId, focus?.messageId, replies == null) {
+    // A link to a reply: centred once the replies are there (the parent and the count line come first); again for the same
+    // link tapped again (the request).
+    LaunchedEffect(parentId, focus?.request, replies == null) {
         val index = replies?.indexOfFirst { it.id == focus?.messageId } ?: -1
         if (index >= 0) listState.centerOn(index + 2)
     }

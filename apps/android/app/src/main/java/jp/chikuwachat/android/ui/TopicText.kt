@@ -120,6 +120,31 @@ object TopicText {
 }
 
 /**
+ * A link of this server that this screen opens in the app ([TopicText.internal]): a page link needs the main screen's
+ * page links and an equipment link needs lending (else the browser takes them).
+ */
+fun inAppLink(controller: AppController, url: String, pageLinks: PageLinks?): TopicInternalLink? =
+    TopicText.internal(controller.serverBase, url)
+        ?.takeIf { (it !is TopicInternalLink.Page || pageLinks != null) && (it !is TopicInternalLink.Equipment || controller.store.lending != null) }
+
+/**
+ * Opens a link of this server in the app, as a message's links do: the topic's, and the conversation's pinned links
+ * (2026-11-05: those opened `/m/` and the other links of the server in the browser). False when it is not one
+ * ([inAppLink]): the caller hands it to the system.
+ */
+fun openInApp(controller: AppController, url: String, pageLinks: PageLinks?): Boolean {
+    when (val link = inAppLink(controller, url, pageLinks) ?: return false) {
+        is TopicInternalLink.Message -> controller.scope.launch { controller.openPermalink(link.id) }
+        is TopicInternalLink.Canvas -> controller.scope.launch { controller.openCanvasLink(link.id) }
+        is TopicInternalLink.Page -> pageLinks?.open?.invoke(link.id)
+        is TopicInternalLink.Event -> controller.scope.launch { controller.openEventLink(link.id) }
+        is TopicInternalLink.Drive -> controller.scope.launch { controller.openDriveLink(link.id) }
+        is TopicInternalLink.Equipment -> controller.openEquipmentLink(link.id)
+    }
+    return true
+}
+
+/**
  * A channel's topic as styled text ([TopicText.tokens]). `links`: the links take a tap (this server's open in the app,
  * the others in the browser or mail app); false draws them as their text only, for a place that is one tap target
  * itself (the conversation's app bar opens the details).
@@ -135,17 +160,6 @@ fun TopicLine(
     val linkColor = MaterialTheme.colorScheme.primary
     val codeBackground = MaterialTheme.colorScheme.surfaceVariant
     val pageLinks = LocalPageLinks.current
-    val base = controller.serverBase
-    fun open(link: TopicInternalLink) {
-        when (link) {
-            is TopicInternalLink.Message -> controller.scope.launch { controller.openPermalink(link.id) }
-            is TopicInternalLink.Canvas -> controller.scope.launch { controller.openCanvasLink(link.id) }
-            is TopicInternalLink.Page -> pageLinks?.open?.invoke(link.id)
-            is TopicInternalLink.Event -> controller.scope.launch { controller.openEventLink(link.id) }
-            is TopicInternalLink.Drive -> controller.scope.launch { controller.openDriveLink(link.id) }
-            is TopicInternalLink.Equipment -> controller.openEquipmentLink(link.id)
-        }
-    }
     val text: AnnotatedString = buildAnnotatedString {
         for (token in tokens) {
             when (token) {
@@ -156,11 +170,9 @@ fun TopicLine(
                 is TopicToken.Code -> withStyle(SpanStyle(fontFamily = CodeFont, fontSize = 0.9.em, background = codeBackground)) { append(" " + token.text + " ") }
                 is TopicToken.Link -> if (!links) append(token.shown) else {
                     val styles = TextLinkStyles(SpanStyle(color = linkColor, textDecoration = TextDecoration.Underline))
-                    val internal = TopicText.internal(base, token.url)
-                        // A page link needs the main screen's page links; equipment links need lending (else the browser).
-                        ?.takeIf { (it !is TopicInternalLink.Page || pageLinks != null) && (it !is TopicInternalLink.Equipment || store.lending != null) }
-                    if (internal != null) withLink(LinkAnnotation.Clickable(token.url, styles) { open(internal) }) { append(token.shown) }
-                    else withLink(LinkAnnotation.Url(token.url, styles)) { append(token.shown) }
+                    if (inAppLink(controller, token.url, pageLinks) != null) {
+                        withLink(LinkAnnotation.Clickable(token.url, styles) { openInApp(controller, token.url, pageLinks) }) { append(token.shown) }
+                    } else withLink(LinkAnnotation.Url(token.url, styles)) { append(token.shown) }
                 }
             }
         }

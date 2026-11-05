@@ -292,6 +292,23 @@ class MainTabsTest {
     }
 
     @Test
+    fun aMessageLinkFromAnotherTabOfTheSameConversationShowsItsMessages() {
+        // 2026-11-05: a /m/ link to a top-level message of the conversation on screen, tapped in its canvas, tasks, drive,
+        // pins or files tab or on its details page (no link context: PermalinkJump.Open) lands that conversation again;
+        // its 「メッセージ」 tab comes back (ChannelPane stays composed under the tabs and centres on the new request).
+        for (tab in listOf(ConversationTab.CANVAS, ConversationTab.TASKS, ConversationTab.DRIVE, ConversationTab.PINS, ConversationTab.FILES)) {
+            val covered = MainTabs.update(start) { MainNav.selectTab(MainNav.openConversation(it, "c1"), tab) }
+            assertEquals(Route.Channel("c1", tab = tab), MainTabs.stack(covered).last())
+            assertEquals(listOf(Route.ChannelList, Route.Channel("c1")), MainTabs.stack(MainTabs.land(covered, MainTab.HOME, "c1")))
+        }
+        val details = MainTabs.update(start) { MainNav.openDetails(MainNav.openConversation(it, "c1")) }
+        assertEquals(listOf(Route.ChannelList, Route.Channel("c1")), MainTabs.stack(MainTabs.land(details, MainTab.HOME, "c1")))
+        // A reply: its thread over the conversation, which is back on 「メッセージ」 under it.
+        val canvas = MainTabs.update(start) { MainNav.openCanvas(it, "c1", "cv1") }
+        assertEquals(listOf(Route.ChannelList, Route.Channel("c1"), Route.Thread("c1", "p1")), MainTabs.stack(MainTabs.land(canvas, MainTab.HOME, "c1", "p1")))
+    }
+
+    @Test
     fun aDmLandsOnTheDmTabAndAChannelOnHome() {
         assertEquals(MainTab.DM, MainTabs.landingTab(dm("d1")))
         assertEquals(MainTab.DM, MainTabs.landingTab(channel("g", "group_dm", users = listOf(me, "x", "y"))))

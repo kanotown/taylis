@@ -1,11 +1,18 @@
 package jp.chikuwachat.android
 
+import jp.chikuwachat.android.api.Codec
 import jp.chikuwachat.android.ui.MessageLinkContext
 import jp.chikuwachat.android.ui.Permalink
 import jp.chikuwachat.android.ui.PermalinkJump
+import kotlinx.serialization.json.JsonNull
+import kotlinx.serialization.json.jsonArray
+import kotlinx.serialization.json.jsonObject
+import kotlinx.serialization.json.jsonPrimitive
 import org.junit.Assert.assertEquals
 import org.junit.Assert.assertNull
+import org.junit.Assert.assertTrue
 import org.junit.Test
+import java.io.File
 
 class PermalinkTest {
     private val id = "01a0df3f-14b2-7d1a-8759-53c8a8d8a198"
@@ -53,5 +60,33 @@ class PermalinkTest {
         assertEquals(PermalinkJump.Open, PermalinkJump.of("c1", "r1", "p1", timeline)) // a reply opens its thread
         assertEquals(PermalinkJump.Open, PermalinkJump.of("c2", "m1", null, timeline))
         assertEquals(PermalinkJump.Open, PermalinkJump.of("c1", "m1", null, null)) // a canvas, the search
+    }
+
+    /**
+     * 2026-11-05: links to the server's things as every client recognises them (apps/shared/message-links.json): http and
+     * https alike, the default port written out or not, the server's path, the UUID then the end or `/` `?` `#`.
+     */
+    @Test fun theSharedLinkCases() {
+        val file = File("../../shared/message-links.json")
+        check(file.isFile) { "apps/shared/message-links.json not found from ${File("").absolutePath}" }
+        val cases = Codec.plain.parseToJsonElement(file.readText()).jsonObject["cases"]!!.jsonArray
+        assertTrue(cases.size > 20)
+        for (case in cases) {
+            val c = case.jsonObject
+            val name = c["name"]!!.jsonPrimitive.content
+            val base = c["base"]!!.jsonPrimitive.content
+            val url = c["url"]!!.jsonPrimitive.content
+            val expected = c["id"]!!.takeUnless { it is JsonNull }?.jsonPrimitive?.content
+            val actual = when (val kind = c["kind"]!!.jsonPrimitive.content) {
+                "m" -> Permalink.messageId(base, url)
+                "c" -> Permalink.canvasId(base, url)
+                "p" -> Permalink.pageId(base, url)
+                "e" -> Permalink.eventId(base, url)
+                "d" -> Permalink.driveId(base, url)
+                "eq" -> Permalink.equipmentId(base, url)
+                else -> error("unknown kind $kind")
+            }
+            assertEquals(name, expected, actual)
+        }
     }
 }

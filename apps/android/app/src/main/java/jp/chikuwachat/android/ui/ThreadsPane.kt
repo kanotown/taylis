@@ -348,6 +348,8 @@ private fun ThreadPreviewReply(reply: ThreadCardRules.Reply, controller: AppCont
                 Box(Modifier.heightIn(max = 84.dp).clipToBounds()) {
                     MessageBody(
                         message.body, store.users, groups = store.groups, internalBase = controller.serverBase,
+                        // A message link opens in the app, as in the thread itself; it went to the browser (2026-11-05).
+                        onOpenMessage = { id -> controller.scope.launch { controller.openPermalink(id) } },
                         customEmoji = store.customEmoji, emojiImages = store.emojiImages, emojiAnimations = store.emojiAnimations,
                         onNeedEmojiImage = { controller.loadEmojiImage(it) }, version = version,
                     )

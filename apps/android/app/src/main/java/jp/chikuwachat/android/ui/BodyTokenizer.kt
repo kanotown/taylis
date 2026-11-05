@@ -109,7 +109,7 @@ private val RULE_LINE = Regex("""^-{3,}\s*$""")
 // repetition of a group with alternatives, so `(?:\\.|[^$\n\\])*?` overflowed the stack on a formula of MATH_MAX_LENGTH+ chars.
 private const val INLINE =
     // i18n: keep (inline-format pattern)
-    """(\*\*((?:\\.|[^*\n\\])+?)\*\*)|(``(?!`)(?:[^`\n]|`(?!`))+?``(?!`)|`([^`\n]+)`)|(\*((?:\\.|[^*\n\\])+)\*)|((?<![\p{L}\p{N}_])_(?![\s\u3000_])((?:\\.|[^\n\\])*?(?:\\.|[^\s\u3000_\\]))_(?![\p{L}\p{N}_]))|(~~((?:\\.|[^~\n\\])+)~~)|(\[([^\]\n]+)\]\((https?://[^\s)]+)\))|(<@group:([0-9a-f-]{36})>)|(<@([0-9a-f-]{36})>)|(<!(channel|here)>)|(https?://[^\s<>]+)|(\\([_*~`$]))|([A-Za-z0-9._%+-]{1,64}@[A-Za-z0-9-]{1,63}(?:\.[A-Za-z0-9-]{1,63}){1,8}|¯\\_\(ツ\)_/¯)|(\$\$((?=[^$\n])[^$\n\\]*(?:\\.[^$\n\\]*)*)\$\$)|(\$(?![\s$])([^$\n\\]*(?:\\.[^$\n\\]*)*(?:(?<!\s)|(?<=\\\s)))\$(?![0-9A-Za-z]))"""
+    """(\*\*((?:\\.|[^*\n\\])+?)\*\*)|(``(?!`)(?:[^`\n]|`(?!`))+?``(?!`)|`([^`\n]+)`)|(\*((?:\\.|[^*\n\\])+)\*)|((?<![\p{L}\p{N}_])_(?![\s\u3000_])((?:\\.|[^\n\\])*?(?:\\.|[^\s\u3000_\\]))_(?![\p{L}\p{N}_]))|(~~((?:\\.|[^~\n\\])+)~~)|(\[([^\]\n]+)\]\((https?://[^\s)]+)\))|(<@group:([0-9a-f-]{36})>)|(<@([0-9a-f-]{36})>)|(<!(channel|here)>)|(https?://[^\s\p{Z}<>\u3000-\u303F\uFF00-\uFFEF]+)|(\\([_*~`$]))|([A-Za-z0-9._%+-]{1,64}@[A-Za-z0-9-]{1,63}(?:\.[A-Za-z0-9-]{1,63}){1,8}|¯\\_\(ツ\)_/¯)|(\$\$((?=[^$\n])[^$\n\\]*(?:\\.[^$\n\\]*)*)\$\$)|(\$(?![\s$])([^$\n\\]*(?:\\.[^$\n\\]*)*(?:(?<!\s)|(?<=\\\s)))\$(?![0-9A-Za-z]))"""
 private val INLINE_PATTERN = Regex(INLINE)
 
 /**
@@ -214,6 +214,33 @@ fun mathBlock(lines: List<String>, index: Int): Pair<String, Int>? {
     return null
 }
 
+/**
+ * 2026-11-05 (apps/shared/inline-format.json, markdown.ts bareUrl): what of a bare URL match is the URL. The match already
+ * stops at a space (any Unicode one: Java's `\s` is ASCII only), `<` `>` and the full-width / CJK marks (「」（）、。！？:
+ * Japanese puts them right after a URL); here a link to one of the server's things (`/m/` `/c/` `/p/` `/e/` `/d/` `/eq/`
+ * and a UUID) ends with its UUID unless `/` `?` `#` follows (`…/m/<id>を見て`), and closing punctuation (`.` `,` `)`
+ * without its `(` …) goes back to the text. Before, those stayed in the URL, so a message link was not recognised as one
+ * and opened in the browser (user report 2026-11-05).
+ */
+internal fun bareUrl(match: String): String {
+    OWN_LINK.find(match)?.let { return it.groupValues[1] }
+    var url = match
+    while (true) {
+        val last = url.lastOrNull() ?: return url
+        url = when {
+            last in CLOSING -> url.dropLast(1)
+            last == ')' && url.count { it == ')' } > url.count { it == '(' } -> url.dropLast(1)
+            last == ']' && url.count { it == ']' } > url.count { it == '[' } -> url.dropLast(1)
+            else -> return url
+        }
+    }
+}
+private val OWN_LINK = Regex(
+    """^(https?://\S*?/(?:m|c|p|e|d|eq)/[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12})(?![/?#])""",
+    RegexOption.IGNORE_CASE,
+)
+private const val CLOSING = ".,:;!?'\"…"
+
 private fun scan(body: String, pattern: Regex, withBlocks: Boolean): List<BodyToken> {
     val tokens = ArrayList<BodyToken>()
     fun text(value: String) {
@@ -223,7 +250,12 @@ private fun scan(body: String, pattern: Regex, withBlocks: Boolean): List<BodyTo
     }
     fun unescape(value: String) = ESCAPED.replace(value, "$1")
     var last = 0
-    for (match in pattern.findAll(body)) {
+    var from = 0
+    while (from <= body.length) {
+        val match = pattern.find(body, from) ?: break
+        from = match.range.last + 1
+        // An empty match cannot happen (every alternative takes a character), but never loop on one.
+        if (match.value.isEmpty()) from++
         text(body.substring(last, match.range.first))
         val g = match.groups
         fun group(index: Int): String? = g[if (withBlocks) index + 2 else index]?.value
@@ -238,7 +270,16 @@ private fun scan(body: String, pattern: Regex, withBlocks: Boolean): List<BodyTo
             group(14) != null -> tokens.add(BodyToken.MentionGroup(group(15) ?: ""))
             group(16) != null -> tokens.add(BodyToken.Mention(group(17) ?: ""))
             group(18) != null -> tokens.add(BodyToken.MentionAll(group(19) ?: ""))
-            group(20) != null -> tokens.add(BodyToken.Link(group(20) ?: ""))
+            group(20) != null -> {
+                // A bare URL leaves its closing marks to the text, which is read again after it (bareUrl).
+                val url = bareUrl(group(20) ?: "")
+                tokens.add(BodyToken.Link(url))
+                if (url.length < match.value.length) {
+                    last = match.range.first + url.length
+                    from = last
+                    continue
+                }
+            }
             group(21) != null -> text(group(22) ?: "")
             group(23) != null -> text(group(23) ?: "")
             group(24) != null || group(26) != null -> {
