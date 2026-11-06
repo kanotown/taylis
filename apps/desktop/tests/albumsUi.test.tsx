@@ -158,6 +158,20 @@ describe("the album screen", () => {
     await waitFor(() => expect(driveAlbum).toHaveBeenCalledTimes(2));
   });
 
+  it("the drop frame covers the album from outside the scrolling element", async () => {
+    const driveAlbum = vi.fn(async () => detail([photo("p0"), photo("p1")]));
+    const controller = controllerWith({ driveAlbum, driveChildren: vi.fn() });
+    render(<AlbumView controller={controller} location={LOCATION} folderId="album" onFolder={vi.fn()} onShowFiles={vi.fn()} onNotAlbum={vi.fn()} />);
+    await waitFor(() => expect(document.querySelector("[data-album-tile='p0']")).toBeTruthy());
+    const scroller = document.querySelector('[data-drop-zone="drive"]') as HTMLElement;
+    expect(scroller.className).toContain("overflow-y-auto");
+    fireEvent.dragEnter(scroller, { dataTransfer: { types: ["Files"], files: [], dropEffect: "none" } });
+    const overlay = document.querySelector("[data-drop-overlay]") as HTMLElement;
+    expect(overlay).toBeTruthy();
+    expect(scroller.contains(overlay)).toBe(false);
+    expect(overlay.parentElement!.contains(scroller)).toBe(true);
+  });
+
   it("selects with the check box and offers ZIP, the cover and the trash", async () => {
     const driveAlbum = vi.fn(async () => detail([photo("p0"), photo("p1"), photo("p2")]));
     const putDriveAlbum = vi.fn(async () => ({ ...ALBUM, cover_item_id: "p1", cover: { item_id: "p1", attachment_id: "a-p1" } }));

@@ -94,7 +94,7 @@ _HTTP_STATUS_CODES = {
 }
 
 
-def _sqlstate(exc: DBAPIError) -> str | None:
+def sqlstate(exc: DBAPIError) -> str | None:
     """The PostgreSQL error code behind SQLAlchemy's wrapper (asyncpg keeps it on the cause)."""
     for candidate in (exc.orig, getattr(exc.orig, "__cause__", None)):
         state = getattr(candidate, "sqlstate", None)
@@ -150,7 +150,7 @@ def install_error_handlers(app: FastAPI) -> None:
     @app.exception_handler(DBAPIError)
     async def _database_error(request: Request, exc: DBAPIError) -> JSONResponse:
         # Text PostgreSQL cannot store (a NUL character, an unpaired surrogate) is bad input.
-        if _sqlstate(exc) in ("22021", "22P05"):
+        if sqlstate(exc) in ("22021", "22P05"):
             return JSONResponse(
                 status_code=422,
                 content=error_body(

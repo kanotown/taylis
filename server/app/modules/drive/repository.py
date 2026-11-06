@@ -121,6 +121,22 @@ async def lock_items(db: AsyncSession, ids: Sequence[uuid.UUID]) -> dict[uuid.UU
     return {row.id: row for row in (await db.execute(stmt)).scalars().all()}
 
 
+async def key_share_items(db: AsyncSession, ids: Sequence[uuid.UUID]) -> None:
+    """FOR KEY SHARE in id order: the lock a row that refers to these items (a foreign key)
+    takes when it is inserted, taken before the location's (items first, then the location, as
+    every drive transaction locks them). Left to the insert, after the location, it waits for a
+    folder a completion holds FOR UPDATE while that completion waits for the location."""
+    wanted = sorted(set(ids))
+    if not wanted:
+        return
+    await db.execute(
+        select(DriveItem.id)
+        .where(DriveItem.id.in_(wanted))
+        .order_by(DriveItem.id)
+        .with_for_update(read=True, key_share=True)
+    )
+
+
 async def items(db: AsyncSession, ids: Sequence[uuid.UUID]) -> dict[uuid.UUID, DriveItem]:
     if not ids:
         return {}

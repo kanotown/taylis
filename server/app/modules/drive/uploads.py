@@ -33,10 +33,10 @@ from datetime import UTC, datetime, timedelta
 
 from sqlalchemy import delete, func, select, text
 from sqlalchemy.dialects.postgresql import insert
-from sqlalchemy.exc import IntegrityError
+from sqlalchemy.exc import DBAPIError, IntegrityError
 from sqlalchemy.ext.asyncio import AsyncSession, async_sessionmaker
 
-from app.core.errors import AppError, conflict, not_found
+from app.core.errors import AppError, conflict, not_found, sqlstate
 from app.core.ids import uuid7
 from app.core.settings import Settings
 from app.core.time import utcnow
@@ -89,6 +89,11 @@ ERROR_STATUS = {
     "drive_upload_incomplete": 409,
 }
 TARGET_MOVED = "drive_upload_target_moved"
+# A completion whose transaction PostgreSQL ended (deadlock_detected, serialization_failure) is
+# tried again at once, a few times, before the housekeeping's DRIVE_COMPLETING_STALE_MINUTES.
+RETRY_SQLSTATES = ("40P01", "40001")
+FINALIZE_ATTEMPTS = 3
+FINALIZE_RETRY_SECONDS = 0.2
 
 
 @dataclass
@@ -115,7 +120,20 @@ class DriveRuntime:
 
         async def run() -> None:
             try:
-                await finalize(self, settings, blobs, upload_id)
+                for attempt in range(1, FINALIZE_ATTEMPTS + 1):
+                    try:
+                        await finalize(self, settings, blobs, upload_id)
+                        return
+                    except DBAPIError as exc:
+                        # A deadlock or a serialization failure: the transaction was rolled back
+                        # whole and the session is still `completing`, so the same steps again
+                        # (each is idempotent) instead of leaving it to the housekeeping.
+                        if attempt == FINALIZE_ATTEMPTS or sqlstate(exc) not in RETRY_SQLSTATES:
+                            raise
+                        log.warning(
+                            "completing drive upload %s: %s, trying again", upload_id, sqlstate(exc)
+                        )
+                        await asyncio.sleep(FINALIZE_RETRY_SECONDS * attempt)
             except Exception:
                 log.exception("completing drive upload %s failed", upload_id)
             finally:
@@ -317,6 +335,11 @@ async def create(
         await blobs.create_multipart(key, "application/octet-stream") if data.size_bytes else ""
     )
     try:
+        # The folder (and the file of a new version) the session refers to, before the location:
+        # several files dropped into one folder deadlocked here against the completion of an
+        # earlier one, which holds the folder and waits for the location (it then stayed
+        # `completing` until the housekeeping).
+        await repo.key_share_items(db, [parent_id, *([target_id] if target_id else [])])
         locked = await service.lock_location(db, location_id)
         await service.check_quota_in_tx(
             db, settings, locked, data.size_bytes, with_reservations=True
