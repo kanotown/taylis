@@ -15,6 +15,7 @@ from fastapi import FastAPI
 from httpx import AsyncClient
 from PIL import Image
 from sqlalchemy import func, select, text
+from sqlalchemy.exc import DBAPIError
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.core.time import utcnow
@@ -23,7 +24,7 @@ from app.modules.attachments import previews, video_backfill
 from app.modules.attachments import service as attachments
 from app.modules.attachments.blobstore import MemoryBlobStore
 from app.modules.attachments.models import Attachment
-from app.modules.drive import housekeeping, media, uploads
+from app.modules.drive import housekeeping, media, service, uploads
 from app.modules.drive.models import DriveFileVersion, DriveItem, DriveLocation, DriveUpload
 from app.modules.users.models import User
 from tests.drive_helpers import (
@@ -212,6 +213,93 @@ async def test_a_completion_cut_off_is_finished_by_the_housekeeping(
     assert (
         await client.get(f"{API}/drive/items/{placed.json()['item']['id']}/content")
     ).content == b""
+
+
+async def test_a_new_session_waits_for_a_completion_in_the_same_folder(
+    app: FastAPI,
+    client: AsyncClient,
+    db: AsyncSession,
+    as_user: Callable[[User], None],
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """Several files dropped into one folder: A's completion holds the folder and is about to
+    lock the location while B's session is being made. B takes the folder before the location,
+    so it waits for A instead of holding the location A needs (a deadlock that left A
+    `completing` until the housekeeping)."""
+    drive_settings(app)
+    alice = await make_user(db, "alice")
+    as_user(alice)
+    photos = await folder(client, await workspace_root(client), "photos")
+    first = (await start(client, photos, "a.png", 3)).json()
+    await send_parts(client, first, b"aaa")
+
+    held, release = asyncio.Event(), asyncio.Event()
+    real = service.lock_location
+    calls = 0
+
+    async def paused(db: AsyncSession, location_id: uuid.UUID) -> DriveLocation:
+        nonlocal calls
+        calls += 1
+        if calls == 1:  # A's completion, holding the folder FOR UPDATE
+            held.set()
+            await release.wait()
+        return await real(db, location_id)
+
+    monkeypatch.setattr(service, "lock_location", paused)
+    completing = asyncio.create_task(complete(client, first["id"]))
+    await asyncio.wait_for(held.wait(), 5)
+    starting = asyncio.create_task(start(client, photos, "b.png", 3))
+    async with app.state.drive.session_factory() as watch:
+        for _ in range(200):
+            waiting = await watch.execute(text("SELECT count(*) FROM pg_locks WHERE NOT granted"))
+            if int(waiting.scalar_one()) > 0:
+                break
+            await watch.rollback()
+            await asyncio.sleep(0.02)
+        else:
+            raise AssertionError("the new session never waited for the folder")
+    release.set()
+    done = await asyncio.wait_for(completing, 30)
+    assert done.status_code == 200, done.text
+    second = await asyncio.wait_for(starting, 30)
+    assert second.status_code == 201, second.text
+    await send_parts(client, second.json(), b"bbb")
+    assert (await complete(client, second.json()["id"])).status_code == 200
+    assert await names_in(client, photos) == ["a.png", "b.png"]
+
+
+async def test_a_completion_ended_by_a_deadlock_is_tried_again(
+    app: FastAPI,
+    client: AsyncClient,
+    db: AsyncSession,
+    as_user: Callable[[User], None],
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """PostgreSQL ends one transaction of a deadlock: the completion runs again at once
+    instead of staying `completing` until the housekeeping."""
+    drive_settings(app)
+    alice = await make_user(db, "alice")
+    as_user(alice)
+    root = await workspace_root(client)
+    real = uploads._place
+    calls = 0
+
+    class Deadlock(Exception):
+        sqlstate = "40P01"
+
+    async def once(*args: Any, **kwargs: Any) -> Any:
+        nonlocal calls
+        calls += 1
+        if calls == 1:
+            raise DBAPIError("SELECT … FOR UPDATE", {}, Deadlock("deadlock detected"))
+        return await real(*args, **kwargs)
+
+    monkeypatch.setattr(uploads, "_place", once)
+    session = (await start(client, root, "retried.txt", 3)).json()
+    await send_parts(client, session, b"abc")
+    done = await complete(client, session["id"])
+    assert done.status_code == 200, done.text
+    assert done.json()["item"]["name"] == "retried.txt" and calls == 2
 
 
 async def test_name_conflicts_version_rename_fail(

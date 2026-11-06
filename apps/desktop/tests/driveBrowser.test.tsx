@@ -91,6 +91,21 @@ describe("DriveBrowser", () => {
     await waitFor(() => expect(driveChildren).toHaveBeenLastCalledWith("root", expect.objectContaining({ sort: "modified", order: "desc" })));
   });
 
+  it("the drop frame covers the list from outside the scrolling element (it stays put however far the list is scrolled)", async () => {
+    const driveChildren = vi.fn(async () => ({ folder: ROOT, path: [{ id: "root", name: "研究室ドライブ" }], items: [row("a", "file", "a.txt")], next_cursor: null }));
+    render(<DriveBrowser controller={controllerWith({ driveChildren, searchDrive: vi.fn() })} location={LOCATION} folderId="root" onFolder={vi.fn()} />);
+    await screen.findByTitle("a.txt");
+    const list = document.querySelector('[data-drop-zone="drive"]') as HTMLElement;
+    expect(list.className).toContain("overflow-y-auto");
+    const dataTransfer = { types: ["Files"], files: [], dropEffect: "none" };
+    fireEvent.dragEnter(list, { dataTransfer });
+    const overlay = document.querySelector("[data-drop-overlay]") as HTMLElement;
+    expect(overlay).toBeTruthy();
+    expect(list.contains(overlay)).toBe(false);
+    expect(overlay.parentElement!.contains(list)).toBe(true);
+    expect(overlay.parentElement!.className).toContain("relative");
+  });
+
   it("a folder gone (deleted, or no longer readable) goes back to the location's top", async () => {
     const { ApiError } = await import("../src/api/errors");
     const driveChildren = vi.fn(async () => { throw new ApiError(404, "drive_item_not_found", "gone"); });

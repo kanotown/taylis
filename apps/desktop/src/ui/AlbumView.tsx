@@ -513,7 +513,8 @@ export function AlbumView({ controller, location, folderId, onFolder, onShowFile
   );
 
   return (
-    <div className="flex min-h-0 min-w-0 flex-1 flex-col" data-album-view={folder.id}>
+    // relative: the drop frame covers the scrolling area from outside it (inside, it would scroll away with the photos).
+    <div className="relative flex min-h-0 min-w-0 flex-1 flex-col" data-album-view={folder.id}>
       <div
         ref={measured}
         data-scroll-memory=""
@@ -622,8 +623,8 @@ export function AlbumView({ controller, location, folderId, onFolder, onShowFile
             )}
           </section>
         )}
-        <DropOverlay active={zone.active} blocked={blocked} destination={t("drive.dropTo", { path: here })} />
       </div>
+      <DropOverlay active={zone.active} blocked={blocked} destination={t("drive.dropTo", { path: here })} />
       <input ref={filesInput} type="file" accept="image/*,video/*" multiple hidden onChange={(event) => { upload(treeFromInput(Array.from(event.target.files ?? []))); event.target.value = ""; }} />
       {viewing && (
         <AlbumViewer

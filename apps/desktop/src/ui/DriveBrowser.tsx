@@ -931,22 +931,25 @@ export function DriveBrowser({ controller, location, folderId, onFolder, mode = 
       {toolbar}
       {sharedBanner}
       <div ref={measured} className="relative flex min-h-0 flex-1">
-        <div
-          ref={listRef}
-          data-scroll-memory=""
-          role="grid"
-          aria-label={mode === "trash" ? t("drive.trash") : here}
-          aria-multiselectable
-          tabIndex={0}
-          onKeyDown={onKeyDown}
-          onClick={(event) => { if (event.target === event.currentTarget) setSelected(new Set()); }}
-          className="relative flex min-h-0 flex-1 flex-col overflow-y-auto outline-none"
-          data-drop-zone="drive"
-          {...zone.handlers}
-        >
-          {listingBody}
-          {mode === "folder" && !hits && <div ref={sentinel} className="h-px shrink-0" />}
-          {listing.loading && mode === "folder" && <div className="flex justify-center py-4 text-muted"><Loader2 size={18} className="animate-spin" /></div>}
+        {/* The drop frame sits beside the scrolling list, not in it: inside, it would scroll away with the rows. */}
+        <div className="relative flex min-h-0 min-w-0 flex-1 flex-col">
+          <div
+            ref={listRef}
+            data-scroll-memory=""
+            role="grid"
+            aria-label={mode === "trash" ? t("drive.trash") : here}
+            aria-multiselectable
+            tabIndex={0}
+            onKeyDown={onKeyDown}
+            onClick={(event) => { if (event.target === event.currentTarget) setSelected(new Set()); }}
+            className="relative flex min-h-0 flex-1 flex-col overflow-y-auto outline-none"
+            data-drop-zone="drive"
+            {...zone.handlers}
+          >
+            {listingBody}
+            {mode === "folder" && !hits && <div ref={sentinel} className="h-px shrink-0" />}
+            {listing.loading && mode === "folder" && <div className="flex justify-center py-4 text-muted"><Loader2 size={18} className="animate-spin" /></div>}
+          </div>
           <DropOverlay active={zone.active} blocked={blocked} destination={t("drive.dropTo", { path: here })} />
         </div>
         {details && mode === "folder" && (
