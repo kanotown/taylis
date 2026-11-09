@@ -12,10 +12,10 @@ import androidx.compose.ui.unit.dp
 
 /**
  * A person's name with a status pill (the 在室状況 chip) beside it, and the line under it (`@username`), as in a channel's
- * member list (docs/PRESENCE.md §9.2; user report 2026-11-09: a long pill squeezed the name to 「オネ…」). The name keeps
- * its natural width and is cut only when it cannot fit by itself; the pill gives way: cut with … on the name's line while
- * at least [MIN_CHARACTERS] of its label still show, else moved to the line under it, after the `@username`. There it
- * gives way again: the username keeps its width unless the pill would lose even its icon.
+ * member list. One rule on both phones (docs/PRESENCE.md §9.2; iOS: `AttendanceRules.nameChipPlacement`). User report
+ * 2026-11-09: a long pill squeezed the name to 「オネ…」. The name keeps its natural width and is cut only when it cannot
+ * fit by itself; the pill gives way: beside the name only when it fits there whole, else after the `@username`, cut with
+ * … there down to [MIN_CHARACTERS] of its label; only then is the username cut too.
  */
 object NamePill {
     /** As the quick switch's pill (PRESENCE.md §7.1): a label cut shorter than 4 characters says nothing. */
@@ -30,16 +30,17 @@ object NamePill {
     /**
      * All in pixels. [width]: the column's; [title]: the name line's own width (the name with its small marks, never
      * wider than [width]); [subtitle] and [pill]: their natural widths; [pillMin]: the pill with [MIN_CHARACTERS] of its
-     * label and the ellipsis; [pillLeast]: the pill with only its icon and the ellipsis; [gap]: between the pill and what
-     * it follows.
+     * label, the ellipsis and its icon; [gap]: between the pill and what it follows.
      */
-    fun place(width: Int, title: Int, subtitle: Int, pill: Int, pillMin: Int, pillLeast: Int, gap: Int): Placement {
-        // A pill shorter than a minimum needs only its own width.
-        val besideName = width - title - gap
-        if (besideName >= minOf(pill, pillMin)) return Placement(secondLine = false, pillWidth = minOf(pill, besideName), subtitleWidth = width)
-        // Under the name, after the @username, which is cut only when the pill would lose its icon too.
-        val subtitleWidth = minOf(subtitle, maxOf(0, width - gap - minOf(pill, pillLeast)))
-        return Placement(secondLine = true, pillWidth = minOf(pill, maxOf(0, width - subtitleWidth - gap)), subtitleWidth = subtitleWidth)
+    fun place(width: Int, title: Int, subtitle: Int, pill: Int, pillMin: Int, gap: Int): Placement {
+        // Beside the name only whole: it is never cut on the name's line.
+        if (title + gap + pill <= width) return Placement(secondLine = false, pillWidth = pill, subtitleWidth = width)
+        // After the @username: the pill takes what the username leaves, at least its minimum; the username is cut only
+        // when even that does not fit.
+        val lead = if (subtitle > 0) subtitle + gap else 0
+        val pillWidth = maxOf(0, minOf(pill, width, maxOf(pillMin, width - lead)))
+        val subtitleWidth = if (subtitle > 0) maxOf(0, minOf(subtitle, width - pillWidth - gap)) else 0
+        return Placement(secondLine = true, pillWidth = pillWidth, subtitleWidth = subtitleWidth)
     }
 
     /** A small pill (AttendancePane's StatePill) with [characters] of its `labelSmall` label, the ellipsis, its icon and padding. */
@@ -58,7 +59,6 @@ fun NameWithPill(
     subtitle: @Composable () -> Unit,
     modifier: Modifier = Modifier,
     pillMin: Dp = NamePill.smallPillWidth(NamePill.MIN_CHARACTERS),
-    pillLeast: Dp = NamePill.smallPillWidth(0),
     gap: Dp = 6.dp,
 ) {
     Layout(contents = listOf(title, pill, subtitle), modifier = modifier) { (titles, pills, subtitles), constraints ->
@@ -72,7 +72,7 @@ fun NameWithPill(
         val subtitleNatural = subtitleMeasurable?.maxIntrinsicWidth(Constraints.Infinity) ?: 0
         val width = if (constraints.hasBoundedWidth) constraints.maxWidth
         else maxOf(titleWidth + gapPx + pillNatural, subtitleNatural)
-        val placement = if (pillMeasurable != null) NamePill.place(width, titleWidth, subtitleNatural, pillNatural, pillMin.roundToPx(), pillLeast.roundToPx(), gapPx) else null
+        val placement = if (pillMeasurable != null) NamePill.place(width, titleWidth, subtitleNatural, pillNatural, pillMin.roundToPx(), gapPx) else null
         val pillPlaceable = if (pillMeasurable != null && placement != null && placement.pillWidth > 0) pillMeasurable.measure(Constraints(maxWidth = placement.pillWidth)) else null
         val subtitlePlaceable = subtitleMeasurable?.measure(Constraints(maxWidth = placement?.subtitleWidth ?: width))
         val onFirst = pillPlaceable?.takeIf { placement?.secondLine == false }

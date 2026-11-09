@@ -330,8 +330,8 @@ fun ChannelDetailsPane(controller: AppController, channel: ChannelState, version
                 ) {
                     val presence = store.presenceDotOf(member.userId)
                     Avatar(member.userId, user?.displayName ?: "?", size = 28.dp, presence = presence)
-                    // 2026-11-09 (PRESENCE.md §9.2): the name keeps its width; the 在室状況 chip (M140) gives way, cut or
-                    // moved under the name beside the @username. The labels on the right stay on one line.
+                    // 2026-11-09 (PRESENCE.md §9.2, as on iOS): the name keeps its width; the 在室状況 chip (M140) gives way,
+                    // beside the name only whole, else after the @username (cut there). The labels on the right stay on one line.
                     NameWithPill(
                         title = {
                             Row(verticalAlignment = Alignment.CenterVertically) {
