@@ -308,7 +308,9 @@ struct AttendanceChip: View {
             .padding(.vertical, large ? 3 : 1.5)
             .foregroundStyle(AttendancePalette.onSolid)
             .background(AttendancePalette.solid(state.color), in: RoundedRectangle(cornerRadius: 5, style: .continuous))
-            .fixedSize()
+            // Its natural width while there is room; narrower, the state's name is cut with … (one line). Fixed in both
+            // directions, a long state's chip pushed its neighbours out instead: the member list's names (2026-11-09).
+            .fixedSize(horizontal: false, vertical: true)
             .accessibilityElement(children: .ignore)
             .accessibilityLabel(tr("在室状況：") + AttendanceRules.stateText(state) + (note.map { " · " + $0 } ?? ""))
     }
@@ -323,6 +325,30 @@ struct AttendanceUserChip: View {
         if !controller.isGuest, let chip = AttendanceRules.chip(controller.store.attendance, userId) {
             AttendanceChip(controller: controller, state: chip.state, note: chip.entry.note)
         }
+    }
+}
+
+/// A person's name line, the line under it and their chip (AttendanceUserChip), in that order: the chip beside the name
+/// while both fit, else after the line under it, the name never squeezed for it (AttendanceRules.nameChipPlacement).
+struct NameChipLayout: Layout {
+    func sizeThatFits(proposal: ProposedViewSize, subviews: Subviews, cache: inout ()) -> CGSize {
+        placement(width: proposal.width, subviews).size
+    }
+
+    func placeSubviews(in bounds: CGRect, proposal: ProposedViewSize, subviews: Subviews, cache: inout ()) {
+        let placement = placement(width: bounds.width, subviews)
+        let frames = [placement.name, placement.subtitle, placement.chip ?? .zero]
+        for (index, subview) in subviews.enumerated() {
+            let frame = index < frames.count ? frames[index] : .zero
+            subview.place(at: CGPoint(x: bounds.minX + frame.minX, y: bounds.minY + frame.minY), anchor: .topLeading,
+                          proposal: ProposedViewSize(width: frame.width, height: frame.height))
+        }
+    }
+
+    private func placement(width: CGFloat?, _ subviews: Subviews) -> AttendanceRules.NameChipPlacement {
+        func natural(_ index: Int) -> CGSize { subviews.indices.contains(index) ? subviews[index].sizeThatFits(.unspecified) : .zero }
+        return AttendanceRules.nameChipPlacement(width: width, name: natural(0), subtitle: natural(1),
+                                                 chip: subviews.count > 2 ? natural(2) : nil)
     }
 }
 

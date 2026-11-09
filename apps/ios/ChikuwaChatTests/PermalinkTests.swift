@@ -96,6 +96,40 @@ final class PermalinkTests: XCTestCase {
         XCTAssertFalse(PermalinkJump.closesOwnThread(open: nil, focusParentId: "p1"))
     }
 
+    /// 2026-11-09 (owner's iPhone): a file posted in a thread, opened from the conversation's 「ファイル」 tab (or a pinned
+    /// reply from 「ピン留め」), showed the conversation without the thread. The conversation opens the reply's thread itself.
+    func testARevealFromTheConversationsTabOpensTheRepliesThread() {
+        for tab in [ChannelTab.files, .pins] {
+            var reply = ConversationFront(tab: tab, thread: nil)
+            reply.revealedFromTab(parentId: "p1")
+            XCTAssertEqual(reply, ConversationFront(tab: .messages, thread: "p1"), "\(tab)")
+            var topLevel = ConversationFront(tab: tab, thread: nil)
+            topLevel.revealedFromTab(parentId: nil)
+            XCTAssertEqual(topLevel, ConversationFront(tab: .messages, thread: nil), "\(tab)")
+        }
+    }
+
+    /// The reveal's focus reaches the conversation (its onChange) before or after the tab opens the thread: either way the
+    /// reply's thread stays open, and a thread of another message still goes.
+    func testTheFocusOfARevealedReplyKeepsItsThreadWhicheverComesFirst() {
+        var tabFirst = ConversationFront(tab: .files, thread: nil)
+        tabFirst.revealedFromTab(parentId: "p1")
+        tabFirst.focused(parentId: "p1")
+        XCTAssertEqual(tabFirst, ConversationFront(tab: .messages, thread: "p1"))
+
+        var focusFirst = ConversationFront(tab: .files, thread: nil)
+        focusFirst.focused(parentId: "p1")
+        focusFirst.revealedFromTab(parentId: "p1")
+        XCTAssertEqual(focusFirst, ConversationFront(tab: .messages, thread: "p1"))
+
+        var other = ConversationFront(tab: .messages, thread: "p2")
+        other.focused(parentId: "p1")
+        XCTAssertEqual(other, ConversationFront(tab: .messages, thread: nil))
+        var topLevel = ConversationFront(tab: .drive, thread: "p2")
+        topLevel.focused(parentId: nil)
+        XCTAssertEqual(topLevel, ConversationFront(tab: .messages, thread: nil))
+    }
+
     /// 2026-11-05 (seen in the simulator): the conversation under its own pushed thread is not updated while covered, so the
     /// thread closes itself for a reveal of another message of the conversation; not for its own messages or another
     /// conversation's.

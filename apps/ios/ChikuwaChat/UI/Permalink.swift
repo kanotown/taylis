@@ -46,6 +46,30 @@ enum PermalinkJump: Equatable {
     }
 }
 
+/// What a conversation (ChannelView) shows in front as one of its messages is revealed: its tab, and the thread it pushed
+/// over itself (`thread`; always nil in the split, whose thread is MainView's pane).
+struct ConversationFront: Equatable {
+    var tab: ChannelTab
+    var thread: String?
+
+    /// M29: a pin or a file revealed from the conversation's own 「ピン留め」 / 「ファイル」 tab: the timeline in front and
+    /// a reply's thread opened over it by the conversation itself, as a list row's reveal elsewhere pushes it (MainNavigation
+    /// .show). Handed on through `pendingThreadId` it opened nothing under MainView, whose binding only ever takes nil back:
+    /// a file posted in a thread, opened from the conversation's 「ファイル」, showed only the conversation (2026-11-09).
+    mutating func revealedFromTab(parentId: String?) {
+        tab = .messages
+        if let parentId { thread = parentId }
+    }
+
+    /// The conversation's message focus changed (a reveal into it from anywhere): the timeline comes in front of the tab
+    /// that covered it, and a thread of its own goes unless the message is in that thread (PermalinkJump.closesOwnThread),
+    /// so a reply revealed from a tab keeps the thread `revealedFromTab` opened, whichever of the two comes first.
+    mutating func focused(parentId: String?) {
+        tab = .messages
+        if PermalinkJump.closesOwnThread(open: thread, focusParentId: parentId) { thread = nil }
+    }
+}
+
 private struct MessageLinkContextKey: EnvironmentKey {
     static let defaultValue: MessageLinkContext? = nil
 }

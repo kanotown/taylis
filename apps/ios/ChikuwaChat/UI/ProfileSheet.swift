@@ -36,11 +36,19 @@ struct ProfileSheet: View {
                             Text(presenceLine).font(.caption).foregroundStyle(.secondary)
                             // M140 (docs/PRESENCE.md §9): the 在室状況 chip, its note and since when.
                             if !controller.isGuest, let chip = AttendanceRules.chip(controller.store.attendance, userId) {
-                                HStack(spacing: 6) {
-                                    AttendanceChip(controller: controller, state: chip.state, note: chip.entry.note)
-                                    Text([chip.entry.note, AttendanceRules.sinceLabel(chip.entry.since)].compactMap { $0?.isEmpty == false ? $0 : nil }
-                                        .joined(separator: " · "))
-                                        .font(.caption).foregroundStyle(.secondary).lineLimit(2)
+                                let line = [chip.entry.note, AttendanceRules.sinceLabel(chip.entry.since)].compactMap { $0?.isEmpty == false ? $0 : nil }
+                                    .joined(separator: " · ")
+                                // Beside the chip while both fit on one line, else under it: the chip is never cut for the
+                                // note (it gives way only to the card's width, PRESENCE.md §9.1).
+                                ViewThatFits(in: .horizontal) {
+                                    HStack(spacing: 6) {
+                                        AttendanceChip(controller: controller, state: chip.state, note: chip.entry.note)
+                                        Text(line).font(.caption).foregroundStyle(.secondary).lineLimit(1)
+                                    }
+                                    VStack(alignment: .leading, spacing: 3) {
+                                        AttendanceChip(controller: controller, state: chip.state, note: chip.entry.note)
+                                        Text(line).font(.caption).foregroundStyle(.secondary).lineLimit(2)
+                                    }
                                 }
                             }
                             if DND.isActive(user) {

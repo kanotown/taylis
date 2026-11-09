@@ -209,6 +209,57 @@ enum AttendanceRules {
         return .hidden
     }
 
+    /// Where a member row's name, the line under it (`@username · title`) and the person's chip go (NameChipLayout).
+    struct NameChipPlacement: Equatable {
+        var name: CGRect
+        var subtitle: CGRect
+        /// nil: no chip.
+        var chip: CGRect?
+        var size: CGSize
+        /// The chip is beside the name (else on the second line, after the subtitle).
+        var chipBesideName: Bool
+    }
+
+    /// What a chip moved under the name keeps of itself before the line's text is cut too, in chip heights (its icon and
+    /// about three characters, at any text size).
+    static let chipKeepsHeights: CGFloat = 4
+
+    /// The channel details' member list (PRESENCE.md §9.1): the name keeps its natural width on one line, cut only when it
+    /// alone is wider than `width`; the chip gives way first. Beside the name while both fit, else on the second line after
+    /// the subtitle, cut with … there when the line is too narrow for both (down to `chipKeepsHeights`, then the subtitle
+    /// is cut too). The sizes are the views' natural ones; `width` nil = their natural layout. A fixed-size chip squeezed
+    /// the name instead, to one character per line or out of the row (iPhone, 2026-11-09).
+    static func nameChipPlacement(width: CGFloat?, name: CGSize, subtitle: CGSize, chip: CGSize?, gap: CGFloat = pillGap) -> NameChipPlacement {
+        let room = max(0, width ?? .infinity)
+        let nameWidth = min(name.width, room)
+        guard let chip, chip.width > 0 else {
+            let subtitleWidth = min(subtitle.width, room)
+            return NameChipPlacement(name: CGRect(x: 0, y: 0, width: nameWidth, height: name.height),
+                                     subtitle: CGRect(x: 0, y: name.height, width: subtitleWidth, height: subtitle.height),
+                                     chip: nil, size: CGSize(width: max(nameWidth, subtitleWidth), height: name.height + subtitle.height),
+                                     chipBesideName: false)
+        }
+        if name.width + gap + chip.width <= room {
+            let line = max(name.height, chip.height)
+            let subtitleWidth = min(subtitle.width, room)
+            return NameChipPlacement(name: CGRect(x: 0, y: (line - name.height) / 2, width: name.width, height: name.height),
+                                     subtitle: CGRect(x: 0, y: line, width: subtitleWidth, height: subtitle.height),
+                                     chip: CGRect(x: name.width + gap, y: (line - chip.height) / 2, width: chip.width, height: chip.height),
+                                     size: CGSize(width: max(name.width + gap + chip.width, subtitleWidth), height: line + subtitle.height),
+                                     chipBesideName: true)
+        }
+        let line = max(subtitle.height, chip.height)
+        let lead = subtitle.width > 0 ? subtitle.width + gap : 0
+        let chipWidth = max(0, min(chip.width, room, max(chip.height * chipKeepsHeights, room - lead)))
+        let subtitleWidth = subtitle.width > 0 ? max(0, min(subtitle.width, room - chipWidth - gap)) : 0
+        let chipX = subtitleWidth > 0 ? subtitleWidth + gap : 0
+        return NameChipPlacement(name: CGRect(x: 0, y: 0, width: nameWidth, height: name.height),
+                                 subtitle: CGRect(x: 0, y: name.height + (line - subtitle.height) / 2, width: subtitleWidth, height: subtitle.height),
+                                 chip: CGRect(x: chipX, y: name.height + (line - chip.height) / 2, width: chipWidth, height: chip.height),
+                                 size: CGSize(width: max(nameWidth, chipX + chipWidth), height: name.height + line),
+                                 chipBesideName: false)
+    }
+
     /// The quick switch sheet's height for its whole list (the states, the note, 「在室状況を開く」): the list's content
     /// and the insets around it (the navigation bar above, the home indicator below), rounded up to a point. 0 while
     /// the list has no content yet.

@@ -160,10 +160,19 @@ struct ChannelView: View {
         }
     }
 
-    /// M29: a pin or file was revealed (the list now shows its message): back to 「メッセージ」, into its thread if a reply.
+    /// M29: a pin or file was revealed (the list now shows its message): back to 「メッセージ」, into its thread if a reply,
+    /// opened here as this conversation's own thread (ConversationFront.revealedFromTab).
     private func showMessage(parentId: String?) {
-        tab = .messages
-        pendingThreadId = parentId
+        var front = ConversationFront(tab: tab, thread: thread?.id)
+        front.revealedFromTab(parentId: parentId)
+        show(front)
+    }
+
+    /// The tab and the conversation's own thread as `front` has them (in the split the thread goes to MainView's pane
+    /// through `onChange(of: thread?.id)`).
+    private func show(_ front: ConversationFront) {
+        if tab != front.tab { tab = front.tab }
+        if thread?.id != front.thread { thread = front.thread.map { ThreadTarget(id: $0) } }
     }
 
     /// Shown in full, or taller than the viewport and filling it.
@@ -787,9 +796,11 @@ struct ChannelView: View {
             // opened from it, showed nothing). A reply's thread is landed over the conversation; a thread of this view's
             // own stays only when it is that one.
             guard request != nil, let focus else { return }
-            if tab != .messages { tab = .messages }
             if showInfo { showInfo = false }
-            if PermalinkJump.closesOwnThread(open: threadInPane ? nil : thread?.id, focusParentId: focus.parentId) { thread = nil }
+            var front = ConversationFront(tab: tab, thread: threadInPane ? nil : thread?.id)
+            front.focused(parentId: focus.parentId)
+            if tab != front.tab { tab = front.tab }
+            if !threadInPane, thread?.id != front.thread { thread = nil }
         }
         .onChange(of: pendingThreadId, initial: true) { _, id in
             if let id {

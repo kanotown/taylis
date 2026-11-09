@@ -120,29 +120,35 @@ struct ChannelTabsRow: View {
         let hasLinks = !controller.store.linksOf(channel.id).isEmpty
             || channel.canEditLinks(isAdmin: controller.store.me?.role == "admin", isGuest: controller.store.me?.role == "guest")
         VStack(spacing: 0) {
-            ScrollView(.horizontal, showsIndicators: false) {
-                HStack(spacing: 6) {
-                    ForEach(ChannelTab.tabs(for: channel, drive: controller.drive?.available == true), id: \.self) { item in
-                        Button { tab = item } label: {
-                            Text(item.title)
-                                .font(.subheadline.weight(tab == item ? .semibold : .regular))
-                                .foregroundStyle(tab == item ? Color.primary : Color.secondary)
-                                .padding(.horizontal, 6)
-                                .frame(minHeight: 44)
-                                .overlay(alignment: .bottom) {
-                                    if tab == item { Capsule().fill(Color.accentColor).frame(height: 2) }
-                                }
-                                .contentShape(Rectangle())
+            ScrollViewReader { proxy in
+                ScrollView(.horizontal, showsIndicators: false) {
+                    HStack(spacing: 6) {
+                        ForEach(ChannelTab.tabs(for: channel, drive: controller.drive?.available == true), id: \.self) { item in
+                            Button { tab = item } label: {
+                                Text(item.title)
+                                    .font(.subheadline.weight(tab == item ? .semibold : .regular))
+                                    .foregroundStyle(tab == item ? Color.primary : Color.secondary)
+                                    .padding(.horizontal, 6)
+                                    .frame(minHeight: 44)
+                                    .overlay(alignment: .bottom) {
+                                        if tab == item { Capsule().fill(Color.accentColor).frame(height: 2) }
+                                    }
+                                    .contentShape(Rectangle())
+                            }
+                            .buttonStyle(.plain)
+                            .accessibilityAddTraits(tab == item ? [.isSelected] : [])
+                            .id(item)
                         }
-                        .buttonStyle(.plain)
-                        .accessibilityAddTraits(tab == item ? [.isSelected] : [])
+                        if hasLinks {
+                            Divider().frame(height: 20).padding(.horizontal, 4)
+                            ChannelLinkChips(controller: controller, channel: channel, onAdd: onAddLink, onEdit: onEditLink)
+                        }
                     }
-                    if hasLinks {
-                        Divider().frame(height: 20).padding(.horizontal, 4)
-                        ChannelLinkChips(controller: controller, channel: channel, onAdd: onAddLink, onEdit: onEditLink)
-                    }
+                    .padding(.horizontal, 12)
                 }
-                .padding(.horizontal, 12)
+                // A tab chosen by the app (a pin or a file revealed, a link into the conversation) is scrolled into view: back
+                // from a file's thread, 「メッセージ」 was off the row's left edge and no tab looked selected (2026-11-09).
+                .onChange(of: tab) { _, tab in withAnimation { proxy.scrollTo(tab) } }
             }
             Divider()
         }

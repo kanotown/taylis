@@ -236,6 +236,7 @@ struct ChannelInfoView: View {
     @Bindable var controller: AppController
     let channelId: String
     @Environment(\.dismiss) private var dismiss
+    @Environment(\.dynamicTypeSize) private var typeSize
     @State private var members: [MemberOut]?
     @State private var topic = ""
     @State private var editingTopic = false
@@ -274,18 +275,27 @@ struct ChannelInfoView: View {
         return Button { profileUserId = member.userId } label: {
             HStack(spacing: 10) {
                 AvatarView(id: member.userId, name: user?.displayName ?? "?", size: 28, presence: store.dotLook(member.userId))
-                VStack(alignment: .leading, spacing: 0) {
+                // The name on one line at its own width; the 在室状況 chip (M140) gives way to it, beside it or after the
+                // line under it (NameChipLayout, PRESENCE.md §9.1).
+                NameChipLayout {
                     HStack(spacing: 6) {
-                        Text(user?.displayName ?? "?")
-                        StatusEmojiView(user: user, controller: controller)
-                        AttendanceUserChip(controller: controller, userId: member.userId)  // M140
+                        Text(user?.displayName ?? "?").lineLimit(1)
+                        StatusEmojiView(user: user, controller: controller).fixedSize()
                     }
-                    Text("@\(user?.username ?? "")" + (Roster.titleExtra(user?.title, store.roster[member.userId]).map { " · \($0)" } ?? "")).font(.footnote).foregroundStyle(.secondary)
+                    Text("@\(user?.username ?? "")" + (Roster.titleExtra(user?.title, store.roster[member.userId]).map { " · \($0)" } ?? ""))
+                        .font(.footnote).foregroundStyle(.secondary).lineLimit(1)
+                    AttendanceUserChip(controller: controller, userId: member.userId)
                 }
-                Spacer()
-                if presence != "offline" { Text(presenceLabel(presence)).font(.caption).foregroundStyle(.secondary) }
-                if let line = store.roster[member.userId] { RosterBadge(profile: line) }
-                if member.role == "owner" { Text("オーナー").font(.caption).foregroundStyle(.secondary) }
+                .frame(maxWidth: .infinity, alignment: .leading)
+                .layoutPriority(1)
+                // One line each, never wrapped by a long name or chip; one under the other from the larger text sizes,
+                // where side by side they left the name little room (the row has two lines anyway).
+                let labels = typeSize >= .xxxLarge ? AnyLayout(VStackLayout(alignment: .trailing, spacing: 2)) : AnyLayout(HStackLayout(spacing: 10))
+                labels {
+                    if presence != "offline" { Text(presenceLabel(presence)).font(.caption).foregroundStyle(.secondary).fixedSize() }
+                    if let line = store.roster[member.userId] { RosterBadge(profile: line) }
+                    if member.role == "owner" { Text("オーナー").font(.caption).foregroundStyle(.secondary).fixedSize() }
+                }
             }
         }
         .buttonStyle(.plain)

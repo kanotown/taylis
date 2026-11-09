@@ -140,6 +140,96 @@ final class AttendanceIconsTests: XCTestCase {
         XCTAssertEqual(AttendanceRules.headerRoom(barWidth: 100), 0)
     }
 
+    // MARK: the member list's name and chip (PRESENCE.md §9.1)
+
+    private func placement(_ width: CGFloat?, name: CGFloat, subtitle: CGFloat, chip: CGFloat?) -> AttendanceRules.NameChipPlacement {
+        AttendanceRules.nameChipPlacement(width: width, name: CGSize(width: name, height: 22), subtitle: CGSize(width: subtitle, height: 18),
+                                          chip: chip.map { CGSize(width: $0, height: 16) })
+    }
+
+    func testTheChipSitsBesideTheNameWhileBothFit() {
+        let both = placement(300, name: 100, subtitle: 60, chip: 80)
+        XCTAssertTrue(both.chipBesideName)
+        XCTAssertEqual(both.name, CGRect(x: 0, y: 0, width: 100, height: 22))
+        XCTAssertEqual(both.chip, CGRect(x: 106, y: 3, width: 80, height: 16))
+        XCTAssertEqual(both.subtitle, CGRect(x: 0, y: 22, width: 60, height: 18))
+        XCTAssertEqual(both.size, CGSize(width: 186, height: 40))
+        // Their natural layout (no width proposed) is the same.
+        XCTAssertEqual(placement(nil, name: 100, subtitle: 60, chip: 80), both)
+        // No chip: the name and the line under it.
+        let none = placement(300, name: 100, subtitle: 60, chip: nil)
+        XCTAssertNil(none.chip)
+        XCTAssertEqual(none.subtitle, CGRect(x: 0, y: 22, width: 60, height: 18))
+        XCTAssertEqual(none.size, CGSize(width: 100, height: 40))
+    }
+
+    /// The reported rows (2026-11-09): a long chip beside 「オネンネiOS27」 squeezed the name to one character per line, or
+    /// out of the row. The name keeps its whole width on one line; the chip goes after 「@kano」 under it.
+    func testALongChipMovesUnderTheNameInsteadOfSqueezingIt() {
+        let row = placement(180, name: 120, subtitle: 40, chip: 130)
+        XCTAssertFalse(row.chipBesideName)
+        XCTAssertEqual(row.name, CGRect(x: 0, y: 0, width: 120, height: 22))
+        XCTAssertEqual(row.subtitle, CGRect(x: 0, y: 22, width: 40, height: 18))
+        XCTAssertEqual(row.chip, CGRect(x: 46, y: 23, width: 130, height: 16))
+        XCTAssertEqual(row.size, CGSize(width: 176, height: 40))
+    }
+
+    /// Under the name the chip gives way before the line it joins, down to four of its heights; then the line is cut too.
+    func testUnderTheNameTheChipIsCutFirst() {
+        let cut = placement(180, name: 120, subtitle: 85, chip: 145)
+        XCTAssertEqual(cut.subtitle.width, 85)
+        XCTAssertEqual(cut.chip, CGRect(x: 91, y: 23, width: 89, height: 16))
+        let longLine = placement(180, name: 120, subtitle: 250, chip: 145)
+        XCTAssertEqual(longLine.chip?.width, 64)
+        XCTAssertEqual(longLine.subtitle.width, 110)
+        XCTAssertEqual(longLine.chip?.maxX, 180)
+        // A short chip is never cut below itself.
+        let short = placement(150, name: 140, subtitle: 200, chip: 40)
+        XCTAssertEqual(short.chip?.width, 40)
+        XCTAssertEqual(short.subtitle.width, 104)
+        XCTAssertEqual(short.chip?.maxX, 150)
+    }
+
+    /// Only a name wider than the whole room is cut, and nothing goes past the room.
+    func testOnlyANameTooWideOnItsOwnIsCut() {
+        let narrow = placement(100, name: 160, subtitle: 50, chip: 80)
+        XCTAssertFalse(narrow.chipBesideName)
+        XCTAssertEqual(narrow.name.width, 100)
+        XCTAssertEqual(narrow.chip?.width, 64)
+        XCTAssertEqual(narrow.subtitle.width, 30)
+        XCTAssertEqual(narrow.chip?.maxX, 100)
+        XCTAssertLessThanOrEqual(narrow.size.width, 100)
+        for width in [0, 20, 60] as [CGFloat] {
+            let tiny = placement(width, name: 160, subtitle: 50, chip: 80)
+            XCTAssertLessThanOrEqual(tiny.size.width, width, "\(width)")
+            XCTAssertGreaterThanOrEqual(tiny.subtitle.width, 0)
+        }
+    }
+
+    /// The layout itself (the member row's block): the real chip's label 「スーパーぷりぷりタイム」 beside 「オネンネiOS27」 in
+    /// 180 pt stays two lines, the chip under the name, never wider than the room.
+    func testTheNameBlockStaysTwoLinesWithALongChip() {
+        let controller = AppController()
+        let long = state("s", "スーパーぷりぷりタイム", kind: "in_room", owner: "u1", icon: "lab", color: "red")
+        func size(width: CGFloat, chip: Bool) -> CGSize {
+            let block = NameChipLayout {
+                Text("オネンネiOS27").lineLimit(1)
+                Text("@kano").font(.footnote).lineLimit(1)
+                if chip { AttendanceChip(controller: controller, state: long) }
+            }
+            return UIHostingController(rootView: block).sizeThatFits(in: CGSize(width: width, height: 1000))
+        }
+        let plain = size(width: 180, chip: false)
+        let narrow = size(width: 180, chip: true)
+        XCTAssertLessThanOrEqual(narrow.width, 180)
+        // Two lines: the chip adds at most its own few points to the line under the name (it was ten lines and more).
+        XCTAssertLessThan(narrow.height, plain.height + 8, "\(narrow) vs \(plain)")
+        // Wide: beside the name, the same two lines.
+        let wide = size(width: 600, chip: true)
+        XCTAssertGreaterThan(wide.width, 200)
+        XCTAssertLessThan(wide.height, plain.height + 8, "\(wide) vs \(plain)")
+    }
+
     /// The quick switch sheet opens tall enough for its whole list (「在室状況を開く」 was under a medium sheet's edge).
     func testTheQuickSheetFitsItsList() {
         // The list, the navigation bar above and the home indicator below, rounded up.
