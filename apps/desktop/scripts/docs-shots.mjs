@@ -12,7 +12,8 @@
 //   APP_URL   the Vite dev server (default http://localhost:1422/)
 //   APP_USER  the account the shots are taken as (default review, the demo's ordinary member)
 //   ADMIN_USER / ADMIN_PASS  optional: also the admin screens, as that account (default user tanaka)
-//   README_USER / README_PASS  optional: also docs/images/desktop.png (1600×1000 PNG), as that account (default yamamoto)
+//   README_USER / README_PASS  optional: also docs/images/desktop.png (1600×1000 PNG: the attendance board with the
+//              light sidebar), as that account (default yamamoto)
 //   CDP_PORT  headless Chrome's DevTools port (default 9444)
 //   ONLY      comma-separated shot names to take (default: all)
 //
@@ -769,8 +770,13 @@ def(
 def(
   "readme-desktop",
   async () => {
+    // What a lab sees first, not a channel: the attendance board, with the light sidebar (「サイドバー」→ 明るい色).
     await viewport(README);
-    await openThread("研究ミーティング", "5 件の返信");
+    await run(`(localStorage.setItem("chikuwa.prefs.sidebar", "light"), true)`);
+    await send("Page.reload");
+    await waitFor(`document.querySelector(${JSON.stringify(SIDEBAR)}) !== null`, 30000);
+    await sleep(2000);
+    await place("在室状況");
     await run(`(document.querySelectorAll(${JSON.stringify(SIDEBAR)} + " *").forEach((e) => { if (e.scrollTop) e.scrollTop = 0; }), true)`);
     await mouse(5, 5, false);
     await sleep(600);

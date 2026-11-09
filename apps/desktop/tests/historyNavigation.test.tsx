@@ -167,6 +167,22 @@ it("the ← → buttons go back and forward between conversations and views; a n
   w.engine.stop();
 });
 
+it("a place covering the conversation takes the selection from its sidebar row; going back gives it back", async () => {
+  const { w } = await setup();
+  await openRow(w, "d");
+  const row = () => sidebar().getByRole("button", { name: /^d$/ });
+  expect(row().className).toContain("bg-sidebar-active");
+  fireEvent.click(place("スレッド"));
+  await settle(w);
+  expect(viewActive("スレッド")).toBe(true);
+  expect(row().className).not.toContain("bg-sidebar-active");
+  fireEvent.click(backButton());
+  await settle(w);
+  expect(title()).toBe("d");
+  expect(row().className).toContain("bg-sidebar-active");
+  w.engine.stop();
+});
+
 it("macOS: ⌘[ / ⌘] anywhere, ⌘← / ⌘→ only outside a text field, nothing under a dialog", async () => {
   const { w } = await setup();
   await openRow(w, "d");

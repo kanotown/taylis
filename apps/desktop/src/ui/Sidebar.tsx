@@ -294,7 +294,8 @@ export function Sidebar({ controller, channels, currentId, unreadOnly, onToggleU
     // M24: someone else's times with new posts but no mention: not bold, a faint dot (SYNC_PROTOCOL.md §10.5).
     const quietUnread = !unread && channel.id !== currentId && channel.unreadCount > 0 && isQuietChannel(channel, me?.id ?? null);
     const badge = badgeCount(channel);
-    const active = channel.id === currentId;
+    // Like my Times in the rail: the conversation is not the selected row while a place (スレッド, 在室状況…) covers it.
+    const active = channel.id === currentId && !pageOpen;
     // A DM's avatar is the other person's; my own notes (a DM with only me) show mine.
     const other = isDmChannel(channel) ? ((channel.dm_user_ids ?? []).find((id) => id !== me?.id) ?? me?.id) : undefined;
     // MOBILE_UI.md §19: in a new tab (its menu, a middle click, ⌘-click).
