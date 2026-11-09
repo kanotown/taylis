@@ -59,7 +59,7 @@ async def _ok(response: Any, status: int = 200) -> Any:
 
 
 async def _old_delete_and_gc(app: FastAPI, blobs: MemoryBlobStore, message_ids: list[str]) -> None:
-    """What the server before 0126 does (9b376db2): `messages.delete_message` marks the message's
+    """What the server before 0126 does (619b2b81): `messages.delete_message` marks the message's
     attachments `deleted` (`attachments.mark_deleted_in_tx`), and the GC removes each deleted
     row's bytes and derived objects, then the row."""
     async with app.state.db.engine.begin() as conn:

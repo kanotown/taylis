@@ -3085,7 +3085,7 @@ DOM のカーソルを先頭に置き（`load.caretLine` で置いたカーソ�
   相手が `a\nb\nREMOTE`、応答は `A\nb\nREMOTE`）を `test/EditorMergeRaceTest.kt`（5）で再現した。BridgeSink の規則（300 ms の書き出し・
   変換中と書き出し待ちの保留・書き出しで保留を捨てる・`requestBody` の即答・blur で書き出してから `caret`）を真似る WebView 役と、
   本物の `CanvasSaver`・`EditorSession`・`FakeCanvasServer` を繋ぐ。打鍵中・変換中・直後の `requestBody`（前後どちらも）は、上の
-  `editorQuiet` の修正（907c66f3）の後の main で既に `AA\nb\nREMOTE` になり、次の保存の `baseRevId` は自分の `A\nb\nc` の側の版
+  `editorQuiet` の修正（6f5e857c）の後の main で既に `AA\nb\nREMOTE` になり、次の保存の `baseRevId` は自分の `A\nb\nc` の側の版
   （マージ後の head ではない）。**まだ消えた**のは、書き出し待ちのままキーボードを閉じた場合（戻るのジェスチャ、または閉じる IME が
   変換を確定した直後）：`editorFocused` は IME の inset が消えた時点で偽になり、最後の `changed` から 1 秒たっていれば静かと見なされ、
   その間に届いた応答で基準をマージ後へ進め、保留された `replace` が書き出しで捨てられて REMOTE が消えた。直し：(1) `editorFocused` は
