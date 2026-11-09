@@ -1,5 +1,5 @@
 // Screenshots of the browser client for the documentation site (website/docs/assets/screens/web-*.webp), and the
-// README's docs/images/desktop.png.
+// README's docs/images/desktop.png and docs/images/chat.png.
 //
 // Run against a LOCAL throwaway server that holds only the demo workspace (never a real one):
 //   1. an empty database + `python -m app.cli seed-demo` (infra/demo/README.md), then
@@ -12,8 +12,8 @@
 //   APP_URL   the Vite dev server (default http://localhost:1422/)
 //   APP_USER  the account the shots are taken as (default review, the demo's ordinary member)
 //   ADMIN_USER / ADMIN_PASS  optional: also the admin screens, as that account (default user tanaka)
-//   README_USER / README_PASS  optional: also docs/images/desktop.png (1600×1000 PNG: the attendance board with the
-//              light sidebar), as that account (default yamamoto)
+//   README_USER / README_PASS  optional: also docs/images/desktop.png (the attendance board) and docs/images/chat.png
+//              (a channel and its thread), 1600×1000 PNGs with the light sidebar, as that account (default yamamoto)
 //   CDP_PORT  headless Chrome's DevTools port (default 9444)
 //   ONLY      comma-separated shot names to take (default: all)
 //
@@ -34,6 +34,7 @@ import { join, resolve } from "node:path";
 
 const OUT = resolve(process.argv[2] ?? new URL("../../../website/docs/assets/screens", import.meta.url).pathname);
 const README_IMAGE = new URL("../../../docs/images/desktop.png", import.meta.url).pathname;
+const README_CHAT_IMAGE = new URL("../../../docs/images/chat.png", import.meta.url).pathname;
 mkdirSync(OUT, { recursive: true });
 const APP_URL = process.env.APP_URL ?? "http://localhost:1422/";
 const PORT = Number(process.env.CDP_PORT ?? 9444);
@@ -765,22 +766,43 @@ def(
   "admin",
 );
 
-// ---- the README's picture ---------------------------------------------------------------------------------------
+// ---- the README's pictures --------------------------------------------------------------------------------------
+
+/** The README's pictures have the light sidebar (「サイドバー」→ 明るい色), whatever the documentation's shots use. */
+async function lightSidebar() {
+  if (await run(`document.documentElement.dataset.sidebar === "light"`)) return;
+  await run(`(localStorage.setItem("chikuwa.prefs.sidebar", "light"), true)`);
+  await send("Page.reload");
+  await waitFor(`document.querySelector(${JSON.stringify(SIDEBAR)}) !== null`, 30000);
+  await sleep(2000);
+}
 
 def(
   "readme-desktop",
   async () => {
-    // What a lab sees first, not a channel: the attendance board, with the light sidebar (「サイドバー」→ 明るい色).
+    // What a lab sees first, not a channel: the attendance board.
     await viewport(README);
-    await run(`(localStorage.setItem("chikuwa.prefs.sidebar", "light"), true)`);
-    await send("Page.reload");
-    await waitFor(`document.querySelector(${JSON.stringify(SIDEBAR)}) !== null`, 30000);
-    await sleep(2000);
+    await lightSidebar();
     await place("在室状況");
     await run(`(document.querySelectorAll(${JSON.stringify(SIDEBAR)} + " *").forEach((e) => { if (e.scrollTop) e.scrollTop = 0; }), true)`);
     await mouse(5, 5, false);
     await sleep(600);
     await shot("readme-desktop", null, { png: README_IMAGE });
+  },
+  "readme",
+);
+
+def(
+  "readme-chat",
+  async () => {
+    // The chat section's picture: a channel with a thread open.
+    await viewport(README);
+    await lightSidebar();
+    await openThread("研究ミーティング", "5 件の返信");
+    await run(`(document.querySelectorAll(${JSON.stringify(SIDEBAR)} + " *").forEach((e) => { if (e.scrollTop) e.scrollTop = 0; }), true)`);
+    await mouse(5, 5, false);
+    await sleep(600);
+    await shot("readme-chat", null, { png: README_CHAT_IMAGE });
   },
   "readme",
 );

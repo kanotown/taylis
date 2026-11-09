@@ -45,6 +45,11 @@ For research labs:
 
 Chat and workspace:
 
+<p>
+  <img src="docs/images/chat.png" alt="Taylis desktop app: a channel with a thread open (demo data)" width="75%">
+  <img src="docs/images/iphone-chat.png" alt="A channel on iPhone (demo data)" width="21.5%">
+</p>
+
 - Public and private channels, direct messages and group DMs
 - Threads, reactions, mentions, editing and deletion, unread state synchronised across devices
 - Reliable delivery: server-side ordering, idempotent sends, catch-up after reconnects (WebSocket + REST,
