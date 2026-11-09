@@ -330,17 +330,27 @@ fun ChannelDetailsPane(controller: AppController, channel: ChannelState, version
                 ) {
                     val presence = store.presenceDotOf(member.userId)
                     Avatar(member.userId, user?.displayName ?: "?", size = 28.dp, presence = presence)
-                    Column(Modifier.weight(1f).padding(start = 10.dp)) {
-                        Row(verticalAlignment = Alignment.CenterVertically) {
-                            Text(user?.displayName ?: "?", modifier = Modifier.weight(1f, fill = false), maxLines = 1, overflow = TextOverflow.Ellipsis)
-                            StatusEmoji(user, controller, version, modifier = Modifier.padding(start = 6.dp))
-                            store.roster[member.userId]?.let { RosterBadge(it, Modifier.padding(start = 6.dp)) }
-                            AttendanceChip(controller, member.userId, version, Modifier.padding(start = 6.dp)) // M140
-                        }
-                        Text("@" + (user?.username ?: "") + (Roster.titleExtra(user?.title, store.roster[member.userId])?.let { " · $it" } ?: ""), style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
-                    }
-                    if (presence != null && presence != "offline") Text(presenceLabel(presence), style = MaterialTheme.typography.labelSmall, color = MaterialTheme.colorScheme.onSurfaceVariant, modifier = Modifier.padding(end = 8.dp))
-                    if (member.role == "owner") Text(L10n.str(R.string.dialogs_owner), style = MaterialTheme.typography.labelSmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
+                    // 2026-11-09 (PRESENCE.md §9.2): the name keeps its width; the 在室状況 chip (M140) gives way, cut or
+                    // moved under the name beside the @username. The labels on the right stay on one line.
+                    NameWithPill(
+                        title = {
+                            Row(verticalAlignment = Alignment.CenterVertically) {
+                                Text(user?.displayName ?: "?", modifier = Modifier.weight(1f, fill = false), maxLines = 1, overflow = TextOverflow.Ellipsis)
+                                StatusEmoji(user, controller, version, modifier = Modifier.padding(start = 6.dp))
+                                store.roster[member.userId]?.let { RosterBadge(it, Modifier.padding(start = 6.dp)) }
+                            }
+                        },
+                        pill = { AttendanceChip(controller, member.userId, version) },
+                        subtitle = {
+                            Text(
+                                "@" + (user?.username ?: "") + (Roster.titleExtra(user?.title, store.roster[member.userId])?.let { " · $it" } ?: ""),
+                                style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant, maxLines = 1, overflow = TextOverflow.Ellipsis,
+                            )
+                        },
+                        modifier = Modifier.weight(1f).padding(start = 10.dp, end = 8.dp),
+                    )
+                    if (presence != null && presence != "offline") Text(presenceLabel(presence), style = MaterialTheme.typography.labelSmall, color = MaterialTheme.colorScheme.onSurfaceVariant, maxLines = 1, softWrap = false, modifier = Modifier.padding(end = 8.dp))
+                    if (member.role == "owner") Text(L10n.str(R.string.dialogs_owner), style = MaterialTheme.typography.labelSmall, color = MaterialTheme.colorScheme.onSurfaceVariant, maxLines = 1, softWrap = false)
                     // M31: 「オーナーにする」 / 「オーナーから外す」 behind a 48 dp menu button (a text button leaves no room for
                     // the name at 360 dp).
                     ChannelOwners.action(channel, myRole, member, user, ownerCount)?.let { action ->
