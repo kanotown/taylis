@@ -12,7 +12,7 @@ export type EditFile =
   /** Uploaded during this edit (POST /attachments, still pending). */
   | { key: string; state: "added"; attachment: AttachmentOut }
   | { key: string; state: "uploading"; file: File }
-  /** The upload failed: × takes it away, 「もう一度」 uploads it again. Not sent with the save. */
+  /** The upload failed: × takes it away, 「もう一度」 uploads it again. 保存 waits until it is one or the other. */
   | { key: string; state: "failed"; file: File; error: string };
 
 /** The editor's files on opening: the message's own. */
@@ -43,10 +43,15 @@ export function editFilesUploading(files: readonly EditFile[]): boolean {
   return files.some((file) => file.state === "uploading");
 }
 
+/** A tile still going up or failed: 保存 waits (a failed file is never dropped silently, §7.6). */
+export function editFilesUnsettled(files: readonly EditFile[]): boolean {
+  return files.some((file) => file.state === "uploading" || file.state === "failed");
+}
+
 export type EditSave =
   /** Nothing to save: the body and the files are as they were (the editor just closes). */
   | { kind: "unchanged" }
-  /** 保存 cannot be pressed: an upload is still going, or nothing would be left (no body, no file). */
+  /** 保存 cannot be pressed: an upload is still going or failed, or nothing would be left (no body, no file). */
   | { kind: "blocked" }
   /** PATCH /messages/{id}: `attachmentIds` only when the files changed (or the body is empty, see below). */
   | { kind: "save"; body: string; attachmentIds?: string[] };
@@ -58,7 +63,7 @@ export type EditSave =
  */
 export function planEditSave(message: { body: string; attachments?: readonly AttachmentOut[] }, body: string, files: readonly EditFile[]): EditSave {
   const ids = editFileIds(files);
-  if (editFilesUploading(files) || (!body && ids.length === 0)) return { kind: "blocked" };
+  if (editFilesUnsettled(files) || (!body && ids.length === 0)) return { kind: "blocked" };
   const changed = editFilesChanged(message.attachments, files);
   if (body === message.body && !changed) return { kind: "unchanged" };
   return changed || !body ? { kind: "save", body, attachmentIds: ids } : { kind: "save", body };

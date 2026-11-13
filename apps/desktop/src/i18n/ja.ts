@@ -710,6 +710,7 @@ export const ja = {
   "timeline.editRetry": "もう一度",
   "timeline.editRetryName": "{name} をもう一度アップロード",
   "timeline.editUploading": "アップロード中… 完了後に保存できます",
+  "timeline.editFailedHint": "アップロードできなかったファイルを外すか、もう一度アップロードすると保存できます",
   "timeline.editDropHere": "ドロップしてメッセージに追加",
   "timeline.editFilesUnsupported": "このサーバではファイルを変更できません",
   "timeline.editRemovedTile": "削除された\nファイル",

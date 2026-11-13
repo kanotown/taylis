@@ -711,6 +711,7 @@ export const zhHans: Readonly<Record<MessageKey, string>> = {
   "timeline.editRetry": "重试",
   "timeline.editRetryName": "重新上传 {name}",
   "timeline.editUploading": "正在上传… 完成后即可保存",
+  "timeline.editFailedHint": "移除上传失败的文件或重新上传后即可保存",
   "timeline.editDropHere": "拖放到此处以添加到消息",
   "timeline.editFilesUnsupported": "此服务器无法更改消息中的文件",
   "timeline.editRemovedTile": "已删除的\n文件",

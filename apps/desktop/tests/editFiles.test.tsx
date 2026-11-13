@@ -46,12 +46,12 @@ describe("planEditSave", () => {
     expect(planEditSave(filesOnly, "", startEditFiles(filesOnly.attachments))).toEqual({ kind: "unchanged" });
   });
 
-  it("waits for uploads; a failed one is not sent and does not hold the save", () => {
+  it("waits for uploads, and for a failed one to be tried again or taken away", () => {
     const pdf = new File(["x"], "x.pdf");
     const uploading: EditFile[] = [...startEditFiles(message.attachments), { key: "u", state: "uploading", file: pdf }];
     expect(planEditSave(message, "hello", uploading)).toEqual({ kind: "blocked" });
     const failed: EditFile[] = [...startEditFiles(message.attachments), { key: "f", state: "failed", file: pdf, error: "x" }];
-    expect(planEditSave(message, "hi", failed)).toEqual({ kind: "save", body: "hi" });
+    expect(planEditSave(message, "hi", failed)).toEqual({ kind: "blocked" });
   });
 });
 
@@ -160,6 +160,8 @@ describe("the inline editor's files", () => {
     await act(async () => { paste(editor, [new File(["x"], "doc.txt", { type: "text/plain" })]); });
     expect(box.querySelector('[data-edit-file="failed"]')).not.toBeNull();
     expect(controller.setError).toHaveBeenCalled();
+    expect(saveButton(box).disabled).toBe(true);
+    expect(within(box).getByText("アップロードできなかったファイルを外すか、もう一度アップロードすると保存できます")).toBeTruthy();
 
     fail = false;
     await act(async () => { fireEvent.click(within(box).getByRole("button", { name: "doc.txt をもう一度アップロード" })); });

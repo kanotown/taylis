@@ -93,11 +93,13 @@ export function EditFileTiles({ controller, state }: { controller: AppController
           </li>
         ))}
       </ul>
-      {editFilesUploading(state.files) && (
+      {editFilesUploading(state.files) ? (
         <div role="status" className="flex items-center gap-2 px-1 pt-1 text-xs text-muted">
           <Loader2 size={12} className="animate-spin" /> {t("timeline.editUploading")}
         </div>
-      )}
+      ) : state.files.some((file) => file.state === "failed") ? (
+        <div role="status" className="px-1 pt-1 text-xs text-danger">{t("timeline.editFailedHint")}</div>
+      ) : null}
     </div>
   );
 }

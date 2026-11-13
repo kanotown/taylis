@@ -711,6 +711,7 @@ export const en: Readonly<Record<MessageKey, string>> = {
   "timeline.editRetry": "Retry",
   "timeline.editRetryName": "Upload {name} again",
   "timeline.editUploading": "Uploading… You can save when it's done",
+  "timeline.editFailedHint": "Remove the file that failed to upload, or upload it again, to save",
   "timeline.editDropHere": "Drop to add to the message",
   "timeline.editFilesUnsupported": "This server can't change a message's files",
   "timeline.editRemovedTile": "Deleted\nfile",
