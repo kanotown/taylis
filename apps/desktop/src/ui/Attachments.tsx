@@ -771,7 +771,18 @@ export function PendingAttachments({ items, uploading = 0, controller, onRemove 
   );
 }
 
-function PendingTile({ item, controller, onRemove }: { item: AttachmentOut; controller: AppController; onRemove: () => void }) {
+/**
+ * A file waiting to be sent: its thumbnail (or its name), a click opens it, × takes it away. M186: the edit box's files
+ * too (× says 「外す」 there).
+ */
+export function PendingTile({ item, controller, onRemove, removeLabel, removeTitle }: {
+  item: AttachmentOut;
+  controller: AppController;
+  onRemove: () => void;
+  /** ×'s name (default 「〈名前〉 を取り消す」) and tooltip (default 「取り消す」). */
+  removeLabel?: string;
+  removeTitle?: string;
+}) {
   const kind = mediaKind(item);
   const image = kind === "photo";
   const video = kind === "video";
@@ -805,8 +816,8 @@ function PendingTile({ item, controller, onRemove }: { item: AttachmentOut; cont
       </button>
       <button
         type="button"
-        aria-label={t("attach.removeName", { name: item.filename })}
-        title={t("attach.remove")}
+        aria-label={removeLabel ?? t("attach.removeName", { name: item.filename })}
+        title={removeTitle ?? t("attach.remove")}
         className="absolute -right-1.5 -top-1.5 flex h-5 w-5 items-center justify-center rounded-full bg-ink/80 text-canvas shadow hover:bg-danger"
         onClick={onRemove}
       >

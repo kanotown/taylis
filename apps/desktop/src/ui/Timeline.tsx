@@ -18,6 +18,8 @@ import { insideFence, linkFromPaste, replaceThroughBrowser } from "./composerEdi
 import { decidePaste, MAX_BODY, plainPasteRequested, tableInsertion } from "./tablePaste";
 import { keepLineInView, settle, textAreaCaretLine } from "./composerScroll";
 import { EDIT_MIN, editBoxHeight, editCap, editMax, type EditRoom, handleKeyHeight, readEditHeight, revealDelta, writeEditHeight } from "./editBox";
+import { EditAddFilesButton, EditDropOverlay, EditFileTiles, useEditFileDrop, useEditFiles } from "./EditFiles";
+import { planEditSave } from "./editFileList";
 import { bannerText, buildTimeline, compactNames, dateLabel, fullTimestamp, lastReplyLabel, rowKey, timeLabel } from "./format";
 import { decodeMentions, encodeMentions, mentionsToNames } from "./mentions";
 import { attachmentText, plainText } from "./markdown";
@@ -1377,10 +1379,16 @@ const MessageRowView = memo(function MessageRowView({ controller, message, compa
  * the conversation's pane, then scrolls by the caret's line as the composer does; it opens with its top in view; its
  * bottom edge drags (or ↑ / ↓ on the focused handle) to a height remembered on this device. The buttons stay in view
  * (sticky) when the box is taller than what the list shows.
+ *
+ * M186 (docs/CHANNEL_FILES.md §7.6): the message's files under the text, each with × (外す), and 「ファイルを追加」 /
+ * paste / drop for new ones (EditFiles.tsx). The save names the files only when they changed; with files left the
+ * body may be empty.
  */
 function MessageEditor({ controller, message }: { controller: AppController; message: MessageState }) {
   const store = controller.store;
   const [draft, setDraft] = useState(() => decodeMentions(message.body, store.users, store.groups));
+  const files = useEditFiles(controller, message.attachments);
+  const drop = useEditFileDrop(files);
   const composing = useRef(false);
   const rich = (controller.composerMode ?? "markdown") === "rich";
   const richApi = useRef<RichEditorApi | null>(null);
@@ -1400,12 +1408,15 @@ function MessageEditor({ controller, message }: { controller: AppController; mes
     controller.setEditing(null);
     requestAnimationFrame(() => document.querySelector<HTMLElement>(".composer [data-composer-input]")?.focus());
   };
+  const plan = (text: string) => planEditSave(message, encodeMentions(text.trim(), store.users.values(), store.groups.values()), files.files);
+  const savable = !saving && plan(draft).kind !== "blocked";
   // Codex audit C4: closed only once the server took the edit; a failure (offline) keeps the text and the editor open.
   const save = async () => {
-    const body = encodeMentions(latest.current.trim(), store.users.values(), store.groups.values());
-    if (!body || body === message.body) return finish();
+    const next = plan(latest.current);
+    if (next.kind === "blocked") return;
+    if (next.kind === "unchanged") return finish();
     setSaving(true);
-    const saved = await controller.editMessage(message.id, body);
+    const saved = next.attachmentIds ? await controller.editMessage(message.id, next.body, next.attachmentIds) : await controller.editMessage(message.id, next.body);
     setSaving(false);
     if (saved) finish();
   };
@@ -1530,6 +1541,12 @@ function MessageEditor({ controller, message }: { controller: AppController; mes
             if (decision.tooLarge) controller.setNotice(t("composer.tableTooLarge"));
             return; // the browser pastes the plain text
           }
+          // M186: a pasted picture or file is added to the message's files, as the composer attaches it.
+          if (e.clipboardData.files.length) {
+            e.preventDefault();
+            void files.add(Array.from(e.clipboardData.files));
+            return;
+          }
           // A URL pasted over selected text links it, as in the composer (composerEdit.linkFromPaste).
           const linked = linkFromPaste({ text: el.value, start: el.selectionStart, end: el.selectionEnd }, e.clipboardData.getData("text/plain"));
           if (!linked) return;
@@ -1549,7 +1566,7 @@ function MessageEditor({ controller, message }: { controller: AppController; mes
             finish();
           } else if (isSendKey(e, controller.sendKey ?? "mod-enter") && !composing.current && !isImeKeyEvent(e)) {
             e.preventDefault();
-            if (draft.trim() && !saving) void save();
+            if (savable) void save();
           }
         }}
       />
@@ -1566,13 +1583,14 @@ function MessageEditor({ controller, message }: { controller: AppController; mes
     const sendKey = controller.sendKey ?? "mod-enter";
     if (isSendKey(event, sendKey)) {
       if (sendKey === "enter" && api.inCodeBlock()) return false;
-      if (latest.current.trim() && !saving) void save();
+      if (!saving && plan(latest.current).kind !== "blocked") void save();
       return true;
     }
     return event.shiftKey || event.metaKey || event.ctrlKey ? api.newline() : false;
   };
   return (
-    <div ref={block} className="mt-1" data-edit-box="">
+    <div ref={block} className="relative mt-1" data-edit-box="" {...drop.handlers}>
+      <EditDropOverlay active={drop.active} />
       <div ref={boxWrap} className="relative">
         {rich ? (
           <Suspense fallback={textArea}>
@@ -1589,6 +1607,7 @@ function MessageEditor({ controller, message }: { controller: AppController; mes
                 setDraft(markdown);
               }}
               onKeyDown={onRichKeyDown}
+              onFiles={(pasted) => void files.add(pasted)}
               onNotice={(notice) => controller.setNotice(notice)}
               onCompositionEnd={() => {
                 composedAt.current = Date.now();
@@ -1618,16 +1637,21 @@ function MessageEditor({ controller, message }: { controller: AppController; mes
           <span className="h-1 w-10 rounded-full bg-line transition-colors group-hover/handle:bg-accent/60 group-active/handle:bg-accent group-focus-visible/handle:bg-accent" />
         </div>
       </div>
-      {/* The actions sit at the bottom right with 保存 last, as in Slack (the user, 2026-10-07); the keys' hint on the left.
-          Sticky: a box taller than the list's view keeps them on screen. */}
-      <div className="sticky bottom-0 z-[1] -mx-2 mt-1 flex items-center gap-2 rounded-b-lg bg-panel px-2 py-1.5">
-        <span className="flex min-w-0 flex-1 items-center gap-1 text-[11px] text-muted">
-          <Kbd>{sendKeyLabel(controller.sendKey ?? "mod-enter").send}</Kbd> {t("common.save")} <Kbd>Esc</Kbd> {t("timeline.escCancel")}
+      <EditFileTiles controller={controller} state={files} />
+      {/* The actions sit at the bottom right with 保存 last, as in Slack (the user, 2026-10-07); 「ファイルを追加」 and the
+          keys' hint on the left (left out where the bar is narrow: a thread pane, a phone). Sticky: a box taller than the
+          list's view keeps them on screen. */}
+      <div className="@container sticky bottom-0 z-[1] -mx-2 mt-1 flex items-center gap-2 rounded-b-lg bg-panel px-2 py-1.5">
+        <EditAddFilesButton controller={controller} state={files} />
+        <span className="flex min-w-0 flex-1">
+          <span className="hidden min-w-0 items-center gap-1 text-[11px] text-muted @[32rem]:flex">
+            <Kbd>{sendKeyLabel(controller.sendKey ?? "mod-enter").send}</Kbd> {t("common.save")} <Kbd>Esc</Kbd> {t("timeline.escCancel")}
+          </span>
         </span>
         <Button size="sm" variant="secondary" onClick={finish}>
           {t("common.cancel")}
         </Button>
-        <Button size="sm" onClick={() => void save()} disabled={!draft.trim() || saving}>
+        <Button size="sm" onClick={() => void save()} disabled={!savable}>
           {saving ? t("common.saving") : t("common.save")}
         </Button>
       </div>

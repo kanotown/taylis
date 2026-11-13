@@ -46,6 +46,7 @@ import { UpdateChecker } from "./updates";
 import { attachmentText, plainText } from "../ui/markdown";
 import { rememberEmoji } from "../ui/EmojiPicker";
 import { decodeMentions, mentionsToNames } from "../ui/mentions";
+import { editFilesApplied } from "../ui/editFileList";
 import { type ComposerMode, composerModeOf, type DocsEditorMode, docsEditorModeOf, readGroupPosts, readSendKey, type SendKey, writeGroupPosts, writeSendKey } from "../ui/prefs";
 import { readUseTabs, writeUseTabs } from "../ui/desktopTabs";
 import type { DesktopPlaces } from "../ui/desktopPlaces";
@@ -879,11 +880,17 @@ export class AppController {
 
   // --- message actions (M8a): apply the server's answer at once; the WS event is deduplicated ---
 
-  /** True once the server took the edit; the editor stays open until then (a failure keeps the text). */
-  async editMessage(messageId: string, body: string): Promise<boolean> {
+  /**
+   * True once the server took the edit; the editor stays open until then (a failure keeps the text). M186
+   * (docs/CHANNEL_FILES.md §7.6): `attachmentIds` changes the files too. A server older than that ignores them: the
+   * answer's files are not the ones sent, and the body (saved) is all that changed.
+   */
+  async editMessage(messageId: string, body: string, attachmentIds?: readonly string[]): Promise<boolean> {
     if (!this.api) return false;
     try {
-      this.store.upsertMessage(await this.api.editMessage(messageId, body));
+      const saved = await this.api.editMessage(messageId, body, attachmentIds);
+      this.store.upsertMessage(saved);
+      if (attachmentIds && !editFilesApplied(attachmentIds, saved.attachments)) this.setError(t("timeline.editFilesUnsupported"));
       return true;
     } catch (error) {
       this.setError(error);

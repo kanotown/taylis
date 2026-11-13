@@ -2286,8 +2286,12 @@ export class ApiClient {
     return this.request("PUT", `/api/v1/channels/${channelId}/read`, mode === "set" ? { last_read_seq: lastReadSeq, mode } : { last_read_seq: lastReadSeq });
   }
 
-  editMessage(messageId: string, body: string): Promise<MessageOut> {
-    return this.request("PATCH", `/api/v1/messages/${messageId}`, { body });
+  /**
+   * M186 (docs/CHANNEL_FILES.md §7.6): `attachmentIds`, the message's files after the edit (the kept ones and new
+   * uploads); left out, the files stay as they are.
+   */
+  editMessage(messageId: string, body: string, attachmentIds?: readonly string[]): Promise<MessageOut> {
+    return this.request("PATCH", `/api/v1/messages/${messageId}`, attachmentIds ? { body, attachment_ids: attachmentIds } : { body });
   }
 
   /** Returns the tombstone (deleted = true) so the caller can apply it locally. */
