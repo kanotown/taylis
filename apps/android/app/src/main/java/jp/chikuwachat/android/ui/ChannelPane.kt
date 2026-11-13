@@ -343,7 +343,7 @@ fun ChannelPane(controller: AppController, channelId: String, version: Int, onSc
                                     onRetry = { message.clientMsgId?.let { key -> scope.launch { controller.engine?.retryFailed(key) } } },
                                     onDiscard = { controller.engine?.discardFailed(message.clientMsgId ?: "") },
                                     onReact = { emoji -> scope.launch { controller.toggleReaction(message, emoji) } },
-                                    onEdit = { body -> controller.editMessage(message.id, Mentions.encode(straightenCode(body), store.users.values, store.groups.values)).isSuccess },
+                                    onEdit = { body, files -> controller.editMessage(message.id, Mentions.encode(straightenCode(body), store.users.values, store.groups.values), files).isSuccess },
                                     onDelete = { driveFiles -> scope.launch { controller.deleteMessage(message.id, driveFiles = driveFiles) } },
                                     onOpenThread = { onOpenThread(message.parentId ?: message.id) },
                                     // Not offered where it would read unread rows this device never loaded (§10.1).
@@ -559,8 +559,11 @@ fun MessageRow(
     onRetry: () -> Unit,
     onDiscard: () -> Unit,
     onReact: (String) -> Unit,
-    /** Saves an edit; true once the server took it (the editor stays open with the text until then). */
-    onEdit: suspend (String) -> Boolean,
+    /**
+     * Saves an edit; true once the server took it (the editor stays open with the text until then). M186: the files'
+     * `attachment_ids` when they changed (null: the body only).
+     */
+    onEdit: suspend (body: String, attachmentIds: List<String>?) -> Boolean,
     /** CF4: `driveFiles` is the confirmation's `drive_files` (`auto` / `keep`; null: none asked, the server's `auto`). */
     onDelete: (driveFiles: String?) -> Unit,
     onOpenThread: (() -> Unit)? = null,
@@ -765,7 +768,7 @@ fun MessageRow(
                     .filter { cardShown(controller, cards, it) }
                     .map { url -> cardLabel(controller, cards, url) to { removePreview(url) } }
             },
-            onReact = onReact, onEdit = { editing = true }, onDelete = { confirmingDelete = true }, onReply = onOpenThread, onMarkUnread = onMarkUnread,
+            onReact = onReact, onEdit = { controller.endMessageEdit(message.id); editing = true }, onDelete = { confirmingDelete = true }, onReply = onOpenThread, onMarkUnread = onMarkUnread,
             pinned = message.pinnedAt != null, onPin = { controller.scope.launch { controller.togglePin(message) } },
             bookmarked = store.isBookmarked(message.id), onBookmark = { controller.scope.launch { controller.toggleBookmark(message.id) } },
             onCopyLink = { controller.copyPermalink(message.id) },
@@ -810,13 +813,18 @@ fun MessageRow(
     if (pickingReaction) EmojiPickerSheet(frequent = FrequentEmoji.read(controller.prefs), store = store, onNeedImage = { controller.loadEmojiImage(it) }, onNeedPackTab = { controller.loadPackTab(it) }, onDismiss = { pickingReaction = false }, onPick = { pickingReaction = false; onReact(it) })
     profileUserId?.let { id -> ProfileDialog(controller, id, version, onDismiss = { profileUserId = null }, onOpenDm = { controller.pendingChannelId = it }) }
     // Codex audit C4: closed only once the edit is saved; a failure (offline) keeps the text and shows the error.
-    if (editing) EditMessageDialog(Mentions.decode(message.body, store.users, store.groups), saving = savingEdit, onDismiss = { if (!savingEdit) editing = false }, onSave = { body ->
-        rowScope.launch {
-            savingEdit = true
-            if (onEdit(body)) editing = false
-            savingEdit = false
-        }
-    })
+    // M186: the files the edit holds live in the controller while the dialog is open (a rotation keeps them).
+    if (editing) EditMessageDialog(
+        Mentions.decode(message.body, store.users, store.groups), files = controller.messageEdit(message), controller = controller, saving = savingEdit,
+        onDismiss = { if (!savingEdit) { editing = false; controller.endMessageEdit(message.id) } },
+        onSave = { body, files ->
+            rowScope.launch {
+                savingEdit = true
+                if (onEdit(body, files)) { editing = false; controller.endMessageEdit(message.id) }
+                savingEdit = false
+            }
+        },
+    )
     if (confirmingDelete) ConfirmDeleteDialog(
         onDismiss = { confirmingDelete = false }, onConfirm = { driveFiles -> confirmingDelete = false; onDelete(driveFiles) },
         // CF4 (docs/CHANNEL_FILES.md §7.3): a message with files in the channel's drive asks what becomes of them.

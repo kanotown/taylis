@@ -24,6 +24,10 @@
     <string name="channel_files_delete_checking">ドライブのファイルを確認しています…</string>
     <string name="channel_files_delete_trash_note">ゴミ箱からは 30 日のあいだ戻せます。</string>
     <string name="channel_files_delete_stay">ドライブのファイルは残ります。</string>
+    <!-- M186 (§7.6): the edit dialog takes files off a message and adds new ones. -->
+    <string name="message_edit_add_files">ファイルを追加</string>
+    <string name="message_edit_remove_file">%1$s を外す</string>
+    <string name="message_edit_files_unsupported">このサーバではファイルを変更できません</string>
     <plurals name="channel_files_delete_trash">
         <item quantity="other">ドライブの %1$d 件のファイルもゴミ箱に移す</item>
     </plurals>

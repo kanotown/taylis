@@ -417,8 +417,20 @@ fun ReactionChips(
     }
 }
 
+/**
+ * 「メッセージを編集」. M186 (docs/CHANNEL_FILES.md §7.6): the message's files under the text ([EditFilesSection]): × takes
+ * one off, 「ファイルを追加」 adds more; `onSave` gets the body and the `attachment_ids` (null when the files did not change).
+ * A message of files only may be saved without text.
+ */
 @Composable
-fun EditMessageDialog(initial: String, saving: Boolean = false, onDismiss: () -> Unit, onSave: (String) -> Unit) {
+fun EditMessageDialog(
+    initial: String,
+    files: EditFilesSession,
+    controller: jp.chikuwachat.android.app.AppController,
+    saving: Boolean = false,
+    onDismiss: () -> Unit,
+    onSave: (body: String, attachmentIds: List<String>?) -> Unit,
+) {
     // Saveable (M28c): a rotation while editing kept the dialog but lost what was typed. The cursor starts at the end.
     var field by rememberSaveable(stateSaver = TextFieldValue.Saver) { mutableStateOf(TextFieldValue(initial, TextRange(initial.length))) }
     // Editing means typing: the keyboard is up as the dialog opens (testers, 2026-09-30).
@@ -427,8 +439,17 @@ fun EditMessageDialog(initial: String, saving: Boolean = false, onDismiss: () ->
     AlertDialog(
         onDismissRequest = onDismiss,
         title = { Text(stringResource(R.string.message_actions_edit_message)) },
-        text = { OutlinedTextField(field, { field = it }, maxLines = 8, enabled = !saving, modifier = Modifier.focusRequester(focus)) },
-        confirmButton = { TextButton(enabled = field.text.isNotBlank() && !saving, onClick = { onSave(field.text.trim()) }) { Text(if (saving) stringResource(R.string.common_saving) else stringResource(R.string.common_save)) } },
+        text = {
+            Column(Modifier.verticalScroll(rememberScrollState())) {
+                OutlinedTextField(field, { field = it }, maxLines = 8, enabled = !saving, modifier = Modifier.fillMaxWidth().focusRequester(focus))
+                EditFilesSection(files, controller, enabled = !saving)
+            }
+        },
+        confirmButton = {
+            TextButton(enabled = files.canSave(field.text, saving), onClick = { onSave(field.text.trim(), files.attachmentIds()) }) {
+                Text(if (saving) stringResource(R.string.common_saving) else stringResource(R.string.common_save))
+            }
+        },
         dismissButton = { TextButton(enabled = !saving, onClick = onDismiss) { Text(stringResource(R.string.common_cancel)) } },
     )
 }

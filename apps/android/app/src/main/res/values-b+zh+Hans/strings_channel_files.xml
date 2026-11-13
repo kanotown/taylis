@@ -23,6 +23,9 @@
     <string name="channel_files_delete_checking">正在确认云盘中的文件…</string>
     <string name="channel_files_delete_trash_note">30 天内可从回收站恢复。</string>
     <string name="channel_files_delete_stay">云盘中的文件会保留。</string>
+    <string name="message_edit_add_files">添加文件</string>
+    <string name="message_edit_remove_file">移除 %1$s</string>
+    <string name="message_edit_files_unsupported">此服务器无法更改消息的文件</string>
     <plurals name="channel_files_delete_trash">
         <item quantity="other">同时将云盘中的 %1$d 个文件移到回收站</item>
     </plurals>

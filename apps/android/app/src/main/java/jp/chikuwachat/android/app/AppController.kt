@@ -1849,8 +1849,34 @@ class AppController(private val app: Application) {
 
     // --- message actions (M8a): apply the server's answer at once; the WS event is deduplicated -----
 
-    suspend fun editMessage(messageId: String, body: String): Result<Unit> =
-        attempt { store.upsertMessage(api!!.editMessage(messageId, body)); Unit }.onFailure { error = describe(it) }
+    /**
+     * M186 (docs/CHANNEL_FILES.md §7.6): `attachmentIds` are the message's files after the edit (null: they stay as they
+     * are). A server before M186 ignores them and answers with the files as they were: the body is saved, and
+     * 「このサーバではファイルを変更できません」 says the files are not.
+     */
+    suspend fun editMessage(messageId: String, body: String, attachmentIds: List<String>? = null): Result<Unit> =
+        attempt {
+            val answer = api!!.editMessage(messageId, body, attachmentIds)
+            store.upsertMessage(answer)
+            if (jp.chikuwachat.android.ui.EditFiles.ignoredByServer(attachmentIds, answer.attachments.map { it.id })) {
+                error = L10n.str(R.string.message_edit_files_unsupported)
+            }
+        }.onFailure { error = describe(it) }
+
+    /**
+     * M186: the files of each message whose edit dialog is open (a rotation keeps them, and an upload finishes into
+     * them); a fresh one each time the dialog opens ([endMessageEdit] when it closes).
+     */
+    private val messageEdits = HashMap<String, jp.chikuwachat.android.ui.EditFilesSession>()
+
+    fun messageEdit(message: jp.chikuwachat.android.sync.MessageState): jp.chikuwachat.android.ui.EditFilesSession =
+        messageEdits.getOrPut(message.id) {
+            jp.chikuwachat.android.ui.EditFilesSession(message.attachments, store.limits?.maxAttachmentsPerMessage ?: 10, ::describe)
+        }
+
+    fun endMessageEdit(messageId: String) {
+        messageEdits.remove(messageId)?.end()
+    }
 
     /**
      * `fromThreadRoot`: the root row at the top of the thread showing it (THREADS.md): the thread then closes without
@@ -3208,14 +3234,15 @@ class AppController(private val app: Application) {
      * Upload a picked content URI, streamed from the provider (a large file never sits in memory); the id is
      * bound when the message is sent. The size is checked against bootstrap.limits before anything is sent.
      */
-    suspend fun uploadAttachment(uri: Uri): Result<AttachmentOut> = attempt {
+    /** `report` false: the caller shows the failure itself (M186's edit dialog, on the file's row). */
+    suspend fun uploadAttachment(uri: Uri, report: Boolean = true): Result<AttachmentOut> = attempt {
         val api = api ?: throw Refusal(L10n.str(R.string.app_controller_you_need_to_sign_in))
         val resolver = app.contentResolver
         val (name, size) = withContext(Dispatchers.IO) { describeDocument(resolver, uri) }
         val limit = store.limits?.maxAttachmentBytes
         if (limit != null && size != null && size > limit) throw Refusal(L10n.str(R.string.app_controller_the_file_is_too_large_limit, formatSize(limit)))
         api.uploadAttachment(ContentUriBody(resolver, uri, size), name ?: "file")
-    }.onFailure { error = describe(it) }
+    }.onFailure { if (report) error = describe(it) }
 
     /** Display name and size of a picked document (either may be unknown); refuses one that cannot be opened. */
     private fun describeDocument(resolver: ContentResolver, uri: Uri): Pair<String?, Long?> {

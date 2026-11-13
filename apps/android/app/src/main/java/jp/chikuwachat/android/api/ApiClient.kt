@@ -335,8 +335,15 @@ class ApiClient(
     override suspend fun delta(channelId: String, sinceSeq: Int, limit: Int): DeltaOut =
         request("GET", "/api/v1/channels/$channelId/sync?since_seq=$sinceSeq&limit=$limit")
 
-    suspend fun editMessage(messageId: String, body: String): MessageOut =
-        request("PATCH", "/api/v1/messages/$messageId", buildJsonObject { put("body", body) })
+    /**
+     * M186 (docs/CHANNEL_FILES.md §7.6): `attachmentIds` (sent only when not null) are the message's files after the edit:
+     * the ones it keeps and my new uploads after them.
+     */
+    suspend fun editMessage(messageId: String, body: String, attachmentIds: List<String>? = null): MessageOut =
+        request("PATCH", "/api/v1/messages/$messageId", buildJsonObject {
+            put("body", body)
+            if (attachmentIds != null) put("attachment_ids", buildJsonArray { attachmentIds.forEach { add(JsonPrimitive(it)) } })
+        })
 
     /**
      * Returns the tombstone (deleted = true) so the caller can apply it locally. CF1 (docs/CHANNEL_FILES.md §7.3):

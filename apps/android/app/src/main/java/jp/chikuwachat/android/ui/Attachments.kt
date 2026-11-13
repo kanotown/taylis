@@ -372,18 +372,34 @@ fun PendingAttachments(items: List<AttachmentOut>, controller: AppController, up
         horizontalArrangement = Arrangement.spacedBy(10.dp),
     ) {
         items(items, key = { it.id }) { item -> PendingTile(item, controller) { onRemove(item) } }
-        items(uploading) {
-            Box(Modifier.size(PENDING_TILE).clip(RoundedCornerShape(10.dp)).background(MaterialTheme.colorScheme.surfaceVariant), contentAlignment = Alignment.Center) {
-                CircularProgressIndicator(Modifier.size(20.dp).semantics { contentDescription = L10n.str(R.string.attachments_uploading) }, strokeWidth = 2.dp)
-            }
-        }
+        items(uploading) { UploadingTile() }
     }
 }
 
 private val PENDING_TILE = 64.dp
 
+/** A file still on its way: a tile with a spinner (the composer's, and M186's edit dialog). */
 @Composable
-private fun PendingTile(item: AttachmentOut, controller: AppController, onRemove: () -> Unit) {
+internal fun UploadingTile() {
+    Box(Modifier.padding(top = 6.dp, end = 6.dp)) {
+        Box(Modifier.size(PENDING_TILE).clip(RoundedCornerShape(10.dp)).background(MaterialTheme.colorScheme.surfaceVariant), contentAlignment = Alignment.Center) {
+            CircularProgressIndicator(Modifier.size(20.dp).semantics { contentDescription = L10n.str(R.string.attachments_uploading) }, strokeWidth = 2.dp)
+        }
+    }
+}
+
+/**
+ * One file as a small tile with a × over its corner (the composer's pending files; M186's edit dialog with
+ * `removeLabel` 「名前 を外す」).
+ */
+@Composable
+internal fun PendingTile(
+    item: AttachmentOut,
+    controller: AppController,
+    removeLabel: String = L10n.str(R.string.attachments_remove, item.filename),
+    enabled: Boolean = true,
+    onRemove: () -> Unit,
+) {
     var bitmap by remember(item.id) { mutableStateOf<ImageBitmap?>(null) }
     var viewing by remember(item.id) { mutableStateOf(false) }
     var posterFailed by remember(item.id) { mutableStateOf(false) }
@@ -423,7 +439,7 @@ private fun PendingTile(item: AttachmentOut, controller: AppController, onRemove
         Box(
             Modifier.align(Alignment.TopEnd).offset(x = 6.dp, y = (-6).dp)
                 .touchTarget { source ->
-                    Modifier.semantics { contentDescription = L10n.str(R.string.attachments_remove, item.filename) }.clickable(interactionSource = source, indication = null, onClick = onRemove)
+                    Modifier.semantics { contentDescription = removeLabel }.clickable(interactionSource = source, indication = null, enabled = enabled, onClick = onRemove)
                 }
                 .size(22.dp).clip(CircleShape).background(MaterialTheme.colorScheme.inverseSurface),
             contentAlignment = Alignment.Center,

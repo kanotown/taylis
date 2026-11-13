@@ -194,7 +194,7 @@ fun PreviewThreadPane(controller: AppController, channelId: String, parentId: St
 private fun PreviewRow(message: MessageState, controller: AppController, version: Int, compact: Boolean = false, onOpenThread: (() -> Unit)? = null) {
     MessageRow(
         message, controller.store, controller, version, compact = compact, canEdit = false, canDelete = false,
-        onRetry = {}, onDiscard = {}, onReact = {}, onEdit = { false }, onDelete = { _ -> }, onOpenThread = onOpenThread, readOnly = true,
+        onRetry = {}, onDiscard = {}, onReact = {}, onEdit = { _, _ -> false }, onDelete = { _ -> }, onOpenThread = onOpenThread, readOnly = true,
     )
 }
 

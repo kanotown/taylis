@@ -23,6 +23,9 @@
     <string name="channel_files_delete_checking">Checking the files in the drive…</string>
     <string name="channel_files_delete_trash_note">They can be restored from the trash for 30 days.</string>
     <string name="channel_files_delete_stay">The files stay in the drive.</string>
+    <string name="message_edit_add_files">Add files</string>
+    <string name="message_edit_remove_file">Remove %1$s</string>
+    <string name="message_edit_files_unsupported">This server can\'t change a message\'s files</string>
     <plurals name="channel_files_delete_trash">
         <item quantity="one">Also move %1$d file in the drive to the trash</item>
         <item quantity="other">Also move the %1$d files in the drive to the trash</item>

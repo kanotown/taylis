@@ -427,7 +427,7 @@ private fun ThreadMessage(message: MessageState, store: jp.chikuwachat.android.s
         onRetry = { message.clientMsgId?.let { key -> controller.scope.launch { controller.engine?.retryFailed(key) } } },
         onDiscard = { controller.engine?.discardFailed(message.clientMsgId ?: "") },
         onReact = { emoji -> controller.scope.launch { controller.toggleReaction(message, emoji) } },
-        onEdit = { body -> controller.editMessage(message.id, Mentions.encode(straightenCode(body), store.users.values, store.groups.values)).isSuccess },
+        onEdit = { body, files -> controller.editMessage(message.id, Mentions.encode(straightenCode(body), store.users.values, store.groups.values), files).isSuccess },
         // The root row: its deletion closes this thread without the notice (ThreadRootWatch).
         onDelete = { driveFiles -> controller.scope.launch { controller.deleteMessage(message.id, fromThreadRoot = isRoot, driveFiles = driveFiles) } },
     )
