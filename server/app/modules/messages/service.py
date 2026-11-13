@@ -7,7 +7,7 @@ from typing import Any
 from sqlalchemy.exc import IntegrityError
 from sqlalchemy.ext.asyncio import AsyncSession
 
-from app.core.errors import bad_request, conflict, forbidden, not_found
+from app.core.errors import AppError, bad_request, conflict, forbidden, not_found
 from app.core.roles import has_capability
 from app.core.time import utcnow
 from app.events.outbox import write_outbox
@@ -582,8 +582,12 @@ async def edit_message(
     removed: list[uuid.UUID] = []
     added: list[uuid.UUID] = []
     filing: channel_files.Plan | None = None
+    shown = await attachments.shown_ids(db, message.id)
+    if not data.body.strip() and not (
+        shown if data.attachment_ids is None else data.attachment_ids
+    ):  # nothing would be left: that is a delete (the schema checks an explicit [])
+        raise AppError(422, "validation_error", "body must not be empty")
     if data.attachment_ids is not None:
-        shown = await attachments.shown_ids(db, message.id)
         wanted = list(dict.fromkeys(data.attachment_ids))
         removed = [i for i in shown if i not in wanted]
         added = [i for i in wanted if i not in shown]

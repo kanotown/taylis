@@ -284,13 +284,14 @@ class MessageEdit(BaseModel):
     @field_validator("body")
     @classmethod
     def _clean_body(cls, value: str) -> str:
-        return strip_control_chars(value)
+        cleaned = strip_control_chars(value)
+        return cleaned if cleaned.strip() else ""  # files only: no blank line under them
 
     @model_validator(mode="after")
     def _body_or_attachments(self) -> "MessageEdit":
-        # Without files the body is needed, as before M186: an edit that would leave nothing is a
-        # delete.
-        if not self.body.strip() and not self.attachment_ids:
+        # An edit that would leave nothing is a delete. Without attachment_ids the message's own
+        # files decide (edit_message): a message of files only keeps an empty body.
+        if not self.body.strip() and self.attachment_ids is not None and not self.attachment_ids:
             raise ValueError("body must not be empty")
         return self
 

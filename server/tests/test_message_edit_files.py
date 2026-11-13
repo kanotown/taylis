@@ -101,7 +101,14 @@ async def test_files_only_and_the_older_clients(
     assert kept.json()["body"] == "" and [f["id"] for f in kept.json()["attachments"]] == [b]
     # Nothing left would be a delete.
     assert (await edit(client, sent["id"], "", [])).status_code == 422
-    assert (await edit(client, sent["id"], "  ", None)).status_code == 422
+    # Without attachment_ids the message's own files decide: it keeps its files, the body may
+    # stay empty; a message without files still needs its body.
+    unchanged = await edit(client, sent["id"], "  ", None)
+    assert unchanged.status_code == 200, unchanged.text
+    assert [f["id"] for f in unchanged.json()["attachments"]] == [b]
+    text_only = await post(client, lab["id"], [])
+    nothing = await edit(client, text_only["id"], "", None)
+    assert nothing.status_code == 422 and nothing.json()["error"]["code"] == "validation_error"
 
     # An older client sends the body only: the files stay.
     older = await edit(client, sent["id"], "a caption", None)
