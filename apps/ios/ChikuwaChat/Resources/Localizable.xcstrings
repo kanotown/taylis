@@ -10990,6 +10990,22 @@
         }
       }
     },
+    "このサーバではファイルを変更できません" : {
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "This server can't change the files"
+          }
+        },
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "此服务器无法更改文件"
+          }
+        }
+      }
+    },
     "このサーバはまだキャンバスに対応していません" : {
       "localizations" : {
         "en" : {
@@ -13330,6 +13346,22 @@
           "stringUnit" : {
             "state" : "translated",
             "value" : "正在上传"
+          }
+        }
+      }
+    },
+    "アップロードできなかったファイルを外すか、もう一度アップロードすると保存できます" : {
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Remove the files that didn't upload, or upload them again, to save"
+          }
+        },
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "移除未能上传的文件或重新上传后即可保存"
           }
         }
       }
@@ -17078,6 +17110,22 @@
           "stringUnit" : {
             "state" : "translated",
             "value" : "发送了文件"
+          }
+        }
+      }
+    },
+    "ファイルを追加" : {
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Add files"
+          }
+        },
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "添加文件"
           }
         }
       }

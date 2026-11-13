@@ -1015,3 +1015,203 @@ final class ComposerDriveTests: XCTestCase {
         XCTAssertTrue(offer.message.contains(ComposerDrive.explanation(resolved.destination)))
     }
 }
+
+/// M186 (docs/CHANNEL_FILES.md §7.6): the edit sheet takes files off a message and adds new ones.
+@MainActor
+final class MessageEditFilesTests: XCTestCase {
+    private static let messageId = "00000000-0000-0000-0000-000000000001"
+    private static let channelId = "00000000-0000-0000-0000-000000000002"
+
+    /// The CF3 message: a posted file in the drive, a 「削除されたファイル」 and a plain attachment.
+    private func message() throws -> MessageOut {
+        try JSON.snakeDecoder.decode(MessageOut.self, from: Data(ChannelFilesTests.message.utf8))
+    }
+
+    private func upload(_ id: String) throws -> AttachmentOut {
+        let json = #"{"id":"\#(id)","filename":"photo.jpg","content_type":"image/jpeg","size_bytes":10,"width":4,"height":3,"has_thumbnail":true,"status":"pending","created_at":"2026-11-13T00:00:00Z"}"#
+        return try JSON.snakeDecoder.decode(AttachmentOut.self, from: Data(json.utf8))
+    }
+
+    func testTheFilesGoOnlyWhenTheyChange() throws {
+        let original = try message().attachments
+        let ids = original.map(\.id)
+        var files = MessageEditFiles(original)
+        XCTAssertFalse(files.changed)
+        XCTAssertNil(files.attachmentIds, "a body-only edit, as before M186")
+        // × on the 「削除されたファイル」: it is listed and goes like any other.
+        files.remove(ids[1])
+        XCTAssertTrue(files.changed)
+        XCTAssertEqual(files.attachmentIds, [ids[0], ids[2]])
+        // A new upload follows the kept ones; the same one twice is one file.
+        let added = try upload("00000000-0000-0000-0000-0000000000ff")
+        files.add(added)
+        files.add(added)
+        XCTAssertEqual(files.attachmentIds, [ids[0], ids[2], added.id])
+        // The upload taken off again: still a change (the tombstone is off).
+        files.remove(added.id)
+        XCTAssertEqual(files.attachmentIds, [ids[0], ids[2]])
+        // Everything as it was: nothing to send.
+        var back = MessageEditFiles(original)
+        back.add(added)
+        back.remove(added.id)
+        XCTAssertFalse(back.changed)
+        XCTAssertNil(back.attachmentIds)
+    }
+
+    func testAnEmptyBodyIsSavedWithFilesOnlyAndAFailedUploadWaits() throws {
+        let original = try message().attachments
+        var files = MessageEditFiles(original)
+        // The files stay: the body may be empty, and the files as they are send no ids.
+        XCTAssertTrue(files.canSave(body: "", uploading: 0, failed: 0))
+        XCTAssertNil(files.attachmentIds)
+        // An upload going up, or one that failed and is neither taken off nor sent again: 保存 waits.
+        XCTAssertFalse(files.canSave(body: "資料です", uploading: 1, failed: 0))
+        XCTAssertFalse(files.canSave(body: "資料です", uploading: 0, failed: 1))
+        // Nothing left at all: that would be a delete, 保存 cannot be pressed.
+        for attachment in original { files.remove(attachment.id) }
+        XCTAssertFalse(files.canSave(body: "", uploading: 0, failed: 0))
+        XCTAssertTrue(files.canSave(body: "本文だけ", uploading: 0, failed: 0))
+        XCTAssertEqual(files.attachmentIds, [], "every file taken off")
+        // A message without files edits as before.
+        let plain = MessageEditFiles([])
+        XCTAssertFalse(plain.canSave(body: "", uploading: 0, failed: 0))
+        XCTAssertNil(plain.attachmentIds)
+    }
+
+    /// The tiles: a moved file I cannot read (or not known yet) shows its name only and asks for no thumbnail.
+    func testAMovedFileShowsOnlyItsNameWhereItCannotBeRead() throws {
+        let original = try message().attachments
+        let movedJSON = ChannelFilesTests.message.replacingOccurrences(of: #""state":"available""#, with: #""state":"moved""#)
+        let moved = try JSON.snakeDecoder.decode(MessageOut.self, from: Data(movedJSON.utf8)).attachments[0]
+        XCTAssertEqual(PendingAttachmentsView.look(original[0]) { _ in false }, .file)
+        XCTAssertEqual(PendingAttachmentsView.look(original[1]) { _ in true }, .gone)
+        XCTAssertEqual(PendingAttachmentsView.look(original[2]) { _ in false }, .file)
+        XCTAssertEqual(PendingAttachmentsView.look(moved) { _ in false }, .hidden)
+        XCTAssertEqual(PendingAttachmentsView.look(moved) { $0 == "00000000-0000-0000-0000-000000000014" }, .file)
+    }
+
+    /// The edit sheet's uploads: a file over the limit and one the server refused stay as failed tiles (no banner), the
+    /// refused one can be sent again, the one over the limit cannot.
+    func testAFailedUploadStaysAsATileAndIsSentAgain() async throws {
+        var answers: [(Int, Data)] = [(503, Data(#"{"error":{"code":"unavailable","message":"later"}}"#.utf8))]
+        let added = try upload("00000000-0000-0000-0000-0000000000ff")
+        let addedJSON = try JSON.snakeEncoder.encode(added)
+        answers.append((201, addedJSON))
+        StubProtocol.handler = { request in
+            XCTAssertEqual(request.url?.path, "/api/v1/attachments")
+            return answers.removeFirst()
+        }
+        let configuration = URLSessionConfiguration.ephemeral
+        configuration.protocolClasses = [StubProtocol.self]
+        let client = ApiClient(baseUrl: URL(string: "http://server")!, session: URLSession(configuration: configuration))
+        client.accessToken = "access"
+        let controller = AppController()
+        controller.api = client
+        controller.store.limits = Limits(maxMessageLength: 20_000, maxAttachmentBytes: 8, maxAttachmentsPerMessage: 10)
+        var uploaded: [AttachmentOut] = []
+        var failures: [AttachmentUploader.Failure] = []
+        let uploader = AttachmentUploader(controller: controller, count: { uploaded.count + failures.count }, add: { uploaded.append($0) },
+                                          busy: { _ in }, fail: { failures.append($0) })
+
+        await uploader.upload(data: Data(repeating: 1, count: 9), filename: "big.png", contentType: "image/png")
+        XCTAssertEqual(failures.map(\.filename), ["big.png"])
+        XCTAssertNil(failures[0].retry, "over the size limit: 再試行 cannot help")
+        XCTAssertTrue(failures[0].reason.contains(ErrorMessages.byCode["attachment_too_large"] ?? "?"), failures[0].reason)
+
+        await uploader.upload(data: Data(repeating: 1, count: 4), filename: "photo.jpg", contentType: "image/jpeg")
+        XCTAssertEqual(failures.map(\.filename), ["big.png", "photo.jpg"])
+        XCTAssertNotNil(failures[1].retry)
+        XCTAssertNil(controller.error, "the reasons are on the tiles, not in the banner")
+        XCTAssertTrue(uploaded.isEmpty)
+
+        let failed = failures.removeLast()
+        await uploader.retry(failed)
+        XCTAssertEqual(uploaded.map(\.id), [added.id])
+        XCTAssertEqual(failures.count, 1)
+
+        // Ten with the failed ones: an eleventh is refused as in the composer.
+        uploaded += Array(repeating: added, count: 8)
+        await uploader.upload(data: Data(repeating: 1, count: 4), filename: "11.jpg", contentType: "image/jpeg")
+        XCTAssertEqual(controller.error, "添付は10件までです")
+    }
+
+    func testAServerThatKeptTheFilesIsTold() throws {
+        let original = try message().attachments
+        let added = try upload("00000000-0000-0000-0000-0000000000ff")
+        let sent = [original[0].id, added.id]
+        XCTAssertTrue(MessageEditFiles.applied(sent, answer: [original[0], added]))
+        XCTAssertTrue(MessageEditFiles.applied(sent, answer: [added, original[0]]), "the server orders the new ones")
+        XCTAssertFalse(MessageEditFiles.applied(sent, answer: original), "a server before M186 answers with the files unchanged")
+    }
+
+    // MARK: PATCH /messages/{id}
+
+    private static func body(_ request: URLRequest) -> [String: JSONValue] {
+        var data = request.httpBody ?? Data()
+        if data.isEmpty, let stream = request.httpBodyStream {
+            stream.open()
+            defer { stream.close() }
+            var buffer = [UInt8](repeating: 0, count: 4096)
+            while stream.hasBytesAvailable {
+                let read = stream.read(&buffer, maxLength: buffer.count)
+                if read <= 0 { break }
+                data.append(buffer, count: read)
+            }
+        }
+        if case .object(let object)? = try? JSON.plainDecoder.decode(JSONValue.self, from: data) { return object }
+        return [:]
+    }
+
+    /// The server's answer to an edit: the CF3 message with these files, at `updatedSeq`.
+    private static func answer(_ attachments: [AttachmentOut], updatedSeq: Int) throws -> Data {
+        let message = ChannelFilesTests.message
+        let start = try XCTUnwrap(message.range(of: #""attachments":["#))
+        let end = try XCTUnwrap(message.range(of: #"],"reply_count""#))
+        let files = try attachments.map { String(decoding: try JSON.snakeEncoder.encode($0), as: UTF8.self) }
+        let json = message.replacingCharacters(in: start.upperBound..<end.lowerBound, with: files.joined(separator: ","))
+            .replacingOccurrences(of: #""updated_seq":9"#, with: #""updated_seq":\#(updatedSeq)"#)
+        return Data(json.utf8)
+    }
+
+    func testTheEditSendsTheFilesAndAnOlderServerIsNoticed() async throws {
+        let original = try message().attachments
+        let added = try upload("00000000-0000-0000-0000-0000000000ff")
+        var sent: [[String: JSONValue]] = []
+        var answers: [Data] = []
+        StubProtocol.handler = { request in
+            XCTAssertEqual(request.httpMethod, "PATCH")
+            XCTAssertEqual(request.url?.path, "/api/v1/messages/\(Self.messageId)")
+            sent.append(Self.body(request))
+            return (200, answers.removeFirst())
+        }
+        let configuration = URLSessionConfiguration.ephemeral
+        configuration.protocolClasses = [StubProtocol.self]
+        let client = ApiClient(baseUrl: URL(string: "http://server")!, session: URLSession(configuration: configuration))
+        client.accessToken = "access"
+        let controller = AppController()
+        controller.api = client
+
+        // The text alone: no `attachment_ids`, as before M186.
+        answers.append(try Self.answer(original, updatedSeq: 10))
+        let first = await controller.editMessage(Self.messageId, body: "直しました")
+        XCTAssertNil(first)
+        XCTAssertEqual(sent.last, ["body": .string("直しました")])
+        XCTAssertNil(controller.error)
+
+        // One taken off, one added, the text emptied: the server answers with the new files and the conversation shows them.
+        let ids = [original[0].id, original[2].id, added.id]
+        answers.append(try Self.answer([original[0], original[2], added], updatedSeq: 11))
+        let second = await controller.editMessage(Self.messageId, body: "", attachmentIds: ids)
+        XCTAssertNil(second)
+        XCTAssertEqual(sent.last, ["body": .string(""), "attachment_ids": .array(ids.map(JSONValue.string))])
+        XCTAssertNil(controller.error)
+        let shown = try XCTUnwrap(controller.store.message(Self.channelId, id: Self.messageId))
+        XCTAssertEqual(shown.attachments.map(\.id), ids)
+
+        // A server before M186 keeps the files: the text is saved (nil, the editor closes) and the banner says the files are not.
+        answers.append(try Self.answer(original, updatedSeq: 12))
+        let third = await controller.editMessage(Self.messageId, body: "もう一度", attachmentIds: [original[0].id])
+        XCTAssertNil(third)
+        XCTAssertEqual(controller.error, "このサーバではファイルを変更できません")
+    }
+}

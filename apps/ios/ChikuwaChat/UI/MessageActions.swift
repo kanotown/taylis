@@ -131,8 +131,11 @@ private struct MessageSheets: ViewModifier {
                         if AttachmentPreview.canPreview(url) { FilePreviewSheet(url: url, onDismiss: { sheet = nil }) } else { ShareSheet(items: [url]) }
                     }
                 case .edit:
-                    EditMessageView(initial: Mentions.decode(message.body, users: store.users, groups: store.groups)) { body in
-                        await controller.editMessage(message.id, body: Mentions.encode(body, users: store.users.values, groups: Array(store.groups.values)))
+                    // M186: with the message's files (× takes one off, 「ファイルを追加」 adds).
+                    EditMessageView(initial: Mentions.decode(message.body, users: store.users, groups: store.groups),
+                                    attachments: message.attachments, controller: controller) { body, attachmentIds in
+                        await controller.editMessage(message.id, body: Mentions.encode(body, users: store.users.values, groups: Array(store.groups.values)),
+                                                     attachmentIds: attachmentIds)
                     }
                 }
             }

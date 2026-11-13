@@ -1498,32 +1498,109 @@ struct ChipsLayout: Layout {
     }
 }
 
+/// M186 (docs/CHANNEL_FILES.md §7.6): the files of a message being edited — the ones it had (a 「削除されたファイル」
+/// too) less those taken off with ×, then the new uploads in the order they came up. The server keeps that order.
+struct MessageEditFiles: Equatable {
+    /// The message's files as the editor opened.
+    let original: [AttachmentOut]
+    /// The files the message keeps once saved.
+    private(set) var items: [AttachmentOut]
+
+    init(_ attachments: [AttachmentOut]) {
+        original = attachments
+        items = attachments
+    }
+
+    var changed: Bool { items.map(\.id) != original.map(\.id) }
+
+    mutating func remove(_ id: String) { items.removeAll { $0.id == id } }
+
+    mutating func add(_ uploaded: AttachmentOut) {
+        guard !items.contains(where: { $0.id == uploaded.id }) else { return }
+        items.append(uploaded)
+    }
+
+    /// Whether 保存 can be pressed: nothing still going up, no failed upload left (taken off or sent again first), and
+    /// the message keeps a body or a file (an edit that leaves neither would be a delete). `body` is the text as it will
+    /// be sent (trimmed).
+    func canSave(body: String, uploading: Int, failed: Int) -> Bool {
+        uploading == 0 && failed == 0 && (!body.isEmpty || !items.isEmpty)
+    }
+
+    /// PATCH's `attachment_ids`: every file the message keeps, sent only when they changed. nil: a body-only edit, as
+    /// before M186 (a server that does not know the field gets what it always got; the server takes an empty body
+    /// without the field while the message has files).
+    var attachmentIds: [String]? { changed ? items.map(\.id) : nil }
+
+    /// Whether the server changed the files as asked. One before M186 ignores `attachment_ids` and answers with the files
+    /// as they were. Compared as sets: the server orders the new files by upload time, which an upload answered late may
+    /// have put otherwise here.
+    static func applied(_ sent: [String], answer: [AttachmentOut]) -> Bool { Set(sent) == Set(answer.map(\.id)) }
+}
+
 /// C4 (Codex audit): the editor stays open, with the text, until the server has the edit. It closed as 保存 was
 /// pressed, and a failed save (offline) lost the text.
+/// M186 (docs/CHANNEL_FILES.md §7.6): under the text, the message's files (× takes one off) and 「ファイルを追加」 with
+/// the composer's pickers and uploads; 保存 waits for the uploads, and for each failed one to be taken off or sent
+/// again. Nothing changes on the server until 保存.
 struct EditMessageView: View {
     @Environment(\.dismiss) private var dismiss
     @State private var text: String
+    @State private var files: MessageEditFiles
+    /// Upload batches in progress (the spinner tile; 保存 waits).
+    @State private var uploading = 0
+    /// Uploads that failed: a tile each (counted in the 10), their reasons and 再試行 under the strip.
+    @State private var failures: [AttachmentUploader.Failure] = []
     @State private var saving = false
     @State private var failure: String?
+    @State private var showPhotoPicker = false
+    @State private var showCamera = false
+    @State private var showFileImporter = false
     /// Editing means typing: the keyboard is up as the editor opens (testers, 2026-09-30).
     @FocusState private var focused: Bool
-    /// Saves the text: nil once the server took it, else why not (shown here, the editor stays).
-    let onSave: (String) async -> String?
+    /// The uploads and the thumbnails (nil: the text alone, without the files).
+    let controller: AppController?
+    /// Saves the text and, when they changed, the files' ids (`MessageEditFiles.attachmentIds`): nil once the server took
+    /// it, else why not (shown here, the editor stays).
+    let onSave: (String, [String]?) async -> String?
 
-    init(initial: String, onSave: @escaping (String) async -> String?) {
+    init(initial: String, attachments: [AttachmentOut] = [], controller: AppController? = nil,
+         onSave: @escaping (String, [String]?) async -> String?) {
         _text = State(initialValue: initial)
+        _files = State(initialValue: MessageEditFiles(attachments))
+        self.controller = controller
         self.onSave = onSave
     }
 
     private var trimmed: String { text.trimmingCharacters(in: .whitespacesAndNewlines) }
 
+    private static let hasCamera = UIImagePickerController.isSourceTypeAvailable(.camera)
+
+    private var uploader: AttachmentUploader? {
+        guard let controller else { return nil }
+        return AttachmentUploader(controller: controller, count: { files.items.count + failures.count }, add: { files.add($0) },
+                                  busy: { uploading += $0 }, fail: { failures.append($0) })
+    }
+
+    private func retry(_ failure: AttachmentUploader.Failure) {
+        failures.removeAll { $0.id == failure.id }
+        uploader?.batch { await $0.retry(failure) }
+    }
+
+    private func drop(_ failure: AttachmentUploader.Failure) {
+        failures.removeAll { $0.id == failure.id }
+        failure.retry?.discard()
+    }
+
     private func save() {
+        let body = BodyTokenizer.straightenCode(trimmed)  // smart punctuation out of code
+        let ids = files.attachmentIds
         saving = true
         failure = nil
         Task {
-            let error = await onSave(BodyTokenizer.straightenCode(trimmed))  // smart punctuation out of code
+            let error = await onSave(body, ids)
             saving = false
-            if let error { failure = error } else { dismiss() }
+            if let error { failure = error } else { close() }
         }
     }
 
@@ -1539,6 +1616,7 @@ struct EditMessageView: View {
                     .focused($focused)
                     .disabled(saving)
                     .padding()
+                if controller != nil { filesBar }
             }
             .navigationTitle("メッセージを編集")
             .navigationBarTitleDisplayMode(.inline)
@@ -1548,13 +1626,71 @@ struct EditMessageView: View {
                 focused = true
             }
             .toolbar {
-                ToolbarItem(placement: .cancellationAction) { Button("キャンセル") { dismiss() }.disabled(saving) }
+                ToolbarItem(placement: .cancellationAction) { Button("キャンセル") { close() }.disabled(saving) }
                 ToolbarItem(placement: .confirmationAction) {
-                    Button(saving ? "保存中…" : "保存", action: save).disabled(trimmed.isEmpty || saving)
+                    Button(saving ? "保存中…" : "保存", action: save)
+                        .disabled(saving || !files.canSave(body: trimmed, uploading: uploading, failed: failures.count))
                 }
             }
             .interactiveDismissDisabled(saving)
+            .attachmentPickers(photos: $showPhotoPicker, camera: $showCamera, files: $showFileImporter, uploader: uploader)
+            // An upload's error here: the conversation's banner is under the sheet.
+            .overlay(alignment: .bottom) { if let controller { ErrorToast(controller: controller) } }
         }
+    }
+
+    /// Closes the editor. The uploaded files stay pending (the server's GC takes them after 24 hours); the copies kept
+    /// for 再試行 go — here, not on onDisappear, which a full-screen cover over the sheet (the camera) may send too. A
+    /// swipe down leaves them to the system's clean-up of the temporary folder.
+    private func close() {
+        failures.forEach { $0.retry?.discard() }
+        dismiss()
+    }
+
+    /// Why each failed upload failed, its 再試行, and what 保存 waits for.
+    private var failureLines: some View {
+        VStack(alignment: .leading, spacing: 4) {
+            ForEach(failures) { failure in
+                HStack(spacing: 8) {
+                    Label(tr("\(failure.filename)：\(failure.reason)"), systemImage: "exclamationmark.triangle.fill")
+                        .font(.caption).foregroundStyle(.red)
+                        .lineLimit(2)
+                    Spacer(minLength: 0)
+                    if failure.retry != nil {
+                        Button("再試行") { retry(failure) }
+                            .font(.caption.weight(.semibold))
+                            .buttonStyle(.borderless)
+                            .disabled(uploading > 0 || saving)
+                    }
+                }
+            }
+            Text("アップロードできなかったファイルを外すか、もう一度アップロードすると保存できます")
+                .font(.caption2).foregroundStyle(.secondary)
+        }
+        .padding(.horizontal)
+        .padding(.top, 6)
+    }
+
+    /// The message's files as the composer shows its waiting ones, and 「ファイルを追加」 (the composer's 「＋」 choices).
+    private var filesBar: some View {
+        VStack(alignment: .leading, spacing: 0) {
+            Divider()
+            PendingAttachmentsView(items: files.items, uploading: uploading, controller: controller,
+                                   removeLabel: { tr("\($0) を外す") }, failures: failures, onDropFailure: drop) { item in files.remove(item.id) }
+            if !failures.isEmpty { failureLines }
+            Menu {
+                Button("写真ライブラリ", systemImage: "photo.on.rectangle") { showPhotoPicker = true }
+                if Self.hasCamera { Button("カメラ", systemImage: "camera") { showCamera = true } }
+                Button("ファイル", systemImage: "folder") { showFileImporter = true }
+            } label: {
+                Label("ファイルを追加", systemImage: "paperclip")
+                    .font(.subheadline)
+                    .frame(minHeight: 44)
+            }
+            .disabled(uploading > 0 || saving)
+            .padding(.horizontal)
+        }
+        .disabled(saving)
     }
 }
 
@@ -1621,7 +1757,6 @@ struct ComposerView: View {
         controller?.store.setDraft(channelId, parentId: parentId) { $0.text = value }
         if !value.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty { controller?.engine?.sendTyping(channelId, parentId: parentId) } // §5.2, throttled
     }) }
-    @State private var photoItems: [PhotosPickerItem] = []
     @State private var showPhotoPicker = false
     @State private var showFileImporter = false
     @State private var showCamera = false
@@ -1709,54 +1844,17 @@ struct ComposerView: View {
     private static let hasCamera = UIImagePickerController.isSourceTypeAvailable(.camera)
     private var cameraAvailable: Bool { Self.hasCamera }
 
-    private func upload(data: Data, filename: String, contentType: String) async {
-        guard let controller else { return }
-        let store = controller.store
-        guard pending.count < 10 else { controller.error = tr("添付は10件までです"); return }
-        if let tooLarge = controller.attachmentTooLarge(data.count) { controller.error = tooLarge; return }
-        if let uploaded = await controller.uploadAttachment(data: data, filename: filename, contentType: contentType) {
-            store.setDraft(channelId, parentId: parentId) { $0.attachments.append(uploaded) }
-        }
-    }
-
-    /// A picked file: checked against the server's size limit first, then streamed from disk (never read whole). Over
-    /// the limit, CF5 offers the drive where the conversation's files may go there (`offeringDrive`).
-    private func upload(file url: URL, offeringDrive: Bool = true) async {
-        guard let controller else { return }
-        let accessed = url.startAccessingSecurityScopedResource()
-        defer { if accessed { url.stopAccessingSecurityScopedResource() } }
-        let size = (try? url.resourceValues(forKeys: [.fileSizeKey]).fileSize) ?? 0
-        if let tooLarge = controller.attachmentTooLarge(size) {
-            if offeringDrive, await offerDrive(.file(url), name: url.lastPathComponent, size: Int64(size)) { return }
-            controller.error = tooLarge
-            return
-        }
-        guard pending.count < 10 else { controller.error = tr("添付は10件までです"); return }
-        let type = UTType(filenameExtension: url.pathExtension)?.preferredMIMEType ?? "application/octet-stream"
-        if let uploaded = await controller.uploadAttachment(fileAt: url, filename: url.lastPathComponent, contentType: type) {
-            controller.store.setDraft(channelId, parentId: parentId) { $0.attachments.append(uploaded) }
-        }
-    }
-
-    /// A library video (testers, 2026-09-29): as it is when it fits the server's limit, else exported again at 720p; the
-    /// copies go once uploaded.
-    /// CF5: over the limit where the conversation's files may go to a drive, the question first (the drive, or this 720p
-    /// copy); `offeringDrive` false once it was answered.
-    private func upload(video url: URL, offeringDrive: Bool = true) async {
-        guard let controller else { return }
-        let size = (try? url.resourceValues(forKeys: [.fileSizeKey]).fileSize) ?? 0
-        let tooLarge = controller.attachmentTooLarge(size) != nil
-        if tooLarge, offeringDrive, await offerDrive(.temporary(url, name: url.lastPathComponent), name: url.lastPathComponent,
-                                                     size: Int64(size), video: url) {
-            return  // the copy stays for the answer
-        }
-        defer { try? FileManager.default.removeItem(at: url.deletingLastPathComponent()) } // PickedMovie's folder
-        guard tooLarge, let smaller = await VideoUpload.shrink(url) else {
-            await upload(file: url, offeringDrive: false)
-            return
-        }
-        defer { try? FileManager.default.removeItem(at: smaller) }
-        await upload(file: smaller, offeringDrive: false)
+    /// The pickers' uploads (shared with the edit sheet): into this draft, counted in its uploads meanwhile; a file over
+    /// the limit offered to the drive (CF5).
+    private var uploader: AttachmentUploader? {
+        guard let controller else { return nil }
+        let channelId = channelId, parentId = parentId
+        return AttachmentUploader(
+            controller: controller,
+            count: { controller.store.draft(channelId, parentId: parentId).attachments.count },
+            add: { uploaded in controller.store.setDraft(channelId, parentId: parentId) { $0.attachments.append(uploaded) } },
+            busy: { controller.store.trackUpload(channelId, parentId: parentId, delta: $0) },
+            offerDrive: { await offerDrive($0, name: $1, size: $2, video: $3) })
     }
 
     /// CF5 (docs/CHANNEL_FILES.md §12.4): a file over the attachment limit, where the conversation's files may go to a
@@ -1788,11 +1886,8 @@ struct ComposerView: View {
 
     /// 「画質を下げて添付」 (library videos only): the 720p copies, as before CF5.
     private func shrinkVideos(_ offer: ComposerDriveOffer) {
-        guard let controller else { return }
-        controller.store.trackUpload(channelId, parentId: parentId, delta: 1)
-        Task {
-            defer { controller.store.trackUpload(channelId, parentId: parentId, delta: -1) }
-            for url in offer.videos { await upload(video: url, offeringDrive: false) }
+        uploader?.batch { uploader in
+            for url in offer.videos { await uploader.upload(video: url, offeringDrive: false) }
         }
     }
 
@@ -2260,57 +2355,13 @@ struct ComposerView: View {
         .fullScreenCover(item: $scheduleForm) { initial in
             if let controller { ScheduleFormView(controller: controller, channelId: channelId, parentId: parentId, initial: initial) }
         }
-        // Videos too (testers, 2026-09-29: they were not in the list at all).
-        .photosPicker(isPresented: $showPhotoPicker, selection: $photoItems, maxSelectionCount: 5, matching: .any(of: [.images, .videos]))
-        .onChange(of: photoItems) { _, items in
-            guard !items.isEmpty else { return }
-            photoItems = []
-            controller?.store.trackUpload(channelId, parentId: parentId, delta: 1)
-            Task {
-                defer { controller?.store.trackUpload(channelId, parentId: parentId, delta: -1) }
-                for item in items {
-                    if item.supportedContentTypes.contains(where: { $0.conforms(to: .movie) }) {
-                        guard let movie = try? await item.loadTransferable(type: PickedMovie.self) else {
-                            controller?.error = tr("動画を読み込めませんでした")
-                            continue
-                        }
-                        await upload(video: movie.url)
-                        continue
-                    }
-                    // Library photos are mostly HEIC: re-encoded as JPEG like the camera's, or the server keeps no thumbnail.
-                    guard let data = try? await item.loadTransferable(type: Data.self), let photo = ImageUpload.prepare(data) else {
-                        controller?.error = tr("写真を読み込めませんでした") // it was dropped without a word (audit 2026-09-29)
-                        continue
-                    }
-                    await upload(data: photo.data, filename: "photo." + photo.ext, contentType: photo.mime)
-                }
-            }
-        }
-        .fullScreenCover(isPresented: $showCamera) {
-            CameraPicker { image in
-                guard let data = image.normalizedUp().jpegData(compressionQuality: 0.85) else { return }
-                controller?.store.trackUpload(channelId, parentId: parentId, delta: 1)
-                Task {
-                    defer { controller?.store.trackUpload(channelId, parentId: parentId, delta: -1) }
-                    await upload(data: data, filename: "photo-\(Int(Date().timeIntervalSince1970)).jpg", contentType: "image/jpeg")
-                }
-            }
-            .ignoresSafeArea()
-        }
+        .attachmentPickers(photos: $showPhotoPicker, camera: $showCamera, files: $showFileImporter, uploader: uploader)
         .confirmationDialog(tr("添付の上限を超えるファイルです"), isPresented: driveOfferShown, titleVisibility: .visible, presenting: driveOffer) { offer in
             Button("ドライブにアップロードしてリンクを投稿") { startDriveUpload(offer) }
             if offer.allVideos { Button("画質を下げて添付") { shrinkVideos(offer) } }
             Button("キャンセル", role: .cancel) { offer.discardCopies() }
         } message: { offer in
             Text(offer.message)
-        }
-        .fileImporter(isPresented: $showFileImporter, allowedContentTypes: [.item], allowsMultipleSelection: true) { result in
-            guard case .success(let urls) = result else { return }
-            controller?.store.trackUpload(channelId, parentId: parentId, delta: 1)
-            Task {
-                defer { controller?.store.trackUpload(channelId, parentId: parentId, delta: -1) }
-                for url in urls { await upload(file: url) }
-            }
         }
     }
 }

@@ -642,21 +642,273 @@ struct ShareSheet: UIViewControllerRepresentable {
     func updateUIViewController(_ controller: UIActivityViewController, context: Context) {}
 }
 
+/// The composer's uploads (POST /attachments) of what its pickers give — library photos and videos, the camera's
+/// picture, files — shared with the edit sheet (M186, docs/CHANNEL_FILES.md §7.6): the 10-file limit and the size
+/// limit in the composer's words, library photos as JPEG where the server would keep no thumbnail, a video over the
+/// limit at 720p. In the composer a failure says why (`controller.error`) and adds nothing; the edit sheet keeps it as
+/// a failed tile (`fail`) to take off or try again.
+@MainActor
+struct AttachmentUploader {
+    /// The most files a message carries (the server's limit for a send and an edit).
+    static let limit = 10
+
+    /// What an upload sends; a failed one keeps it for 再試行.
+    enum Source {
+        /// Bytes in memory (a library photo, the camera's picture).
+        case data(Data, filename: String, contentType: String)
+        /// A file on disk, streamed: a Files pick (security-scoped), or a copy the app made (`temporary`, removed once
+        /// it is not needed: a library video and its 720p export).
+        case file(URL, filename: String, contentType: String, temporary: Bool)
+
+        var filename: String {
+            switch self {
+            case .data(_, let filename, _), .file(_, let filename, _, _): filename
+            }
+        }
+
+        /// A failed temporary copy moved into a folder of its own, so the batch's clean-up leaves it for 再試行.
+        func kept() -> Source {
+            guard case .file(let url, let filename, let contentType, true) = self else { return self }
+            let folder = FileManager.default.temporaryDirectory.appendingPathComponent("failed-uploads/\(UUID().uuidString)", isDirectory: true)
+            let moved = folder.appendingPathComponent(url.lastPathComponent)
+            do {
+                try FileManager.default.createDirectory(at: folder, withIntermediateDirectories: true)
+                try FileManager.default.moveItem(at: url, to: moved)
+            } catch {
+                return self
+            }
+            return .file(moved, filename: filename, contentType: contentType, temporary: true)
+        }
+
+        /// Removes a temporary copy kept for 再試行 (taken off, sent, or the editor gone).
+        func discard() {
+            guard case .file(let url, _, _, true) = self else { return }
+            try? FileManager.default.removeItem(at: url.deletingLastPathComponent())
+        }
+    }
+
+    /// M186: a file that did not go up — its name, why, and what 再試行 sends (nil: trying again cannot help, as for a
+    /// file over the size limit).
+    struct Failure: Identifiable {
+        let id = UUID().uuidString
+        let filename: String
+        let reason: String
+        let retry: Source?
+    }
+
+    let controller: AppController
+    /// How many files are already there (waiting in the composer, or the edited message's kept, new and failed ones).
+    let count: () -> Int
+    /// An uploaded file, to go with the others.
+    let add: (AttachmentOut) -> Void
+    /// Uploads in progress: +1 as a batch starts, −1 once it is done (the spinner tile; send and save wait for it).
+    let busy: (Int) -> Void
+    /// CF5 (the composer only): a file over the attachment limit offered to a drive instead — the source, its name, its
+    /// size and a library video's copy. true when it was offered (or why not was said).
+    var offerDrive: ((DriveUploadSource, String, Int64, URL?) async -> Bool)? = nil
+    /// M186 (the edit sheet): a file that does not go up stays as a failed tile with its reason — one over the size limit
+    /// too (an edit offers no drive). nil (the composer): the banner says why and the file is dropped.
+    var fail: ((Failure) -> Void)? = nil
+
+    /// Runs `work` as one batch, counted in progress meanwhile.
+    func batch(_ work: @escaping @MainActor (AttachmentUploader) async -> Void) {
+        busy(1)
+        Task { @MainActor in
+            defer { busy(-1) }
+            await work(self)
+        }
+    }
+
+    private func failed(_ source: Source, _ reason: String, retryable: Bool) {
+        guard let fail else { controller.error = reason; return }
+        fail(Failure(filename: source.filename, reason: reason, retry: retryable ? source.kept() : nil))
+    }
+
+    /// POST /attachments: the file goes with the others, or the failure says why.
+    private func send(_ source: Source) async {
+        guard let api = controller.api else { return }
+        do {
+            switch source {
+            case .data(let data, let filename, let contentType):
+                add(try await api.uploadAttachment(data: data, filename: filename, contentType: contentType))
+            case .file(let url, let filename, let contentType, _):
+                let accessed = url.startAccessingSecurityScopedResource()
+                defer { if accessed { url.stopAccessingSecurityScopedResource() } }
+                add(try await api.uploadAttachment(fileAt: url, filename: filename, contentType: contentType))
+            }
+        } catch {
+            failed(source, controller.describe(error), retryable: true)
+        }
+    }
+
+    /// 再試行 (M186): a failed file's upload once more; its kept copy goes afterwards (failing again keeps a new one).
+    func retry(_ failure: Failure) async {
+        guard let source = failure.retry else { return }
+        await send(source)
+        source.discard()
+    }
+
+    func upload(data: Data, filename: String, contentType: String) async {
+        guard count() < Self.limit else { controller.error = tr("添付は10件までです"); return }
+        let source = Source.data(data, filename: filename, contentType: contentType)
+        if let tooLarge = controller.attachmentTooLarge(data.count) { failed(source, tooLarge, retryable: false); return }
+        await send(source)
+    }
+
+    /// A picked file: checked against the server's size limit first, then streamed from disk (never read whole). Over
+    /// the limit, CF5 offers the drive where the conversation's files may go there (`offeringDrive`). `temporary`: a
+    /// copy the caller removes afterwards.
+    func upload(file url: URL, offeringDrive: Bool = true, temporary: Bool = false) async {
+        let accessed = url.startAccessingSecurityScopedResource()
+        defer { if accessed { url.stopAccessingSecurityScopedResource() } }
+        let size = (try? url.resourceValues(forKeys: [.fileSizeKey]).fileSize) ?? 0
+        let type = UTType(filenameExtension: url.pathExtension)?.preferredMIMEType ?? "application/octet-stream"
+        let source = Source.file(url, filename: url.lastPathComponent, contentType: type, temporary: temporary)
+        if let tooLarge = controller.attachmentTooLarge(size) {
+            if offeringDrive, let offerDrive, await offerDrive(.file(url), url.lastPathComponent, Int64(size), nil) { return }
+            failed(source, tooLarge, retryable: false)
+            return
+        }
+        guard count() < Self.limit else { controller.error = tr("添付は10件までです"); return }
+        await send(source)
+    }
+
+    /// A library video (testers, 2026-09-29): as it is when it fits the server's limit, else exported again at 720p; the
+    /// copies go once uploaded.
+    /// CF5: over the limit where the conversation's files may go to a drive, the question first (the drive, or this 720p
+    /// copy); `offeringDrive` false once it was answered.
+    func upload(video url: URL, offeringDrive: Bool = true) async {
+        let size = (try? url.resourceValues(forKeys: [.fileSizeKey]).fileSize) ?? 0
+        let tooLarge = controller.attachmentTooLarge(size) != nil
+        if tooLarge, offeringDrive, let offerDrive,
+           await offerDrive(.temporary(url, name: url.lastPathComponent), url.lastPathComponent, Int64(size), url) {
+            return  // the copy stays for the answer
+        }
+        defer { try? FileManager.default.removeItem(at: url.deletingLastPathComponent()) } // PickedMovie's folder
+        guard tooLarge, let smaller = await VideoUpload.shrink(url) else {
+            await upload(file: url, offeringDrive: false, temporary: true)
+            return
+        }
+        defer { try? FileManager.default.removeItem(at: smaller) }
+        await upload(file: smaller, offeringDrive: false, temporary: true)
+    }
+
+    /// The photo library's picks, one after another.
+    func upload(_ items: [PhotosPickerItem]) async {
+        for item in items {
+            if item.supportedContentTypes.contains(where: { $0.conforms(to: .movie) }) {
+                guard let movie = try? await item.loadTransferable(type: PickedMovie.self) else {
+                    controller.error = tr("動画を読み込めませんでした")
+                    continue
+                }
+                await upload(video: movie.url)
+                continue
+            }
+            // Library photos are mostly HEIC: re-encoded as JPEG like the camera's, or the server keeps no thumbnail.
+            guard let data = try? await item.loadTransferable(type: Data.self), let photo = ImageUpload.prepare(data) else {
+                controller.error = tr("写真を読み込めませんでした") // it was dropped without a word (audit 2026-09-29)
+                continue
+            }
+            await upload(data: photo.data, filename: "photo." + photo.ext, contentType: photo.mime)
+        }
+    }
+}
+
+extension View {
+    /// The composer's pickers — the photo library (photos and videos, five at a time), the camera, Files — each pick
+    /// uploaded by `uploader` as one batch. The edit sheet's 「ファイルを追加」 too (M186).
+    func attachmentPickers(photos: Binding<Bool>, camera: Binding<Bool>, files: Binding<Bool>, uploader: AttachmentUploader?) -> some View {
+        modifier(AttachmentPickers(showPhotoPicker: photos, showCamera: camera, showFileImporter: files, uploader: uploader))
+    }
+}
+
+private struct AttachmentPickers: ViewModifier {
+    @Binding var showPhotoPicker: Bool
+    @Binding var showCamera: Bool
+    @Binding var showFileImporter: Bool
+    let uploader: AttachmentUploader?
+    @State private var photoItems: [PhotosPickerItem] = []
+
+    func body(content: Content) -> some View {
+        content
+            // Videos too (testers, 2026-09-29: they were not in the list at all).
+            .photosPicker(isPresented: $showPhotoPicker, selection: $photoItems, maxSelectionCount: 5, matching: .any(of: [.images, .videos]))
+            .onChange(of: photoItems) { _, items in
+                guard !items.isEmpty else { return }
+                photoItems = []
+                uploader?.batch { await $0.upload(items) }
+            }
+            .fullScreenCover(isPresented: $showCamera) {
+                CameraPicker { image in
+                    guard let data = image.normalizedUp().jpegData(compressionQuality: 0.85) else { return }
+                    uploader?.batch { await $0.upload(data: data, filename: "photo-\(Int(Date().timeIntervalSince1970)).jpg", contentType: "image/jpeg") }
+                }
+                .ignoresSafeArea()
+            }
+            .fileImporter(isPresented: $showFileImporter, allowedContentTypes: [.item], allowsMultipleSelection: true) { result in
+                guard case .success(let urls) = result else { return }
+                uploader?.batch { uploader in for url in urls { await uploader.upload(file: url) } }
+            }
+    }
+}
+
 /// Uploads waiting in the composer, as Slack and Mattermost show them (testers, 2026-09-29): small square thumbnails
 /// with a × to take one out; a tap previews it (a photo full screen, a video or document with Quick Look). They were
 /// chips with the file name, and a tap took the file out. `uploading` adds a tile with a spinner meanwhile.
+/// The edit sheet (M186) lists the message's files the same way, with its own words for the × (「… を外す」), a
+/// 「削除されたファイル」 tile for a posted file that is gone (CF3), the name alone for one moved where I cannot read it,
+/// and a tile for each upload that failed.
 struct PendingAttachmentsView: View {
     let items: [AttachmentOut]
     var uploading = 0
     var controller: AppController? = nil
+    /// What VoiceOver says for a file's × (the file's name, or 「削除されたファイル」).
+    var removeLabel: (String) -> String = { tr("\($0) を取り消す") }
+    /// M186 (the edit sheet): uploads that failed, after the files; × takes one off (`onDropFailure`).
+    var failures: [AttachmentUploader.Failure] = []
+    var onDropFailure: (AttachmentUploader.Failure) -> Void = { _ in }
     let onRemove: (AttachmentOut) -> Void
 
+    /// How a tile shows its file.
+    enum TileLook: Equatable {
+        /// The thumbnail (a photo, a video's poster) or the name; a tap opens it.
+        case file
+        /// CF3 (docs/CHANNEL_FILES.md §12.1): in the drive's trash or purged — 「削除されたファイル」, no name, no picture,
+        /// nothing to open.
+        case gone
+        /// M186 (§7.6): moved to a place in the drive I cannot read (or not known yet) — the name only, no thumbnail
+        /// asked for, nothing to open.
+        case hidden
+    }
+
+    /// `readable`: whether I can read the drive item a moved file is now (GET /drive/items/{id}, `DriveHub.linkState`).
+    static func look(_ attachment: AttachmentOut, readable: (String) -> Bool) -> TileLook {
+        switch ChannelFiles.look(attachment) {
+        case .plain: .file
+        case .deleted: .gone
+        case .moved(let itemId): readable(itemId) ? .file : .hidden
+        }
+    }
+
+    private func look(_ attachment: AttachmentOut) -> TileLook {
+        Self.look(attachment) { itemId in
+            if case .item? = controller?.drive?.linkState(itemId) { return true }
+            return false
+        }
+    }
+
+    /// The photos the viewer pages through (those it can show).
+    private var gallery: [AttachmentOut] { items.filter { look($0) == .file } }
+
     var body: some View {
-        if !items.isEmpty || uploading > 0 {
+        if !items.isEmpty || uploading > 0 || !failures.isEmpty {
             ScrollView(.horizontal, showsIndicators: false) {
                 HStack(spacing: 10) {
                     ForEach(items) { item in
-                        PendingTile(item: item, gallery: items, controller: controller) { onRemove(item) }
+                        PendingTile(item: item, look: look(item), gallery: gallery, controller: controller, removeLabel: removeLabel) { onRemove(item) }
+                    }
+                    ForEach(failures) { failure in
+                        FailedTile(failure: failure, removeLabel: removeLabel) { onDropFailure(failure) }
                     }
                     if uploading > 0 {
                         ProgressView()
@@ -673,36 +925,82 @@ struct PendingAttachmentsView: View {
     }
 }
 
+/// A tile's × (in its top trailing corner).
+private struct RemoveBadge: View {
+    let label: String
+    let action: () -> Void
+
+    var body: some View {
+        Button(action: action) {
+            Image(systemName: "xmark.circle.fill")
+                .font(.system(size: 20))
+                .symbolRenderingMode(.palette)
+                .foregroundStyle(.white, Color.black.opacity(0.7))
+        }
+        .buttonStyle(.plain)
+        .offset(x: 7, y: -7)
+        .accessibilityLabel(label)
+    }
+}
+
+/// M186: an upload that failed — a warning and the file's name; VoiceOver reads why. 再試行 is under the strip.
+private struct FailedTile: View {
+    let failure: AttachmentUploader.Failure
+    let removeLabel: (String) -> String
+    let onRemove: () -> Void
+
+    var body: some View {
+        VStack(spacing: 3) {
+            Image(systemName: "exclamationmark.triangle.fill").font(.title3).foregroundStyle(.red)
+            FileNameTwoLines(name: failure.filename).font(.system(size: 9)).multilineTextAlignment(.center).foregroundStyle(.secondary)
+        }
+        .padding(4)
+        .frame(width: PendingTile.side, height: PendingTile.side)
+        .background(Color.red.opacity(0.08), in: RoundedRectangle(cornerRadius: 10))
+        .overlay(RoundedRectangle(cornerRadius: 10).stroke(Color.red.opacity(0.4), lineWidth: 0.5))
+        .accessibilityElement(children: .ignore)
+        .accessibilityLabel(tr("\(failure.filename)：\(failure.reason)"))
+        .overlay(alignment: .topTrailing) { RemoveBadge(label: removeLabel(failure.filename), action: onRemove) }
+    }
+}
+
 private struct PendingTile: View {
     static let side: CGFloat = 64
     let item: AttachmentOut
+    let look: PendingAttachmentsView.TileLook
     /// The waiting uploads: the viewer pages through their photos.
     let gallery: [AttachmentOut]
     let controller: AppController?
+    let removeLabel: (String) -> String
     let onRemove: () -> Void
     @State private var thumbnail = AttachmentImageLoader()
     @State private var file = AttachmentFileLoader()
     @State private var viewing = false
     @State private var previewURL: URL?
 
+    private var gone: Bool { look == .gone }
+    /// A moved file's name, or 「表示できないファイル」 without one.
+    private var hiddenName: String { item.filename.isEmpty ? tr("表示できないファイル") : item.filename }
+
+    private var label: String {
+        switch look {
+        case .file: tr("\(item.isImage ? tr("写真") : item.isVideo ? tr("動画") : tr("ファイル")) \(item.filename) をプレビュー")
+        case .gone: tr("削除されたファイル")
+        case .hidden: hiddenName
+        }
+    }
+
     var body: some View {
         Button(action: open) { face }
             .buttonStyle(.plain)
-            .accessibilityLabel("\(item.isImage ? tr("写真") : item.isVideo ? tr("動画") : tr("ファイル")) \(item.filename) をプレビュー")
+            .disabled(look != .file)
+            .accessibilityLabel(label)
             .overlay(alignment: .topTrailing) {
-                Button(action: onRemove) {
-                    Image(systemName: "xmark.circle.fill")
-                        .font(.system(size: 20))
-                        .symbolRenderingMode(.palette)
-                        .foregroundStyle(.white, Color.black.opacity(0.7))
-                }
-                .buttonStyle(.plain)
-                .offset(x: 7, y: -7)
-                .accessibilityLabel("\(item.filename) を取り消す")
+                RemoveBadge(label: removeLabel(gone ? tr("削除されたファイル") : look == .hidden ? hiddenName : item.filename), action: onRemove)
             }
-            .task(id: item.id) {
+            .task(id: "\(item.id):\(look == .file)") {
                 // M82: a video's server poster too (the upload's answer says whether there is one).
-                guard item.isImage || item.showsServerPoster, let controller else { return }
+                guard look == .file, item.isImage || item.showsServerPoster, let controller else { return }
                 await thumbnail.load {
                     guard let api = controller.api else { throw URLError(.notConnectedToInternet) }
                     return try await api.fetchData("/api/v1/attachments/\(item.id)/thumbnail")
@@ -721,7 +1019,21 @@ private struct PendingTile: View {
     private var face: some View {
         ZStack {
             Color.secondary.opacity(0.12)
-            if let image = thumbnail.image {
+            if gone {
+                VStack(spacing: 3) {
+                    Image(systemName: "trash").font(.title3)
+                    Text("削除されたファイル").font(.system(size: 9)).multilineTextAlignment(.center).lineLimit(2)
+                }
+                .foregroundStyle(.secondary)
+                .padding(4)
+            } else if look == .hidden {
+                VStack(spacing: 3) {
+                    Image(systemName: "lock").font(.title3)
+                    FileNameTwoLines(name: hiddenName).font(.system(size: 9)).multilineTextAlignment(.center)
+                }
+                .foregroundStyle(.secondary)
+                .padding(4)
+            } else if let image = thumbnail.image {
                 Image(uiImage: image).resizable().scaledToFill()
                 if item.isVideo {
                     Image(systemName: "play.circle.fill").font(.system(size: 22)).foregroundStyle(.white.opacity(0.9))

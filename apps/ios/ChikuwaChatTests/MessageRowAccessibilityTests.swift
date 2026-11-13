@@ -173,7 +173,8 @@ final class MessageRowAccessibilityTests: XCTestCase {
             @State private var editing = true
             var body: some View {
                 Color.clear.sheet(isPresented: $editing) {
-                    EditMessageView(initial: "直す前の本文") { body in
+                    EditMessageView(initial: "直す前の本文") { body, attachmentIds in
+                        XCTAssertNil(attachmentIds, "no files: a body-only edit")
                         server.saved.append(body)
                         return server.answers.removeFirst()
                     }
@@ -198,6 +199,48 @@ final class MessageRowAccessibilityTests: XCTestCase {
         RunLoop.current.run(until: Date().addingTimeInterval(2.0))
         XCTAssertNil(host.presentedViewController, "closed once saved")
         XCTAssertEqual(server.saved, ["直す前の本文", "直す前の本文"])
+    }
+
+    /// M186 (docs/CHANNEL_FILES.md §7.6): the editor lists the message's files, a 「削除されたファイル」 too, each with its
+    /// 「… を外す」; a message of files alone saves without text, with the ids of the files it keeps.
+    func testTheEditorTakesAFileOffAndSavesTheOthersWithoutText() throws {
+        final class Server { var saved: [(String, [String]?)] = [] }
+        struct Host: View {
+            let server: Server
+            let files: [AttachmentOut]
+            let controller: AppController
+            @State private var editing = true
+            var body: some View {
+                Color.clear.sheet(isPresented: $editing) {
+                    EditMessageView(initial: "", attachments: files, controller: controller) { body, attachmentIds in
+                        server.saved.append((body, attachmentIds))
+                        return nil
+                    }
+                }
+            }
+        }
+        let files = try JSON.snakeDecoder.decode(MessageOut.self, from: Data(ChannelFilesTests.message.utf8)).attachments
+        let server = Server()
+        let host = render(Host(server: server, files: files, controller: controller()), height: 800)
+        RunLoop.current.run(until: Date().addingTimeInterval(1.0))
+        let editor = try XCTUnwrap(host.presentedViewController, "the editor")
+        let found = accessibilityElements(editor.view, depth: 40)
+        let labels = found.compactMap(\.accessibilityLabel)
+        XCTAssertEqual(labels.filter { $0 == "修論_v1.pdf を外す" }.count, 2, "\(labels)")
+        XCTAssertTrue(labels.contains("削除されたファイル を外す"), "\(labels)")
+        XCTAssertTrue(labels.contains("ファイルを追加"), "\(labels)")
+        let gone = try XCTUnwrap(found.first { $0.accessibilityLabel == "削除されたファイル を外す" })
+        XCTAssertTrue(gone.accessibilityActivate())
+        RunLoop.current.run(until: Date().addingTimeInterval(0.5))
+        let after = accessibilityElements(editor.view, depth: 40)
+        XCTAssertFalse(after.contains { $0.accessibilityLabel == "削除されたファイル を外す" })
+        let save = try XCTUnwrap(after.first { $0.accessibilityLabel == "保存" }, "\(after.compactMap(\.accessibilityLabel))")
+        XCTAssertFalse(save.accessibilityTraits.contains(.notEnabled), "files stay: no text is needed")
+        XCTAssertTrue(save.accessibilityActivate())
+        RunLoop.current.run(until: Date().addingTimeInterval(1.5))
+        XCTAssertNil(host.presentedViewController, "closed once saved")
+        XCTAssertEqual(server.saved.map(\.0), [""])
+        XCTAssertEqual(server.saved.map(\.1), [[files[0].id, files[2].id]])
     }
 
     func testAnUnsentMessageHasNoActions() {

@@ -992,10 +992,16 @@ final class AppController {
     // MARK: message actions (M8a): apply the server's answer at once; the WS event is deduplicated
 
     /// nil once saved, else the error: the editor shows it and keeps the text (C4).
-    func editMessage(_ messageId: String, body: String) async -> String? {
+    /// M186 (docs/CHANNEL_FILES.md §7.6): `attachmentIds` changes the files too. A server that answers with other files
+    /// than those sent does not know the field (before M186): the text is saved, and the banner says the files are not.
+    func editMessage(_ messageId: String, body: String, attachmentIds: [String]? = nil) async -> String? {
         guard let api else { return ErrorMessages.unknown }
         do {
-            _ = store.upsertMessage(try await api.editMessage(id: messageId, body: body))
+            let edited = try await api.editMessage(id: messageId, body: body, attachmentIds: attachmentIds)
+            _ = store.upsertMessage(edited)
+            if let attachmentIds, !MessageEditFiles.applied(attachmentIds, answer: edited.attachments) {
+                self.error = tr("このサーバではファイルを変更できません")
+            }
             return nil
         } catch { return describe(error) }
     }

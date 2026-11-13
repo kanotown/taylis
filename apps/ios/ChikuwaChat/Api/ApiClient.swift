@@ -802,8 +802,12 @@ final class ApiClient: SyncApi, DraftApi, ChannelLinksApi, ActivityApi, CanvasAp
                           body: .object(["last_read_seq": .number(Double(lastReadSeq)), "mode": .string("set")]))
     }
 
-    func editMessage(id: String, body: String) async throws -> MessageOut {
-        try await request("PATCH", "/api/v1/messages/\(id)", body: .object(["body": .string(body)]))
+    /// M186 (docs/CHANNEL_FILES.md §7.6): `attachmentIds`, the files the message keeps (its own ids) then new uploads;
+    /// nil leaves the files as they are (the field is not sent).
+    func editMessage(id: String, body: String, attachmentIds: [String]? = nil) async throws -> MessageOut {
+        var fields: [String: JSONValue] = ["body": .string(body)]
+        if let attachmentIds { fields["attachment_ids"] = .array(attachmentIds.map { .string($0) }) }
+        return try await request("PATCH", "/api/v1/messages/\(id)", body: .object(fields))
     }
 
     /// Returns the tombstone (deleted = true) so the caller can apply it locally.
