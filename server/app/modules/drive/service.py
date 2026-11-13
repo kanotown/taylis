@@ -1083,13 +1083,14 @@ async def trash_posted_in_tx(
     item_ids: list[uuid.UUID],
     *,
     message_id: uuid.UUID,
+    via: Literal["message_delete", "message_edit"] = "message_delete",
 ) -> list[uuid.UUID]:
     """CF1 (docs/CHANNEL_FILES.md §7.3): the files of a message being deleted that its rule puts
     in the trash (the caller decided which; no drive permission is checked: whoever may delete
     the message takes back what was posted with it). The folders are locked first, before the
     message's channel; the message's own rows are left to the delete. Audited as drive.trash
     (via message_delete). Returns the items trashed (one in the trash already or gone is
-    skipped)."""
+    skipped). M186 (§7.6): also the files an edit takes off the message (via message_edit)."""
     wanted = list(dict.fromkeys(item_ids))
     if not wanted:
         return []
@@ -1115,7 +1116,7 @@ async def trash_posted_in_tx(
             target_type="drive_item",
             target_id=item.id,
             details={
-                "via": "message_delete",
+                "via": via,
                 "message_id": str(message_id),
                 "location_id": str(item.location_id),
                 "name": item.name,

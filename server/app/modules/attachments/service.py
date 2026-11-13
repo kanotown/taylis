@@ -6,7 +6,7 @@ import re
 import shutil
 import tempfile
 import uuid
-from collections.abc import AsyncIterator, Awaitable, Callable
+from collections.abc import AsyncIterator, Awaitable, Callable, Collection
 from datetime import UTC, datetime, timedelta
 from typing import IO
 from urllib.parse import quote
@@ -529,8 +529,36 @@ async def get_many(db: AsyncSession, attachment_ids: list[uuid.UUID]) -> list[At
     return [rows[i] for i in attachment_ids if i in rows]
 
 
-async def mark_deleted_in_tx(db: AsyncSession, message_id: uuid.UUID) -> None:
+async def shown_ids(db: AsyncSession, message_id: uuid.UUID) -> list[uuid.UUID]:
+    """M186: the files MessageOut.attachments lists for the message (a tombstone too), in its
+    order."""
+    return [a.id for a in await repo.for_messages(db, [message_id])]
+
+
+async def check_new_for_edit(
+    db: AsyncSession, actor_id: uuid.UUID, attachment_ids: list[uuid.UUID]
+) -> None:
+    """M186: the files an edit adds are the author's own pending uploads (not one held by a
+    scheduled message). Checked before the edit changes the drive; bind_in_tx checks again with
+    the rows locked."""
+    if not attachment_ids:
+        return
+    rows = {a.id: a for a in await repo.get_many(db, attachment_ids)}
+    for attachment_id in attachment_ids:
+        attachment = rows.get(attachment_id)
+        if (
+            attachment is None
+            or attachment.uploader_id != actor_id
+            or attachment.status != "pending"
+        ):
+            raise bad_request("attachment_invalid", f"Attachment {attachment_id} cannot be used")
+
+
+async def mark_deleted_in_tx(
+    db: AsyncSession, message_id: uuid.UUID, only: Collection[uuid.UUID] | None = None
+) -> None:
     """The message was deleted: its attachments vanish at once; GC removes the bytes later.
+    With `only` (M186, docs/CHANNEL_FILES.md §7.6): just those, an edit took them off.
 
     CF1 (docs/CHANNEL_FILES.md §7.3): a posted file that is still a drive version is only taken
     off the message (message_id, channel_id and drive_state NULL): it stays in the drive as an
@@ -539,6 +567,8 @@ async def mark_deleted_in_tx(db: AsyncSession, message_id: uuid.UUID) -> None:
     send): a drive move or trash in flight is waited for."""
     now = utcnow()
     for attachment in await repo.for_message(db, message_id, for_update=True):
+        if only is not None and attachment.id not in only:
+            continue
         if attachment.drive_state is not None and attachment.drive_state != "deleted":
             attachment.message_id = None
             attachment.channel_id = None

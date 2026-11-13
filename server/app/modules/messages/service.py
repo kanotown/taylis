@@ -568,12 +568,38 @@ def _require_user_message(message: Message) -> None:
 async def edit_message(
     db: AsyncSession, actor: User, message_id: uuid.UUID, data: MessageEdit
 ) -> MessageOut:
-    """Only the author edits; the edit consumes a seq so delta sync picks it up (§8)."""
+    """Only the author edits; the edit consumes a seq so delta sync picks it up (§8).
+
+    M186 (docs/CHANNEL_FILES.md §7.6): `attachment_ids` also changes the files. One left out is
+    taken off as a delete takes its files (gone, or kept in the channel's drive / put in its
+    trash by the delete's auto rule); a new one is bound and filed as a send does. The drive
+    goes first (its folders and location before the channel, like a send and a delete); a retry
+    of the same edit finds the new files already on the message and changes nothing more."""
     message = await _require_live_message(db, actor, message_id)
     _require_user_message(message)
     if message.sender_id != actor.id:
         raise forbidden("not_message_owner", "Only the author can edit a message")
+    removed: list[uuid.UUID] = []
+    added: list[uuid.UUID] = []
+    filing: channel_files.Plan | None = None
+    if data.attachment_ids is not None:
+        shown = await attachments.shown_ids(db, message.id)
+        wanted = list(dict.fromkeys(data.attachment_ids))
+        removed = [i for i in shown if i not in wanted]
+        added = [i for i in wanted if i not in shown]
+        await attachments.check_new_for_edit(db, actor.id, added)
+        if removed or added:
+            channel = await channels.require_channel(db, message.channel_id)
+            filing = await channel_files.on_message_edit_in_tx(
+                db, actor, message, channel, removed=removed, added=added
+            )
     seq = await repo.allocate_seq(db, message.channel_id, touch_last_message=False)
+    if removed:
+        await attachments.mark_deleted_in_tx(db, message.id, only=set(removed))
+    if added:
+        bound = await attachments.bind_in_tx(db, actor.id, message.channel_id, message.id, added)
+        if filing is not None:
+            await channel_files.file_in_tx(db, filing, actor, bound)
     now = utcnow()
     if data.body != message.body:  # M14c: keep the replaced body for the author's history
         await repo.add_revision(

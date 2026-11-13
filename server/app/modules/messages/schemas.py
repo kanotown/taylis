@@ -273,12 +273,26 @@ class MessageCreate(BaseModel):
 
 
 class MessageEdit(BaseModel):
-    body: str = Field(min_length=1, max_length=MAX_BODY_LENGTH)
+    body: str = Field(default="", max_length=MAX_BODY_LENGTH)
+    # M186 (docs/CHANNEL_FILES.md §7.6): the message's files after the edit. The ones it keeps
+    # (its own ids from MessageOut.attachments, a 「削除されたファイル」 too) and new uploads of
+    # the author (POST /attachments, still pending); one of its files left out is taken off.
+    # The kept ones stay in their place and the new ones follow (no reordering). Omitted (older
+    # clients, a body-only edit): the files stay as they are.
+    attachment_ids: list[UUID] | None = Field(default=None, max_length=10)
 
     @field_validator("body")
     @classmethod
     def _clean_body(cls, value: str) -> str:
-        return clean_body(value)
+        return strip_control_chars(value)
+
+    @model_validator(mode="after")
+    def _body_or_attachments(self) -> "MessageEdit":
+        # Without files the body is needed, as before M186: an edit that would leave nothing is a
+        # delete.
+        if not self.body.strip() and not self.attachment_ids:
+            raise ValueError("body must not be empty")
+        return self
 
 
 class ReactionOut(BaseModel):

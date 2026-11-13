@@ -2003,6 +2003,7 @@ CREATE INDEX message_revisions_message_idx ON message_revisions (message_id, rep
 - `GET /messages/{id}/revisions` は古い順。**投稿者本人だけ** (他のメンバーは `403 not_message_owner`)。
   うっかり貼ったパスワードなどを編集で消した場合に、他人から読めてはいけないため (Mattermost と同じ扱い)。
 - メッセージの削除で履歴も消す。検索・エクスポート・プッシュは現在の本文だけを扱う。
+- 編集で外したファイル (M186、CHANNEL_FILES.md §7.6) は履歴に残さない (本文だけの履歴。外したファイルはすぐ 404)。
 
 ### 投票 (polls、M14b)
 

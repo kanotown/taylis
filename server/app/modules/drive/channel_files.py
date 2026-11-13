@@ -123,9 +123,12 @@ async def _posts_folder(db: AsyncSession, location_id: uuid.UUID) -> DriveItem |
     return (await db.execute(stmt)).scalar_one_or_none()
 
 
-async def _lock_plan(db: AsyncSession, channel_id: uuid.UUID, month: str) -> Plan:
+async def _lock_plan(
+    db: AsyncSession, channel_id: uuid.UUID, month: str, *, lock_location: bool = True
+) -> Plan:
     """The folders top down (the root only when 「投稿のファイル」 is still to be made), then the
-    location: the order of the drive's own changes (folders, then locations)."""
+    location: the order of the drive's own changes (folders, then locations). Without
+    `lock_location` the caller locks it after its other folders (M186: an edit)."""
     location = await service.ensure_location(db, "channel", channel_id=channel_id)
     root = await repo.item(db, location.root_id)
     posts = await _posts_folder(db, location.id)
@@ -146,12 +149,17 @@ async def _lock_plan(db: AsyncSession, channel_id: uuid.UUID, month: str) -> Pla
             found = (await repo.lock_items(db, [existing.id])).get(existing.id)
             if found is None or found.trashed_at is not None or found.parent_id != posts.id:
                 raise RuntimeError("the month folder changed while it was locked")
-    await service.lock_location(db, location.id)
+    if lock_location:
+        await service.lock_location(db, location.id)
     return Plan(location_id=location.id, root=root, posts=posts, month_name=month, month=found)
 
 
 async def prepare_in_tx(
-    db: AsyncSession, channel: Channel, attachment_ids: list[uuid.UUID]
+    db: AsyncSession,
+    channel: Channel,
+    attachment_ids: list[uuid.UUID],
+    *,
+    lock_location: bool = True,
 ) -> Plan | None:
     """Before a send takes its seq: None when its files stay out of the drive (no files, a DM,
     the switch off, or the drive could not be prepared)."""
@@ -159,7 +167,9 @@ async def prepare_in_tx(
         return None
     try:
         async with db.begin_nested():
-            return await _lock_plan(db, channel.id, month_name(utcnow()))
+            return await _lock_plan(
+                db, channel.id, month_name(utcnow()), lock_location=lock_location
+            )
     except Exception:
         log.warning(
             "channel files: the drive of channel %s could not be prepared; "
@@ -427,6 +437,37 @@ async def on_message_delete_in_tx(
     if not wanted:
         return []
     return await service.trash_posted_in_tx(db, actor.id, wanted, message_id=message.id)
+
+
+async def on_message_edit_in_tx(
+    db: AsyncSession,
+    actor: User,
+    message: Message,
+    channel: Channel,
+    *,
+    removed: list[uuid.UUID],
+    added: list[uuid.UUID],
+) -> Plan | None:
+    """M186 (§7.6): before an edit that changes the message's files takes its channel. The drive
+    is prepared for the added files (「投稿のファイル」 and the month, like a send), the removed
+    ones that the delete's rule (§7.2-§7.3, auto) puts in the trash go there (their folders, like
+    a delete), and only then the location is locked: folders before the location, the drive's
+    order. Returns the plan for file_in_tx (None: the added files stay plain attachments)."""
+    plan = await prepare_in_tx(db, channel, added, lock_location=False)
+    if removed:
+        taken = set(removed)
+        wanted = [
+            r.item_id
+            for r in await delete_rules(db, actor, message)
+            if r.trash and r.attachment_id in taken
+        ]
+        if wanted:
+            await service.trash_posted_in_tx(
+                db, actor.id, wanted, message_id=message.id, via="message_edit"
+            )
+    if plan is not None:
+        await service.lock_location(db, plan.location_id)
+    return plan
 
 
 # --- impact (§6.4) ------------------------------------------------------------------------------

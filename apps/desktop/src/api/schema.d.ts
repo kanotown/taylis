@@ -13748,7 +13748,12 @@ export interface components {
         };
         /** MessageEdit */
         MessageEdit: {
-            /** Body */
+            /** Attachment Ids */
+            attachment_ids?: string[] | null;
+            /**
+             * Body
+             * @default
+             */
             body: string;
         };
         /** MessageOut */
