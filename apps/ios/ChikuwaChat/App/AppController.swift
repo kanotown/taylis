@@ -317,9 +317,15 @@ final class AppController {
         }
         booted = true
         if defaults === UserDefaults.standard { publishWidgetWorkspaces() } // the widgets' list, also when nothing changed
-        if let tap { PushCenter.shared.pendingChannelId = tap.channelId }
         Task { await refreshServerInfo() }
         Task { await refreshSummaries() }
+        // Its screen, as a tap on a running app opens it (its workspace is open already). It only set the conversation
+        // (2026-11-13): a reply's thread, a reaction's message, an event, a task, a page… were lost whenever iOS handed
+        // the tap over before this ran, and opened as they should when it came a moment later (the `late` one).
+        // Signed out (the login form): its conversation, once signed in again, as before.
+        if let tap {
+            if screen == .main { await openNotificationTarget(tap) } else { PushCenter.shared.pendingChannelId = tap.channelId }
+        }
         if let late = PushCenter.shared.takePendingTap() { await openNotification(late) }
         await openPendingWidgetLink() // the 在室状況 widget was tapped while the app was starting
     }
@@ -880,6 +886,12 @@ final class AppController {
            target.serverUrl != activeServerUrl || screen != .main {
             await switchTo(target.serverUrl)
         }
+        await openNotificationTarget(payload)
+    }
+
+    /// What a tapped notification opens, in the workspace on screen: a conversation (a reply's thread with it), a
+    /// reaction's message, an event, a task, a page, 「予約」, 「備品」, a canvas.
+    func openNotificationTarget(_ payload: PushPayload) async {
         if payload.opensMessage, let messageId = payload.messageId {
             // M39: a reaction to my message (PUSH_NOTIFICATIONS.md §4): that message, not the conversation's unread
             // position (it may be old), in its thread when it is a reply.

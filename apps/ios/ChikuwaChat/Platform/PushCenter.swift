@@ -105,6 +105,9 @@ final class PushCenter {
             pendingTap = payload
             return
         }
+        // What the app showed over its screens goes first: a sheet, a full-screen viewer, a message's menu (2026-11-13).
+        // The tapped conversation opened behind it, and the tap seemed to do nothing.
+        ScreenCovers.close()
         Task { await controller.openNotification(payload) }
     }
 
@@ -115,6 +118,42 @@ final class PushCenter {
     func takePendingTap() -> PushPayload? {
         defer { pendingTap = nil }
         return pendingTap
+    }
+}
+
+/// What is presented over the app's screens (PUSH_NOTIFICATIONS.md §9 「通知タップ」): sheets, full-screen covers, a
+/// message's menu, alerts, wherever in the app they were presented from.
+@MainActor
+enum ScreenCovers {
+    /// Closes them as a swipe down would: what a swipe may not close (a save in progress, recovery codes on screen:
+    /// `interactiveDismissDisabled`) stays, with what it was presented over; only what is above it goes.
+    static func close() {
+        let windows = UIApplication.shared.connectedScenes.compactMap { $0 as? UIWindowScene }.flatMap(\.windows)
+        for window in windows {
+            guard let root = window.rootViewController, let from = dismissPoint(root) else { continue }
+            from.dismiss(animated: false)
+        }
+    }
+
+    /// The controller to dismiss from: the last one in the chain that may not be swiped away, else the root; nil when
+    /// nothing is presented over it.
+    static func dismissPoint(_ root: UIViewController) -> UIViewController? {
+        var from = root
+        var top = root
+        var seen: Set<ObjectIdentifier> = [ObjectIdentifier(root)]
+        while let presented = top.presentedViewController, seen.insert(ObjectIdentifier(presented)).inserted {
+            if !swipeable(presented) { from = presented }
+            top = presented
+        }
+        return from.presentedViewController == nil ? nil : from
+    }
+
+    /// Whether a swipe down could close it (both ways UIKit asks).
+    static func swipeable(_ presented: UIViewController) -> Bool {
+        if presented.isModalInPresentation { return false }
+        if let controller = presented.presentationController,
+           controller.delegate?.presentationControllerShouldDismiss?(controller) == false { return false }
+        return true
     }
 }
 
