@@ -572,14 +572,15 @@ async def content(
 
 
 def _image(blobs: Any, key: str, content_type: str) -> StreamingResponse:
-    return StreamingResponse(
-        attachments.stream(blobs, key),
-        headers={
-            "Content-Type": content_type,
-            "Content-Disposition": "inline",
-            "Content-Security-Policy": "sandbox",
-        },
-    )
+    return StreamingResponse(attachments.stream(blobs, key), headers=_image_headers(content_type))
+
+
+def _image_headers(content_type: str) -> dict[str, str]:
+    return {
+        "Content-Type": content_type,
+        "Content-Disposition": "inline",
+        "Content-Security-Policy": "sandbox",
+    }
 
 
 async def display(
@@ -614,8 +615,8 @@ async def display(
 async def media(
     request: Request, db: AsyncSession, token: str, item_id: uuid.UUID, which: str
 ) -> StreamingResponse:
-    """An image's thumbnail (JPEG), a document's first page (WebP) or every page (PDF): not
-    counted (§9.2)."""
+    """An image's thumbnail (JPEG, or WebP when see-through), a document's first page (WebP) or
+    every page (PDF): not counted (§9.2)."""
     visit = await open_link(request, db, token)
     require_unlocked(request, visit)
     item = await shared_item(db, visit, item_id)
@@ -625,7 +626,8 @@ async def media(
     if which == "thumbnail":
         if attachment.thumbnail_key is None:
             raise AppError(404, "thumbnail_not_found", "This file has no thumbnail")
-        return _image(blobs, attachment.thumbnail_key, "image/jpeg")
+        media_type, body = await attachments.stream_thumbnail(blobs, attachment.thumbnail_key)
+        return StreamingResponse(body, headers=_image_headers(media_type))
     if attachment.preview_status != "ready":
         raise AppError(404, "preview_not_found", "This file has no preview")
     if which == "preview_thumbnail":

@@ -36,7 +36,7 @@ from starlette.concurrency import run_in_threadpool
 
 from app.core.settings import Settings
 from app.modules.attachments import videos
-from app.modules.attachments.images import MAX_PIXELS, thumbnail_jpeg
+from app.modules.attachments.images import MAX_PIXELS, thumbnail_bytes
 from app.modules.attachments.photos import (
     DISPLAY_PX,
     DisplayImage,
@@ -571,7 +571,7 @@ def _parse_file(path: str) -> HeifInfo | None:
 
 def _render(image: Image.Image, thumb_px: int, display: bool) -> tuple[DisplayImage | None, bytes]:
     shown = make_display(image) if display else None
-    return shown, thumbnail_jpeg(image, thumb_px)  # last: it scales the image in place
+    return shown, thumbnail_bytes(image, thumb_px)  # last: it scales the image in place
 
 
 async def read(

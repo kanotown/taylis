@@ -207,7 +207,7 @@ AlbumOut = {
 
 | 大きさ | 作る時 | 使う所 |
 | --- | --- | --- |
-| サムネイル（512 px、JPEG、今の `thumbnail_key`） | アップロード・media loop（今まで） | 格子、カード、一覧 |
+| サムネイル（512 px、JPEG（透明な画像は WebP、PREVIEWS.md §17）、今の `thumbnail_key`） | アップロード・media loop（今まで） | 格子、カード、一覧 |
 | 表示サイズ（長い辺 2048 px、WebP、新しい `display_key`） | media loop（§4.2） | 全画面のビューア、スライドショー、公開側の写真 |
 | 元の写真 | — | 「元の画像」・ダウンロード・ZIP |
 
@@ -794,7 +794,7 @@ Python の依存なし）。
 3. **タイル**：`ffprobe -show_stream_groups` のタイルのストリームとオフセットを `xstack` でつなぎ、出力の縦横に `crop`。タイルの無い
    HEIC は既定（default）のストリーム 1 本。タイルは 1024 枚まで。
 4. **出力**：長い辺 2048 px 以下に縮めた RGB の PNG（上限 64 MB）を Pillow が開き、ICC を付けて、ほかの写真と同じ
-   `make_display`（WebP、メタデータなし）と `thumbnail_jpeg`（512 px の JPEG）。記録する `width` / `height` は元の大きさを立てた値。
+   `make_display`（WebP、メタデータなし）と `thumbnail_bytes`（512 px の JPEG）。記録する `width` / `height` は元の大きさを立てた値。
 5. **閉じ込め**：動画と同じ `videos.run_bounded`（引数の配列・`PATH` と `LC_ALL` だけの環境・`VIDEO_PROBE_TIMEOUT_SECONDS`・
    `VIDEO_PROBE_MAX_CONCURRENT` の枠を共有）、入力は `-protocol_whitelist file` と `-format_whitelist mov,mp4,m4a,3gp,3g2,mj2`。
    ffmpeg が無い・`VIDEO_PROBE_ENABLED=false` なら何もしない。

@@ -81,13 +81,18 @@ async def download(
 async def thumbnail(
     attachment_id: UUID, request: Request, user: CurrentUser, db: Db
 ) -> StreamingResponse:
+    """An image's thumbnail (at most 512 px) or (M79) a video's poster: a JPEG, or a WebP with its
+    alpha when the image has see-through pixels (docs/PREVIEWS.md §17); Content-Type says which."""
     attachment = await service.get_for_access(db, user, attachment_id)
     if attachment.thumbnail_key is None:
         raise not_found("thumbnail_not_found", "This attachment has no thumbnail")
+    media_type, body = await service.stream_thumbnail(
+        request.app.state.blobs, attachment.thumbnail_key
+    )
     return StreamingResponse(
-        service.stream(request.app.state.blobs, attachment.thumbnail_key),
+        body,
         headers={
-            "Content-Type": "image/jpeg",
+            "Content-Type": media_type,
             "Content-Disposition": "inline",
             "X-Content-Type-Options": "nosniff",
             "Cache-Control": "private, max-age=3600",

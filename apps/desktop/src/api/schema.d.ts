@@ -1564,7 +1564,11 @@ export interface paths {
             path?: never;
             cookie?: never;
         };
-        /** Thumbnail */
+        /**
+         * Thumbnail
+         * @description An image's thumbnail (at most 512 px) or (M79) a video's poster: a JPEG, or a WebP with its
+         *     alpha when the image has see-through pixels (docs/PREVIEWS.md §17); Content-Type says which.
+         */
         get: operations["thumbnail_api_v1_attachments__attachment_id__thumbnail_get"];
         put?: never;
         post?: never;

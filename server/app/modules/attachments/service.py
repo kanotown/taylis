@@ -23,7 +23,12 @@ from app.core.time import utcnow
 from app.modules.attachments import heif, sniff, videos
 from app.modules.attachments import repository as repo
 from app.modules.attachments.blobstore import BlobStore
-from app.modules.attachments.images import IMAGE_TYPES, ImageTooLarge, make_thumbnail
+from app.modules.attachments.images import (
+    IMAGE_TYPES,
+    ImageTooLarge,
+    make_thumbnail,
+    thumbnail_type,
+)
 from app.modules.attachments.models import Attachment
 from app.modules.attachments.preview_kinds import possible_preview_keys, queue_on_upload
 from app.modules.attachments.schemas import (
@@ -190,7 +195,7 @@ async def upload(
             except Exception as exc:  # a broken or hostile image still uploads as a plain file
                 log.warning("thumbnail failed for %s: %s", attachment_id, exc)
             else:
-                await blobs.put(thumbnail_key(attachment_id), thumb, "image/jpeg")
+                await blobs.put(thumbnail_key(attachment_id), thumb, thumbnail_type(thumb))
                 attachment.width, attachment.height = width, height
                 attachment.thumbnail_key = thumbnail_key(attachment_id)
         elif heif.is_heif(content_type):
@@ -228,7 +233,7 @@ async def _heif_spooled(
     if found is None or found.thumbnail is None:
         return
     thumb, width, height = found.thumbnail
-    await blobs.put(thumbnail_key(attachment.id), thumb, "image/jpeg")
+    await blobs.put(thumbnail_key(attachment.id), thumb, thumbnail_type(thumb))
     attachment.width, attachment.height = width, height
     attachment.thumbnail_key = thumbnail_key(attachment.id)
 
@@ -261,7 +266,7 @@ async def apply_video_info(
     now shows anything new (a shape, a length or a poster)."""
     changed = False
     if info.poster is not None:
-        await blobs.put(thumbnail_key(attachment.id), info.poster, "image/jpeg")
+        await blobs.put(thumbnail_key(attachment.id), info.poster, thumbnail_type(info.poster))
         changed = changed or attachment.thumbnail_key is None
         attachment.thumbnail_key = thumbnail_key(attachment.id)
     if info.width is not None and info.height is not None:
@@ -870,6 +875,21 @@ def preview_pdf_headers(attachment: Attachment) -> dict[str, str]:
 
 def stream(blobs: BlobStore, key: str) -> AsyncIterator[bytes]:
     return blobs.stream(key)
+
+
+async def stream_thumbnail(blobs: BlobStore, key: str) -> tuple[str, AsyncIterator[bytes]]:
+    """A stored thumbnail or video poster: its media type, read from its first bytes (a JPEG, or
+    a see-through image's WebP: docs/PREVIEWS.md §17), and all its bytes."""
+    chunks = blobs.stream(key)
+    first = await anext(chunks, b"")
+
+    async def whole() -> AsyncIterator[bytes]:
+        if first:
+            yield first
+        async for chunk in chunks:
+            yield chunk
+
+    return thumbnail_type(first), whole()
 
 
 async def gc(

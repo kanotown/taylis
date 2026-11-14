@@ -64,7 +64,12 @@ from app.core.settings import Settings
 from app.modules.attachments import service as attachments
 from app.modules.attachments import sniff, videos
 from app.modules.attachments.blobstore import BlobStore
-from app.modules.attachments.images import IMAGE_TYPES, ImageTooLarge, make_thumbnail
+from app.modules.attachments.images import (
+    IMAGE_TYPES,
+    ImageTooLarge,
+    make_thumbnail,
+    thumbnail_type,
+)
 from app.modules.attachments.models import Attachment
 from app.modules.channels.models import Channel
 from app.modules.channels.schemas import CHANNEL_NAME_PATTERN
@@ -1554,7 +1559,7 @@ class SlackImport(core.ImportJob):
                     self.report.warn(f"添付 {attachment.filename}: サムネイルを作れない ({exc})")
                 else:
                     await self.blobs.put(
-                        attachments.thumbnail_key(attachment_id), thumb, "image/jpeg"
+                        attachments.thumbnail_key(attachment_id), thumb, thumbnail_type(thumb)
                     )
                     attachment.width, attachment.height = width, height
                     attachment.thumbnail_key = attachments.thumbnail_key(attachment_id)

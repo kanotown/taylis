@@ -2118,7 +2118,7 @@ CREATE TABLE attachments (
   storage_key    text NOT NULL,                     -- 'attachments/{id}'
   width          integer,                           -- 画像、M79 から動画も (回転を当てた表示上の縦横)
   height         integer,
-  thumbnail_key  text,                              -- 'attachments/{id}.thumb.jpg' (画像のサムネイル、動画のポスター)
+  thumbnail_key  text,                              -- 'attachments/{id}.thumb.jpg' (画像のサムネイル、動画のポスター。透明な画像は名前のまま WebP: PREVIEWS.md §17)
   duration_ms    integer,                           -- M79: 動画の長さ
   video_probed_at timestamptz,                      -- M79: サーバが動画を調べた時刻 (結果の有無によらず)。NULL は未調査
   preview_status text NOT NULL DEFAULT 'none',      -- M108: 'none' | 'pending' | 'ready' | 'failed' (文書のプレビュー)

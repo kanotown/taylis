@@ -25,7 +25,12 @@ from app.core.time import utcnow
 from app.modules.attachments import heif, videos
 from app.modules.attachments import service as attachments
 from app.modules.attachments.blobstore import BlobStore
-from app.modules.attachments.images import IMAGE_TYPES, ImageTooLarge, make_thumbnail
+from app.modules.attachments.images import (
+    IMAGE_TYPES,
+    ImageTooLarge,
+    make_thumbnail,
+    thumbnail_type,
+)
 from app.modules.attachments.models import Attachment
 from app.modules.drive import events, photos
 from app.modules.drive.models import DriveFileVersion, DriveItem
@@ -187,7 +192,7 @@ async def _done(
         if thumb is not None and blobs is not None:
             data, width, height = thumb
             key = attachments.thumbnail_key(attachment.id)
-            await blobs.put(key, data, "image/jpeg")
+            await blobs.put(key, data, thumbnail_type(data))
             changed = attachment.thumbnail_key is None
             attachment.thumbnail_key = key
             attachment.width, attachment.height = width, height

@@ -40,7 +40,7 @@ from app.core.settings import Settings
 from app.modules.attachments import service as attachments
 from app.modules.attachments import sniff
 from app.modules.attachments.blobstore import BlobStore
-from app.modules.attachments.images import IMAGE_TYPES, make_thumbnail
+from app.modules.attachments.images import IMAGE_TYPES, make_thumbnail, thumbnail_type
 from app.modules.attachments.models import Attachment
 from app.modules.channels.models import Channel
 from app.modules.emoji import service as emoji_service
@@ -338,7 +338,7 @@ class MattermostImport(core.ImportJob):
                         make_thumbnail, data, self.settings.attachment_thumbnail_px
                     )
                     await self.blobs.put(
-                        attachments.thumbnail_key(attachment_id), thumb, "image/jpeg"
+                        attachments.thumbnail_key(attachment_id), thumb, thumbnail_type(thumb)
                     )
                     attachment.width, attachment.height = width, height
                     attachment.thumbnail_key = attachments.thumbnail_key(attachment_id)

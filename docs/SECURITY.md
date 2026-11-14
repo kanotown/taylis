@@ -434,7 +434,7 @@ admin だけ。中の名前は作った時点の表示名で、メンバーに�
   `-format_whitelist` (MP4 / MOV / 3GP、Matroska / WebM、AVI、ASF、MPEG-PS / TS、FLV) で、HLS のプレイリストや
   concat のような他のファイル・URL を開く形式を読まない (ローカルファイルの読み出しや SSRF に使われる)。
 - **出力**: ffmpeg は 1 フレームを `attachment_thumbnail_px` (512 px) 以下に縮めた PNG で標準出力に書き、Pillow が
-  画像のサムネイルと同じ手順 (`images.make_thumbnail`: 画素数の上限、メタデータを持ち越さない JPEG) で作り直す。
+  画像のサムネイルと同じ手順 (`images.make_thumbnail`: 画素数の上限、メタデータを持ち越さない JPEG。透明な画像は WebP、PREVIEWS.md §17) で作り直す。
   ffprobe の値は 16384 px を超える縦横や負の長さを「不明」として扱う。
 - **失敗**: 起動できない・時間切れ・異常終了・読めない値は「縦横もポスターも無し」で、アップロードは失敗させない
   (今までどおり普通の動画として保存される)。ffmpeg が無い (または `VIDEO_PROBE_ENABLED=false`) ときは何もしない。

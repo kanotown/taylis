@@ -57,7 +57,12 @@ from app.core.time import utcnow
 from app.modules.attachments import service as attachments
 from app.modules.attachments import sniff, videos
 from app.modules.attachments.blobstore import BlobStore, MemoryBlobStore
-from app.modules.attachments.images import IMAGE_TYPES, ImageTooLarge, make_thumbnail
+from app.modules.attachments.images import (
+    IMAGE_TYPES,
+    ImageTooLarge,
+    make_thumbnail,
+    thumbnail_type,
+)
 from app.modules.attachments.models import Attachment
 from app.modules.attachments.preview_kinds import queue_on_upload
 from app.modules.audit import service as audit
@@ -1417,7 +1422,9 @@ class NotionImport:
             except Exception as exc:  # stays a plain file, as an upload would
                 self.report.warn(f"{plan.label}: {fp.name}: サムネイルを作れない ({exc})")
             else:
-                await self.blobs.put(attachments.thumbnail_key(fp.target), thumb, "image/jpeg")
+                await self.blobs.put(
+                    attachments.thumbnail_key(fp.target), thumb, thumbnail_type(thumb)
+                )
                 attachment.width, attachment.height = width, height
                 attachment.thumbnail_key = attachments.thumbnail_key(fp.target)
         elif videos.is_video(content_type):

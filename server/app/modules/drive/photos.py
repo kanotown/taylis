@@ -32,7 +32,7 @@ from app.core.time import utcnow
 from app.modules.attachments import heif, photos, videos
 from app.modules.attachments import service as attachments
 from app.modules.attachments.blobstore import BlobStore
-from app.modules.attachments.images import IMAGE_TYPES, ImageTooLarge
+from app.modules.attachments.images import IMAGE_TYPES, ImageTooLarge, thumbnail_type
 from app.modules.attachments.models import Attachment
 from app.modules.attachments.photo_kinds import is_image, photo_kind
 from app.modules.drive import events
@@ -109,7 +109,7 @@ async def apply_in_tx(attachment: Attachment, result: PhotoResult, blobs: BlobSt
     if result.thumbnail is not None:
         data, width, height = result.thumbnail
         key = attachments.thumbnail_key(attachment.id)
-        await blobs.put(key, data, "image/jpeg")
+        await blobs.put(key, data, thumbnail_type(data))
         changed = changed or attachment.thumbnail_key is None
         attachment.thumbnail_key = key
         attachment.width, attachment.height = width, height

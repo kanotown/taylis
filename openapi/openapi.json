@@ -32886,6 +32886,7 @@
     },
     "/api/v1/attachments/{attachment_id}/thumbnail": {
       "get": {
+        "description": "An image's thumbnail (at most 512 px) or (M79) a video's poster: a JPEG, or a WebP with its\nalpha when the image has see-through pixels (docs/PREVIEWS.md §17); Content-Type says which.",
         "operationId": "thumbnail_api_v1_attachments__attachment_id__thumbnail_get",
         "parameters": [
           {

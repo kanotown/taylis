@@ -404,6 +404,52 @@ def cmd_drive_photos(args: argparse.Namespace) -> int:
     return asyncio.run(_drive_photos(args.limit, args.dry_run, args.rebuild))
 
 
+async def _rebuild_thumbnails(limit: int, after: str | None, dry_run: bool) -> int:
+    import uuid
+
+    from app.core.db import Database
+    from app.core.settings import get_settings
+    from app.modules.attachments.blobstore import build_blobstore
+    from app.modules.attachments.thumb_backfill import rebuild_see_through_thumbnails
+
+    try:
+        start = uuid.UUID(after) if after is not None else None
+    except ValueError as exc:
+        raise SystemExit(f"error: --after must be an attachment id: {after}") from exc
+    settings = get_settings()
+    db = Database(settings.database_url)
+    blobs = build_blobstore(settings)
+    try:
+        async with db.session_factory() as session:
+            result = await rebuild_see_through_thumbnails(
+                session, blobs, settings, limit=limit, after=start, dry_run=dry_run
+            )
+        if dry_run:
+            print(
+                f"{result.pending} PNG / WebP / GIF file(s) with a thumbnail, "
+                f"{result.pending_bytes} bytes in all (each is read once)"
+            )
+            return 0
+        print(
+            f"checked {result.checked} thumbnail(s), read {result.read} original(s), "
+            f"rebuilt {result.rebuilt} as see-through"
+        )
+        for line in result.failed:
+            print(f"  failed: {line}")
+        if result.remaining and result.last is not None:
+            print(f"the limit stopped the run: run it again with --after {result.last}")
+        return 1 if result.failed else 0
+    finally:
+        await db.dispose()
+
+
+def cmd_rebuild_thumbnails(args: argparse.Namespace) -> int:
+    """2026-11-14 (docs/PREVIEWS.md §17): see-through images' thumbnails made as JPEGs."""
+    if args.limit < 1:
+        raise SystemExit("error: --limit must be at least 1")
+    return asyncio.run(_rebuild_thumbnails(args.limit, args.after, args.dry_run))
+
+
 def cmd_probe_videos(args: argparse.Namespace) -> int:
     """M79: size, length and poster of the videos stored before M79 (resumable)."""
     if args.limit < 1:
@@ -1551,6 +1597,19 @@ def build_parser() -> argparse.ArgumentParser:
     )
     probe.add_argument("--limit", type=int, default=1000, help="at most this many a run")
     probe.set_defaults(func=cmd_probe_videos)
+
+    rebuild_thumbs = sub.add_parser(
+        "rebuild-thumbnails",
+        help="remake the thumbnails of see-through images, which were flattened (PREVIEWS.md §17)",
+    )
+    rebuild_thumbs.add_argument(
+        "--limit", type=int, default=1000, help="read at most this many originals a run"
+    )
+    rebuild_thumbs.add_argument("--after", help="go on after this attachment id (a run prints it)")
+    rebuild_thumbs.add_argument(
+        "--dry-run", action="store_true", help="only count the files to look at"
+    )
+    rebuild_thumbs.set_defaults(func=cmd_rebuild_thumbnails)
 
     drive_photos = sub.add_parser(
         "drive-photos",
