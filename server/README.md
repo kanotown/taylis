@@ -24,7 +24,9 @@ uv run python -m app.cli export-openapi     # openapi/openapi.json の再生成
 
 テストは実 PostgreSQL に対して走る。`-n auto` (pytest-xdist) は CPU の数だけ並列に走らせ、ワーカーごとに別のデータベース (`chikuwa_test_gw0` …) を作って使う (M1 Max で約 150 秒 → 約 35 秒)。CI は 1 本ずつ (`-n` なし)。既定の接続先は `postgresql+asyncpg://chikuwa:chikuwa@localhost:5432/chikuwa_test`
 (`TEST_DATABASE_URL` で変更可)。データベースが無ければ作成し、毎回 `downgrade base` → `upgrade head` で
-マイグレーションも検証する。
+マイグレーションも検証する。テストではマイグレーションを 1 つずつコミットする（`migrations/env.py`）。全体を 1 つの
+トランザクションで流すと、並列のワーカーがそれぞれ数百のロックを持ち続け、PostgreSQL のロックの枠
+（`max_locks_per_transaction`）が尽きて `out of shared memory` で落ちていた（2026-11-14）。
 
 ローカル実行の設定は `server/.env` (コミットされない) に書ける。`SECRET_KEY` が無い開発環境では起動ごとに
 一時鍵を生成する (本番では起動を拒否する)。

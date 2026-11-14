@@ -53,7 +53,7 @@ AI の API キー (docs/AI.md) は `infra/secrets/anthropic_api_key` (と `opena
 
 | 対象 | コマンド |
 |---|---|
-| サーバ | `cd server && DEBUG=false uv run pytest -q -n 10 && uv run ruff check . && uv run ruff format --check . && uv run mypy app tests` (ruff は CI と同じくフォルダ全体。migrations も含む)。`-n auto` はコアの多い Mac (18 コア) だと PostgreSQL の `max_locks_per_transaction` が足りず `out of shared memory` で大半が落ちるので、ワーカーは 10 までにする。動画の縦横・ポスター (M79) の実物のテストは ffmpeg / ffprobe が要る (`brew install ffmpeg`)。無ければその 3 件は skip され、残りは偽の probe で通る |
+| サーバ | `cd server && DEBUG=false uv run pytest -q -n auto && uv run ruff check . && uv run ruff format --check . && uv run mypy app tests` (ruff は CI と同じくフォルダ全体。migrations も含む)。テストはマイグレーションを 1 つずつコミットするので（`migrations/env.py`）、18 コアの Mac の `-n auto` でも PostgreSQL の `max_locks_per_transaction` は既定のままで足りる（2026-11-14 に全 1994 件が約 2 分半。以前は 1 つのトランザクションで流していて `out of shared memory` で大半が落ちた）。動画の縦横・ポスター (M79) の実物のテストは ffmpeg / ffprobe が要る (`brew install ffmpeg`)。無ければその 3 件は skip され、残りは偽の probe で通る |
 | OpenAPI | `cd server && uv run python -m app.cli export-openapi`、Web の型は `cd apps/desktop && npm run gen:api` |
 | エラー文言 | `cd apps/shared && python3 gen_errors.py` (Web・iOS・Android の表を作り直す) |
 | Desktop / Web | `cd apps/desktop && npm run typecheck && npx vitest run && npx vite build` |

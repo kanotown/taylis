@@ -147,6 +147,9 @@ def migrated_database() -> str:
         os.environ["DATABASE_URL"] = TEST_DATABASE_URL
         cfg = Config(str(SERVER_DIR / "alembic.ini"))
         cfg.set_main_option("script_location", str(SERVER_DIR / "migrations"))
+        # A commit after each migration: `pytest -n 10` workers that migrated in one transaction
+        # each held hundreds of locks and ran PostgreSQL out of lock slots (migrations/env.py).
+        cfg.attributes["transaction_per_migration"] = True
         # A test database left with rows by a run that stopped half-way: the downgrades that
         # refuse to drop what an older server would break (REVIEW-v0.1.82 #1, #2) go on.
         cfg.cmd_opts = argparse.Namespace(x=["channel_files=detach", "album_links=revoke"])

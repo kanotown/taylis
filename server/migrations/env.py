@@ -34,7 +34,14 @@ def run_migrations_offline() -> None:
 
 
 def do_run_migrations(connection: Connection) -> None:
-    context.configure(connection=connection, target_metadata=target_metadata)
+    # One transaction for the whole run (a failed deploy leaves nothing half-done). The tests ask
+    # for one per migration: their workers each migrate from base at once, and holding every
+    # table's lock till the end ran PostgreSQL out of lock slots (max_locks_per_transaction).
+    context.configure(
+        connection=connection,
+        target_metadata=target_metadata,
+        transaction_per_migration=bool(config.attributes.get("transaction_per_migration")),
+    )
     with context.begin_transaction():
         context.run_migrations()
 
