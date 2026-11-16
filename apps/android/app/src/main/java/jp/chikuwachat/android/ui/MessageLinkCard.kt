@@ -204,7 +204,7 @@ fun cardShown(controller: AppController, cards: MessageCards.CardLinks, url: Str
 /** The sheet's name for a card (several cards: 「プレビューを削除：名前」). */
 fun cardLabel(controller: AppController, cards: MessageCards.CardLinks, url: String): String {
     cards.messages.firstOrNull { it.url == url }?.let { return MessageCards.label(controller.messagePreviews?.peek(it.id)?.preview, controller.store) }
-    return controller.linkPreviews[url]?.let { Links.siteLabel(it.siteName, it.url) } ?: url
+    return controller.linkPreviews[url]?.let { Links.siteLabel(it.siteName, url) } ?: url
 }
 
 /** TalkBack's 「プレビューを削除」 (`label`) on a card (the long press opens the sheet; this removes it at once, as the sheet's item). */

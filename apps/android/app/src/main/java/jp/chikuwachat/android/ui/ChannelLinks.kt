@@ -87,7 +87,8 @@ fun ChannelLinkChip(
                 Modifier.combinedClickable(
                     interactionSource = source, indication = null,
                     // A link of this server (a message, a canvas …) opens in the app, as in a message (2026-11-05).
-                    onClick = { if (!openInApp(controller, link.url, pageLinks)) runCatching { uriHandler.openUri(link.url) } },
+                    // Anything else only over http(s), as the server accepts them (2026-11-16, SafeLinks: the server gave the URL).
+                    onClick = { if (!openInApp(controller, link.url, pageLinks)) SafeLinks.open(uriHandler, link.url) },
                     onLongClickLabel = if (editable) L10n.str(R.string.channel_links_link_actions) else null,
                     onLongClick = if (editable) ({ menu = true }) else null,
                 )

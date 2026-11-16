@@ -52,9 +52,11 @@ object Calls {
     /**
      * The room outside the app: ACTION_VIEW, which the Jitsi Meet app takes for its links (app links) and the browser
      * otherwise. Not a Custom Tab or a WebView: a call needs the camera and microphone of a full browser or app. False
-     * when nothing opens it.
+     * when nothing opens it, and for anything but an http(s) room (2026-11-16: the server names the URL, and ACTION_VIEW
+     * would start whatever its scheme names; [SafeLinks]).
      */
     fun open(context: Context, url: String): Boolean {
+        if (!SafeLinks.isWeb(url)) return false
         val intent = Intent(Intent.ACTION_VIEW, url.toUri()).addFlags(Intent.FLAG_ACTIVITY_NEW_TASK)
         return runCatching { context.startActivity(intent) }.isSuccess
     }

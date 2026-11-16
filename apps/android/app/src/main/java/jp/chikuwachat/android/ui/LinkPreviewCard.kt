@@ -97,7 +97,7 @@ fun LinkPreviewCard(controller: AppController, url: String, messageId: String, a
         if (!auto) PlainLinkRow(url, status = if (controller.linkPreviews.containsKey(url)) stringResource(R.string.link_preview_card_no_preview) else stringResource(R.string.common_loading))
         return
     }
-    PreviewCard(preview, onLongPress, onRemove)
+    PreviewCard(url, preview, onLongPress, onRemove)
 }
 
 /**
@@ -111,7 +111,7 @@ private fun PlainLinkRow(url: String, status: String? = null, onShow: (() -> Uni
         Text(
             url, style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.primary, maxLines = 1, overflow = TextOverflow.Ellipsis,
             textDecoration = TextDecoration.Underline,
-            modifier = Modifier.weight(1f, fill = false).clickable(onClickLabel = stringResource(R.string.link_preview_card_open_link)) { runCatching { uriHandler.openUri(url) } },
+            modifier = Modifier.weight(1f, fill = false).clickable(onClickLabel = stringResource(R.string.link_preview_card_open_link)) { SafeLinks.open(uriHandler, url) },
         )
         if (onShow != null) {
             TextButton(onClick = onShow, modifier = Modifier.padding(start = 4.dp)) { Text(stringResource(R.string.link_preview_card_show_preview), style = MaterialTheme.typography.labelMedium) }
@@ -121,9 +121,13 @@ private fun PlainLinkRow(url: String, status: String? = null, onShow: (() -> Uni
     }
 }
 
+/**
+ * The card of [url], the link the message has. 2026-11-16: a tap opens [url] itself, never the server's `preview.url`
+ * (the server chose the site name and title shown, and could name any other address or scheme there).
+ */
 @OptIn(ExperimentalFoundationApi::class)
 @Composable
-private fun PreviewCard(preview: LinkPreviewOut, onLongPress: (() -> Unit)?, onRemove: (() -> Unit)?) {
+private fun PreviewCard(url: String, preview: LinkPreviewOut, onLongPress: (() -> Unit)?, onRemove: (() -> Unit)?) {
     val uriHandler = LocalUriHandler.current
     val shape = RoundedCornerShape(8.dp)
     val secondary = MaterialTheme.colorScheme.onSurfaceVariant
@@ -135,13 +139,13 @@ private fun PreviewCard(preview: LinkPreviewOut, onLongPress: (() -> Unit)?, onR
             .border(1.dp, MaterialTheme.colorScheme.outlineVariant, shape)
             .combinedClickable(
                 onLongClickLabel = stringResource(R.string.channel_pane_message_actions), onLongClick = onLongPress,
-                onClick = { runCatching { uriHandler.openUri(preview.url) } },
+                onClick = { SafeLinks.open(uriHandler, url) },
             )
             .removeAction(stringResource(R.string.link_cards_remove), onRemove)
             .padding(12.dp),
     ) {
         Column(Modifier.weight(1f)) {
-            Links.siteLabel(preview.siteName, preview.url)?.let {
+            Links.siteLabel(preview.siteName, url)?.let {
                 Text(it, style = MaterialTheme.typography.labelSmall, color = secondary, maxLines = 1, overflow = TextOverflow.Ellipsis)
             }
             preview.title?.let {
@@ -154,7 +158,8 @@ private fun PreviewCard(preview: LinkPreviewOut, onLongPress: (() -> Unit)?, onR
                 Text(it, style = MaterialTheme.typography.bodySmall, color = secondary, maxLines = 2, overflow = TextOverflow.Ellipsis, modifier = Modifier.padding(top = 2.dp))
             }
         }
-        preview.imageUrl?.let { image ->
+        // Over http(s) only: java.net.URL also reads file:, jar: and ftp: addresses.
+        preview.imageUrl?.takeIf { SafeLinks.isWeb(it) }?.let { image ->
             RemoteImage(image, Modifier.padding(start = 10.dp).size(64.dp).clip(RoundedCornerShape(6.dp)))
         }
     }

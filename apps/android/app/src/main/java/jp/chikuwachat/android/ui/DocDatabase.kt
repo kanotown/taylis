@@ -747,7 +747,10 @@ private fun PropertyLine(
                     else Row(verticalAlignment = Alignment.CenterVertically) {
                         val uri = LocalUriHandler.current
                         Text(url, style = MaterialTheme.typography.bodyMedium, color = MaterialTheme.colorScheme.primary, maxLines = 1, overflow = TextOverflow.Ellipsis, modifier = Modifier.weight(1f))
-                        IconButton(onClick = { runCatching { uri.openUri(url) } }) { Icon(Icons.AutoMirrored.Outlined.OpenInNew, stringResource(R.string.docs_db_open_link), Modifier.size(18.dp)) }
+                        // 2026-11-16 (SafeLinks): only an http(s) address opens (the server's rule for the cell); anything else stays text.
+                        if (SafeLinks.isWeb(url)) {
+                            IconButton(onClick = { SafeLinks.open(uri, url) }) { Icon(Icons.AutoMirrored.Outlined.OpenInNew, stringResource(R.string.docs_db_open_link), Modifier.size(18.dp)) }
+                        }
                     }
                 }
                 else -> {

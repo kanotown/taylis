@@ -2,8 +2,10 @@ package jp.chikuwachat.android
 
 import jp.chikuwachat.android.api.AiAgentPublic
 import jp.chikuwachat.android.api.AiStatusOut
+import androidx.compose.ui.platform.UriHandler
 import jp.chikuwachat.android.ui.LinkPreviewPolicy
 import jp.chikuwachat.android.ui.Links
+import jp.chikuwachat.android.ui.SafeLinks
 import org.junit.Assert.assertEquals
 import org.junit.Assert.assertFalse
 import org.junit.Assert.assertNull
@@ -51,5 +53,34 @@ class LinksTest {
         assertTrue(LinkPreviewPolicy.autoLoads("rss", "bot", status, "feed"))
         assertFalse(LinkPreviewPolicy.autoLoads("hook", "bot", status, "other"))
         assertFalse(LinkPreviewPolicy.autoLoads("ai-bot", "bot", status, "feed"))
+    }
+
+    /**
+     * 2026-11-16 (a hostile-server review): a URL from the server (a pinned link, a URL cell, a call's room, a preview's
+     * picture) opens only over http(s) (mailto where the screen means an address); intent:, file:, content: and other
+     * apps' schemes never reach ACTION_VIEW.
+     */
+    @Test fun onlyWebAddressesOpen() {
+        for (url in listOf("https://example.com", "HTTP://example.com/a", "https://meet.jit.si/room-1")) {
+            assertTrue(url, SafeLinks.isWeb(url))
+            assertTrue(url, SafeLinks.canOpen(url, mail = true))
+        }
+        for (url in listOf(
+            "intent://scan/#Intent;scheme=zxing;package=com.example;end", "file:///data/data/jp.chikuwachat.android/shared_prefs/a.xml",
+            "content://jp.chikuwachat.android.files/x", "javascript:alert(1)", "jar:file:///a!/b", "ftp://example.com/x",
+            "market://details?id=x", "tel:123", "https:example.com", "https://", " https://example.com", "", "example.com",
+        )) {
+            assertFalse(url, SafeLinks.isWeb(url))
+            assertFalse(url, SafeLinks.canOpen(url, mail = true))
+        }
+        assertFalse(SafeLinks.isWeb("mailto:lab@example.ac.jp"))
+        assertTrue(SafeLinks.canOpen("mailto:lab@example.ac.jp", mail = true))
+        val opened = ArrayList<String>()
+        val handler = object : UriHandler { override fun openUri(uri: String) { opened += uri } }
+        assertFalse(SafeLinks.open(handler, "intent://x#Intent;end"))
+        assertTrue(SafeLinks.open(handler, "https://example.com/a"))
+        assertEquals(listOf("https://example.com/a"), opened)
+        val failing = object : UriHandler { override fun openUri(uri: String) = throw IllegalStateException("no browser") }
+        assertFalse(SafeLinks.open(failing, "https://example.com/a"))
     }
 }
