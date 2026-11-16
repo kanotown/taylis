@@ -17,7 +17,7 @@
  *   a block (`- `, `1. `, `> `, `# `, ``` ``` ```, `$$`, a table separator) starts with one. A `$` typed as text that
  *   would open math is written `\$`; nothing inside a formula is ever escaped.
  */
-import { bareUrl, bareUrlsIn, parseBlocks, straightQuotes, tokenizeInline, type Block, type Token } from "./markdown";
+import { bareUrl, bareUrlsIn, emphasisPieces, parseBlocks, straightQuotes, tokenizeInline, type Block, type Token } from "./markdown";
 
 /** A ProseMirror node as TipTap's JSON (`editor.getJSON()` / `setContent`). */
 export interface RichNode {
@@ -144,6 +144,16 @@ export function inlineNodes(tokens: readonly Token[], lineStart: boolean, atoms?
       case "bold":
       case "italic":
       case "strike":
+        if (!atoms) {
+          nodes.push(marked(token.text, token.kind));
+          break;
+        }
+        // M189: a mention inside emphasis (M188 draws it as the mention) is the mention atom, in the emphasis.
+        for (const piece of emphasisPieces(token.text)) {
+          if (piece.kind === "text") nodes.push(marked(piece.text, token.kind));
+          else nodes.push({ ...mentionAtom(piece), marks: [{ type: token.kind }] });
+        }
+        break;
       case "code":
         nodes.push(marked(token.text, token.kind));
         break;
@@ -157,14 +167,12 @@ export function inlineNodes(tokens: readonly Token[], lineStart: boolean, atoms?
         nodes.push(marked(token.text, "math", token.display ? { display: true } : undefined));
         break;
       case "mention":
-        nodes.push(atoms ? { type: "mention", attrs: { md: `<@${token.userId}>`, kind: "user", id: token.userId } } : { type: "text", text: `<@${token.userId}>` });
-        break;
       case "mention_group":
-        nodes.push(atoms ? { type: "mention", attrs: { md: `<@group:${token.groupId}>`, kind: "group", id: token.groupId } } : { type: "text", text: `<@group:${token.groupId}>` });
+      case "mention_all": {
+        const atom = mentionAtom(token);
+        nodes.push(atoms ? atom : { type: "text", text: String(atom.attrs!.md) });
         break;
-      case "mention_all":
-        nodes.push(atoms ? { type: "mention", attrs: { md: `<!${token.target}>`, kind: "all", id: token.target } } : { type: "text", text: `<!${token.target}>` });
-        break;
+      }
       default:
         break;
     }
@@ -211,6 +219,18 @@ export function inlineNodes(tokens: readonly Token[], lineStart: boolean, atoms?
     if (last < text.length) out.push({ ...node, text: text.slice(last) });
     return out;
   });
+}
+
+/** The page editor's mention atom of a mention token (its Markdown kept in `md`). */
+function mentionAtom(token: Extract<Token, { kind: "mention" | "mention_group" | "mention_all" }>): RichNode {
+  switch (token.kind) {
+    case "mention":
+      return { type: "mention", attrs: { md: `<@${token.userId}>`, kind: "user", id: token.userId } };
+    case "mention_group":
+      return { type: "mention", attrs: { md: `<@group:${token.groupId}>`, kind: "group", id: token.groupId } };
+    case "mention_all":
+      return { type: "mention", attrs: { md: `<!${token.target}>`, kind: "all", id: token.target } };
+  }
 }
 
 /** A table written back from its cells (the editor edits it as Markdown text). */

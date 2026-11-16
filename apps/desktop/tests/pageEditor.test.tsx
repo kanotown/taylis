@@ -268,6 +268,20 @@ describe("the menus", () => {
     expect(editor.view.dom.textContent).toContain("@花子");
   });
 
+  it("a mention inside bold or italic shows as the mention in that style; editing its line keeps it in the emphasis (M189)", async () => {
+    const body = `**確認 <@${HANAKO}>** と _<!here>_ さん\r\n二行目`;
+    const { api } = await openPage(body);
+    const editor = await edit();
+    expect(editor.view.dom.querySelector("strong .mention")?.textContent).toBe("@花子");
+    expect(editor.view.dom.querySelector("em .mention")?.textContent).toBe("@here");
+    expect(editor.view.dom.textContent).not.toContain("<@");
+    caretAtEndOf(editor, 0);
+    type(editor, "（追記）");
+    await settle(450);
+    expect(saves(api)).toHaveLength(1);
+    expect(api.bodies.get(uid(501))).toBe(`**確認 <@${HANAKO}>** と _<!here>_ さん（追記）\r\n二行目`);
+  });
+
   it("Escape closes a menu without touching the text", async () => {
     await openPage("");
     const editor = await edit();

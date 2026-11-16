@@ -182,6 +182,25 @@ describe("reading", () => {
     expect(table).toMatchObject({ type: "table", content: [{ type: "tableRow", content: [{ type: "tableCell", content: [{ type: "text", text: "a" }] }] }] });
   });
 
+  it("a mention inside bold, italic or strike is the mention atom in that emphasis, and is written back as it was (M189)", () => {
+    const body = "**確認 <@0190a2b4-0000-7000-8000-0000000000dd>** と _<!here> 全員_ と ~~<@group:0190a2b4-0000-7000-8000-0000000000ee>~~ :smile:";
+    const doc = pageToDoc(body, { emoji });
+    const line = shapeOf(doc.content![0]!);
+    expect(line.content!.map((n) => [n.type, n.text ?? n.attrs?.md, n.marks?.map((m) => m.type).join() ?? ""])).toEqual([
+      ["text", "確認 ", "bold"],
+      ["mention", "<@0190a2b4-0000-7000-8000-0000000000dd>", "bold"],
+      ["text", " と ", ""],
+      ["mention", "<!here>", "italic"],
+      ["text", " 全員", "italic"],
+      ["text", " と ", ""],
+      ["mention", "<@group:0190a2b4-0000-7000-8000-0000000000ee>", "strike"],
+      ["text", " ", ""],
+      ["emoji", ":smile:", ""],
+    ]);
+    expect(canonicalPage(doc)).toBe(body);
+    expect(roundTrip(body)).toBe(body);
+  });
+
   it("keeps the exact line breaks of every line", () => {
     expect(splitSourceLines("a\r\nb\rc\n")).toEqual({ lines: ["a", "b", "c", ""], seps: ["\r\n", "\r", "\n"] });
   });
