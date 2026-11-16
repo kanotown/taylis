@@ -305,10 +305,15 @@ final class AppController {
         workspaces = saved.list
         activeServerUrl = saved.active
         startSharing() // MOBILE_UI.md §21
-        // Launched by tapping a notification: open its workspace right away (§7).
-        let tap = PushCenter.shared.takePendingTap()
-        if let tap, let target = Workspaces.route(tap, list: workspaces, active: activeServerUrl, hasChannel: workspaceHasChannel) {
-            activeServerUrl = target.serverUrl
+        // Launched by tapping a notification: open its workspace right away (§7). One whose workspace_id two workspaces
+        // claim opens nothing (which one sent it cannot be told).
+        var tap = PushCenter.shared.takePendingTap()
+        if let pending = tap {
+            if let target = Workspaces.route(pending, list: workspaces, active: activeServerUrl, hasChannel: workspaceHasChannel) {
+                activeServerUrl = target.serverUrl
+            } else if !workspaces.isEmpty {
+                tap = nil
+            }
         }
         if let active = activeWorkspace {
             await open(active)
@@ -377,6 +382,13 @@ final class AppController {
     private func opened(_ serverUrl: String) {
         if let id = me?.id ?? store.me?.id { patch(serverUrl) { $0.userId = id } }
         Task { await refreshServerInfo(serverUrl) }
+    }
+
+    /// A test starts from the workspace list saved in its defaults, as a start reads it (no session opens).
+    func loadWorkspacesForTesting() {
+        let saved = Workspaces.load(defaults) { _ in true }
+        workspaces = saved.list
+        activeServerUrl = saved.active
     }
 
     /// A view test runs a screen on a store and an engine of its own (the sign-in flow makes them otherwise).
@@ -477,7 +489,7 @@ final class AppController {
     /// GET /auth/methods of the server the form names: its Google button, nil when it offers none (or on any failure).
     func offersGoogle(server input: String) async -> GoogleButtonText? {
         guard let normalized = Workspaces.normalize(input) else { return nil }
-        let serverUrl = workspaces.first { Workspaces.sameServer($0.serverUrl, normalized) }?.serverUrl ?? normalized
+        let serverUrl = Workspaces.duplicate(of: normalized, in: workspaces)?.serverUrl ?? normalized
         guard let url = URL(string: serverUrl) else { return nil }
         return await ApiClient(baseUrl: url).offersGoogle()
     }
@@ -491,12 +503,16 @@ final class AppController {
     }
 
     /// The form's address, normalized and asked for GET /server. Adding a workspace needs a ChikuwaChat answer, and a
-    /// workspace registered already (same workspace_id or address) is opened instead: one account per server.
+    /// workspace registered already at that address is opened instead: one account per server.
+    ///
+    /// The credentials go only to the address typed (or its https version, M190): never to another workspace that
+    /// answers with the same workspace_id (WORKSPACES.md §5.1, 2026-11-16). A server that claimed another's id was
+    /// handed that workspace's place, and the password and 2FA code typed for it.
     private func signInTarget(_ input: String, adding: Bool) async -> SignInTarget {
         if input.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty { return .done(.failed(tr("サーバを入力してください"))) }
         guard let normalized = Workspaces.normalize(input) else { return .done(.failed(tr("サーバ URL が正しくありません"))) }
         // A registered address keeps its spelling: it names the Keychain item and the local store.
-        var serverUrl = workspaces.first { Workspaces.sameServer($0.serverUrl, normalized) }?.serverUrl ?? normalized
+        let serverUrl = Workspaces.duplicate(of: normalized, in: workspaces)?.serverUrl ?? normalized
         guard let url = URL(string: serverUrl) else { return .done(.failed(tr("サーバ URL が正しくありません"))) }
         var info: ServerInfoOut?
         do {
@@ -508,14 +524,12 @@ final class AppController {
             info = nil
         }
         if adding {
-            guard let info else { return .done(.failed(tr("Taylis のサーバではありません"))) }
-            if let known = Workspaces.duplicate(of: serverUrl, workspaceId: info.workspaceId, in: workspaces) {
-                if known.isSignedIn {
-                    await switchTo(known.serverUrl)
-                    notice = tr("\(known.name) は登録済みです")
-                    return .done(.switched)
-                }
-                serverUrl = known.serverUrl // registered but signed out: sign in to it again
+            guard info != nil else { return .done(.failed(tr("Taylis のサーバではありません"))) }
+            // Registered and signed in: opened. Registered but signed out: signed in to again (its own address).
+            if let known = Workspaces.duplicate(of: serverUrl, in: workspaces), known.isSignedIn {
+                await switchTo(known.serverUrl)
+                notice = tr("\(known.name) は登録済みです")
+                return .done(.switched)
             }
         }
         return .server(serverUrl, info)
@@ -536,7 +550,8 @@ final class AppController {
         if let previous = clients[serverUrl], previous !== api { previous.signOut() }
         clients[serverUrl] = api
         pushTokens[serverUrl] = nil
-        let entry = Workspace(serverUrl: serverUrl, workspaceId: info?.workspaceId ?? known?.workspaceId, name: info?.name ?? known?.name,
+        // `info` is this address's own answer; the workspace_id first recorded for it stays (§5.1).
+        let entry = Workspace(serverUrl: serverUrl, workspaceId: known?.workspaceId ?? info?.workspaceId, name: info?.name ?? known?.name,
                               username: username, userId: me.id,
                               iconVersion: info?.hasIconVersion == true ? info?.iconVersion : known?.iconVersion)
         if let index = workspaces.firstIndex(where: { $0.serverUrl == serverUrl }) { workspaces[index] = entry } else { workspaces.append(entry) }
@@ -579,10 +594,11 @@ final class AppController {
     /// becomes a workspace like any other (one account per server).
     func acceptInvite(server: URL, token: String, username: String, displayName: String, password: String) async -> String? {
         guard let normalized = Workspaces.normalize(server.absoluteString) else { return tr("サーバ URL が正しくありません") }
-        let serverUrl = workspaces.first { Workspaces.sameServer($0.serverUrl, normalized) }?.serverUrl ?? normalized
+        let serverUrl = Workspaces.duplicate(of: normalized, in: workspaces)?.serverUrl ?? normalized
         let answer = try? await ApiClient(baseUrl: URL(string: serverUrl) ?? server).serverInfo()
         let info = answer?.product == "chikuwachat" ? answer : nil
-        if let known = Workspaces.duplicate(of: serverUrl, workspaceId: info?.workspaceId, in: workspaces), known.isSignedIn {
+        // The link's own address only (§5.1): a server's workspace_id does not make it another workspace.
+        if let known = Workspaces.duplicate(of: serverUrl, in: workspaces), known.isSignedIn {
             return tr("\(known.name) にはすでにログインしています（1 つのサーバに 1 アカウント）")
         }
         let api = makeClient(serverUrl: serverUrl, username: username)
@@ -656,7 +672,11 @@ final class AppController {
             self.sessionEnded(serverUrl)
         }
         engine.isActive = { UIApplication.shared.applicationState == .active }
-        engine.onRead = { channelId in PushCenter.shared.clearNotifications(channelId: channelId) }
+        // §7: only this workspace's notifications of the channel (another server's channel may have the same id).
+        engine.onRead = { [weak self] channelId in
+            let workspaceId = self?.workspaces.first { $0.serverUrl == serverUrl }?.workspaceId
+            PushCenter.shared.clearNotifications(channelId: channelId, workspaceId: workspaceId)
+        }
         engine.onPostedHere = { [weak self, weak engine] channelId in
             guard let self, self.engine === engine else { return }
             self.postedFromHere(in: channelId)
@@ -811,16 +831,16 @@ final class AppController {
         updateAppBadge()
     }
 
-    /// GET /server (no login) for one workspace or all: the name for the switcher, and a workspace_id that changed
-    /// with a restore (§3.1). A failure keeps what is known.
+    /// GET /server (no login) for one workspace or all: the name and icon for the switcher, the workspace_id when none
+    /// is recorded yet. The first id recorded stays (§5.1, 2026-11-16: a server's claim; it used to follow every answer,
+    /// so a server could take another workspace's id and its notifications). A failure keeps what is known.
     func refreshServerInfo(_ only: String? = nil) async {
         for workspace in workspaces where only == nil || workspace.serverUrl == only {
             guard let url = URL(string: workspace.serverUrl), let info = try? await ApiClient(baseUrl: url).serverInfo(),
                   info.product == "chikuwachat" else { continue }
             patch(workspace.serverUrl) { entry in
-                entry.name = info.name
-                entry.workspaceId = info.workspaceId
-                if info.hasIconVersion { entry.iconVersion = info.iconVersion } // M93; a server before it: keep
+                entry = Workspaces.refreshed(entry, name: info.name, workspaceId: info.workspaceId,
+                                             iconVersion: info.hasIconVersion ? .some(info.iconVersion) : nil)
             }
         }
     }
@@ -882,8 +902,10 @@ final class AppController {
             PushCenter.shared.queueTap(payload)
             return
         }
-        if let target = Workspaces.route(payload, list: workspaces, active: activeServerUrl, hasChannel: workspaceHasChannel),
-           target.serverUrl != activeServerUrl || screen != .main {
+        let target = Workspaces.route(payload, list: workspaces, active: activeServerUrl, hasChannel: workspaceHasChannel)
+        // Two workspaces claim its workspace_id (§7): the app is open, nothing else.
+        if target == nil, !workspaces.isEmpty { return }
+        if let target, target.serverUrl != activeServerUrl || screen != .main {
             await switchTo(target.serverUrl)
         }
         await openNotificationTarget(payload)
@@ -2481,7 +2503,10 @@ final class AppController {
             }
         }
         if workspaces.contains(where: { $0.serverUrl != serverUrl && $0.isSignedIn }) {
-            PushCenter.shared.clearNotifications(workspaceId: workspace.workspaceId)
+            // Not when another workspace has the same id (§7): its notifications cannot be told from these.
+            if Workspaces.ownsNotifications(workspace, in: workspaces) {
+                PushCenter.shared.clearNotifications(workspaceId: workspace.workspaceId)
+            }
         } else {
             PushCenter.shared.clearAll() // no other account here: nothing may stay (as with a single server)
         }

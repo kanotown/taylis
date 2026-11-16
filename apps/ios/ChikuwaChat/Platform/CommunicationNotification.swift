@@ -11,13 +11,25 @@ import UserNotifications
 struct CommunicationPush: Equatable, Sendable {
     let senderId: String
     let senderName: String
-    /// The channel: one conversation per channel / DM, so iOS groups and ranks them like a chat app's.
+    /// The workspace that sent it (`workspace_id`; nil from a server without one).
+    let workspaceId: String?
+    /// The channel within its workspace (`<workspace_id>:<channel_id>`, WORKSPACES.md §7): one conversation per channel /
+    /// DM, so iOS groups and ranks them like a chat app's. Also the notification's thread.
     let conversationId: String
     /// A channel or a group DM (a group conversation named `groupName`); a 1:1 DM is the sender's own conversation.
     let isGroup: Bool
     let groupName: String?
     /// The signed, short-lived picture URL (no credentials needed); nil without a picture or with previews off.
     let avatarURL: URL?
+
+    /// An id of a workspace's channel or person as the system keeps it (2026-11-16): prefixed with the workspace, so
+    /// another server's channel or person with the same id is not grouped with it (or cleared with it).
+    static func scoped(_ id: String, workspaceId: String?) -> String {
+        workspaceId.map { "\($0):\(id)" } ?? id
+    }
+
+    /// The sender as the system keeps them (the person's id within the workspace).
+    var senderKey: String { Self.scoped(senderId, workspaceId: workspaceId) }
 
     /// Nil for anything but a message push from a person (the notification then stays as it is).
     init?(userInfo: [AnyHashable: Any], title: String) {
@@ -33,7 +45,8 @@ struct CommunicationPush: Equatable, Sendable {
         isGroup = type != "dm"
         let heading = title.trimmingCharacters(in: .whitespacesAndNewlines)
         senderName = text("sender_name") ?? (isGroup || heading.isEmpty ? "?" : heading)
-        conversationId = channelId
+        workspaceId = text("workspace_id")
+        conversationId = Self.scoped(channelId, workspaceId: workspaceId)
         groupName = isGroup ? (heading.isEmpty ? nil : heading) : nil
         avatarURL = text("sender_avatar_url").flatMap(URL.init(string:)).flatMap { url in
             ["https", "http"].contains(url.scheme?.lowercased() ?? "") && url.host != nil ? url : nil
@@ -43,8 +56,8 @@ struct CommunicationPush: Equatable, Sendable {
     var sender: INPerson { person(image: nil) }
 
     func person(image: INImage?) -> INPerson {
-        INPerson(personHandle: INPersonHandle(value: senderId, type: .unknown), nameComponents: nil, displayName: senderName,
-                 image: image, contactIdentifier: nil, customIdentifier: senderId)
+        INPerson(personHandle: INPersonHandle(value: senderKey, type: .unknown), nameComponents: nil, displayName: senderName,
+                 image: image, contactIdentifier: nil, customIdentifier: senderKey)
     }
 
     /// The incoming message as Siri / the notification system understand it. A group needs two or more recipients
@@ -83,10 +96,16 @@ enum CommunicationNotification {
         let interaction = INInteraction(intent: intent, response: nil)
         interaction.direction = .incoming
         try? await interaction.donate()
+        // The thread within the workspace (WORKSPACES.md §7): the server's thread-id is the bare channel id.
+        var updatable = content
+        if push.workspaceId != nil, let scoped = content.mutableCopy() as? UNMutableNotificationContent {
+            scoped.threadIdentifier = push.conversationId
+            updatable = scoped
+        }
         do {
-            return try content.updating(from: intent)
+            return try updatable.updating(from: intent)
         } catch {
-            return content
+            return updatable
         }
     }
 

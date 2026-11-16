@@ -8,7 +8,8 @@ struct Workspace: Codable, Equatable, Identifiable {
     /// The list key: a normalized URL. A workspace migrated from an older build keeps the string it logged in with,
     /// because it names the Keychain item and the local database (`server|username`).
     var serverUrl: String
-    /// GET /server; nil until the server has been asked (routes notifications, finds a duplicate).
+    /// GET /server; nil until the server has been asked (routes notifications, §7). The first value recorded stays: it is
+    /// the server's own claim, never a reason to send this workspace's credentials elsewhere (§5.1).
     var workspaceId: String?
     /// GET /server; the host until known.
     var name: String
@@ -128,6 +129,13 @@ struct PushPayload: Equatable, Sendable {
     /// M39: a reaction to my message opens that message (it may be far above the conversation's unread position); a
     /// message push opens its conversation (and a reply's thread) as before.
     var opensMessage: Bool { kind == "reaction" && messageId != nil }
+
+    /// §7 (2026-11-16): whether a delivered notification is of `channelId` in the workspace whose id is `workspaceId`:
+    /// its channel, and its workspace when both ids are known (nil: a server without one, or not known yet). Another
+    /// server's channel with the same id is not this one.
+    func isOf(channelId: String, workspaceId: String?) -> Bool {
+        self.channelId == channelId && (workspaceId == nil || self.workspaceId == nil || self.workspaceId == workspaceId)
+    }
 
     init(userInfo: [AnyHashable: Any]) {
         func text(_ key: String) -> String? {
@@ -263,16 +271,41 @@ enum Workspaces {
         }
     }
 
-    /// The registered workspace that is the same deployment: the same workspace_id, or the same address once
-    /// normalized (one server, one account: §5.1).
-    static func duplicate(of serverUrl: String, workspaceId: String?, in list: [Workspace]) -> Workspace? {
-        list.first { entry in (workspaceId != nil && entry.workspaceId == workspaceId) || sameServer(entry.serverUrl, serverUrl) }
+    /// The registered workspace at the same address once normalized (one server, one account: §5.1). Only the address:
+    /// a server's workspace_id is its own claim (2026-11-16). Matching by it sent the password and the 2FA code typed for
+    /// one server to another workspace's saved address, and let a server that names itself after another's take its
+    /// place.
+    static func duplicate(of serverUrl: String, in list: [Workspace]) -> Workspace? {
+        list.first { sameServer($0.serverUrl, serverUrl) }
     }
 
-    /// Which workspace a notification belongs to (§7): its workspace_id; else the one whose local store has the
-    /// channel (a server without workspace_id, or an id changed by a restore); else the active one.
+    /// GET /server's answer for the workspace at that address (§5.1): its name and icon follow the server; its
+    /// workspace_id is the first one recorded and never replaced (a server's claim; §7 routes by it).
+    static func refreshed(_ entry: Workspace, name: String, workspaceId: String?, iconVersion: String??) -> Workspace {
+        var next = entry
+        next.name = name
+        if next.workspaceId == nil { next.workspaceId = workspaceId }
+        if let iconVersion { next.iconVersion = iconVersion } // M93; a server before it sends none: keep
+        return next
+    }
+
+    /// Whether a workspace's delivered notifications are told apart by its workspace_id (§7): not when another workspace
+    /// in the list has the same one (a server that names itself after another; two servers without one), since clearing
+    /// them would clear that workspace's too.
+    static func ownsNotifications(_ workspace: Workspace, in list: [Workspace]) -> Bool {
+        !list.contains { $0.serverUrl != workspace.serverUrl && $0.workspaceId == workspace.workspaceId }
+    }
+
+    /// Which workspace a notification belongs to (§7): its workspace_id when exactly one workspace has it; else the one
+    /// whose local store has the channel (a server without workspace_id, or an id changed by a restore); else the active
+    /// one. nil when two or more workspaces have the id (a server claims another's): the app opens without switching or
+    /// opening anything, as which one sent it cannot be told (2026-11-16). nil for an empty list too.
     static func route(_ payload: PushPayload, list: [Workspace], active: String?, hasChannel: (Workspace, String) -> Bool) -> Workspace? {
-        if let id = payload.workspaceId, let match = list.first(where: { $0.workspaceId == id }) { return match }
+        if let id = payload.workspaceId {
+            let matches = list.filter { $0.workspaceId == id }
+            if matches.count == 1 { return matches[0] }
+            if matches.count > 1 { return nil }
+        }
         if let channelId = payload.channelId {
             let ordered = list.filter { $0.serverUrl == active } + list.filter { $0.serverUrl != active }
             if let match = ordered.first(where: { hasChannel($0, channelId) }) { return match }

@@ -98,13 +98,138 @@ final class WorkspacesTests: XCTestCase {
         XCTAssertEqual(loaded.active, "https://a.example.com")
     }
 
-    func testFindsTheSameDeploymentByWorkspaceIdOrAddress() {
+    /// §5.1 (2026-11-16): a registered workspace is found by its address only; a workspace_id is a server's claim.
+    func testFindsTheSameDeploymentByItsAddressOnly() {
         let list = [Workspace(serverUrl: "https://chat.example.com", workspaceId: "w1", username: "a"),
                     Workspace(serverUrl: "http://127.0.0.1:8000", username: "b")]
-        XCTAssertEqual(Workspaces.duplicate(of: "https://another-name.example.com", workspaceId: "w1", in: list)?.serverUrl, "https://chat.example.com")
-        XCTAssertEqual(Workspaces.duplicate(of: "HTTP://127.0.0.1:8000/", workspaceId: "w9", in: list)?.serverUrl, "http://127.0.0.1:8000")
-        XCTAssertNil(Workspaces.duplicate(of: "https://new.example.com", workspaceId: "w9", in: list))
-        XCTAssertNil(Workspaces.duplicate(of: "https://new.example.com", workspaceId: nil, in: list))
+        XCTAssertNil(Workspaces.duplicate(of: "https://another-name.example.com", in: list), "the same workspace_id is not the same workspace")
+        XCTAssertEqual(Workspaces.duplicate(of: "HTTP://127.0.0.1:8000/", in: list)?.serverUrl, "http://127.0.0.1:8000")
+        XCTAssertEqual(Workspaces.duplicate(of: "chat.example.com", in: list)?.serverUrl, "https://chat.example.com")
+        XCTAssertNil(Workspaces.duplicate(of: "https://new.example.com", in: list))
+        XCTAssertNil(Workspaces.duplicate(of: "http://chat.example.com", in: list), "http and https are two addresses")
+    }
+
+    /// §5.1: GET /server's later answers rename the workspace and change its icon, never its first workspace_id.
+    func testTheFirstWorkspaceIdStays() {
+        let entry = Workspace(serverUrl: "https://a.example", workspaceId: "wa", name: "A", username: "x", iconVersion: "1")
+        let later = Workspaces.refreshed(entry, name: "A2", workspaceId: "wb", iconVersion: .some("2"))
+        XCTAssertEqual(later.workspaceId, "wa")
+        XCTAssertEqual(later.name, "A2")
+        XCTAssertEqual(later.iconVersion, "2")
+        XCTAssertEqual(Workspaces.refreshed(entry, name: "A", workspaceId: "wa", iconVersion: nil).iconVersion, "1", "a server before M93")
+        XCTAssertNil(Workspaces.refreshed(entry, name: "A", workspaceId: "wa", iconVersion: .some(nil)).iconVersion, "the icon removed")
+        // Not known yet (GET /server failed at the sign-in): the first answer is recorded.
+        let unknown = Workspace(serverUrl: "https://a.example", username: "x")
+        XCTAssertEqual(Workspaces.refreshed(unknown, name: "A", workspaceId: "wa", iconVersion: nil).workspaceId, "wa")
+    }
+
+    /// §7: two workspaces with one id (a server claims another's): a notification with it switches to neither, and
+    /// neither's sign-out clears notifications by it.
+    func testANotificationWhoseIdTwoWorkspacesHaveGoesNowhere() {
+        let list = [Workspace(serverUrl: "https://a", workspaceId: "wb", username: "x"),
+                    Workspace(serverUrl: "https://b", workspaceId: "wb", username: "y"),
+                    Workspace(serverUrl: "https://c", workspaceId: "wc", username: "z")]
+        let has: (Workspace, String) -> Bool = { _, _ in true }
+        XCTAssertNil(Workspaces.route(PushPayload(workspaceId: "wb", channelId: "ch"), list: list, active: "https://c", hasChannel: has))
+        XCTAssertEqual(Workspaces.route(PushPayload(workspaceId: "wc", channelId: "ch"), list: list, active: "https://a", hasChannel: has)?.serverUrl,
+                       "https://c")
+        XCTAssertFalse(Workspaces.ownsNotifications(list[0], in: list))
+        XCTAssertFalse(Workspaces.ownsNotifications(list[1], in: list))
+        XCTAssertTrue(Workspaces.ownsNotifications(list[2], in: list))
+        XCTAssertTrue(Workspaces.ownsNotifications(list[0], in: [list[0], list[2]]))
+        // Reading a channel clears that workspace's notifications of it, not another server's channel with the same id.
+        XCTAssertTrue(PushPayload(workspaceId: "wa", channelId: "ch").isOf(channelId: "ch", workspaceId: "wa"))
+        XCTAssertFalse(PushPayload(workspaceId: "wz", channelId: "ch").isOf(channelId: "ch", workspaceId: "wa"))
+        XCTAssertFalse(PushPayload(workspaceId: "wa", channelId: "other").isOf(channelId: "ch", workspaceId: "wa"))
+        XCTAssertTrue(PushPayload(channelId: "ch").isOf(channelId: "ch", workspaceId: "wa"), "a server without workspace_id")
+        XCTAssertTrue(PushPayload(workspaceId: "wa", channelId: "ch").isOf(channelId: "ch", workspaceId: nil), "an id not known yet")
+    }
+
+    // MARK: §5.1: credentials go only to the address typed (the hostile-server review, 2026-11-16)
+
+    private final class Recorded: @unchecked Sendable { var logins: [String] = []; var serverInfo: [String] = [] }
+
+    /// Two servers on the stub: A (hostile) answers GET /server with B's workspace_id; B with its own. Every login is
+    /// refused (nothing signs in), and recorded with the host it went to.
+    @MainActor
+    private func twoServers(_ recorded: Recorded) {
+        StubProtocol.handler = { request in
+            let host = request.url?.host ?? ""
+            switch request.url?.path {
+            case "/api/v1/server":
+                recorded.serverInfo.append(host)
+                let name = host.hasPrefix("a.") ? "A" : "B"
+                return (200, Data(#"{"product":"chikuwachat","workspace_id":"wb","name":"\#(name)","api_version":"1"}"#.utf8))
+            case "/api/v1/auth/login":
+                recorded.logins.append(host)
+                return (401, Data(#"{"error":{"code":"invalid_credentials","message":"Invalid","details":{}}}"#.utf8))
+            default:
+                return (404, Data(#"{"detail":"Not Found"}"#.utf8))
+            }
+        }
+    }
+
+    @MainActor
+    private func controller(_ list: [Workspace], active: String?) -> AppController {
+        let defaults = defaults()
+        Workspaces.save(Workspaces.Saved(list: list, active: active), to: defaults)
+        let controller = AppController(defaults: defaults)
+        controller.loadWorkspacesForTesting()
+        return controller
+    }
+
+    /// The exploit: A claimed B's id when it was added, then signed out. Adding B sent the password (and the 2FA code) to
+    /// A's saved address. Now it goes to B's, and A's entry stays as it was.
+    @MainActor
+    func testAddingAServerWhoseIdAnotherClaimsSignsInToTheAddressTyped() async {
+        let hostile = Workspace(serverUrl: "https://a.example", workspaceId: "wb", name: "A", username: "alice", signedOut: true)
+        let controller = controller([hostile], active: hostile.serverUrl)
+        URLProtocol.registerClass(StubProtocol.self)
+        defer { URLProtocol.unregisterClass(StubProtocol.self); StubProtocol.handler = nil }
+        let recorded = Recorded()
+        twoServers(recorded)
+
+        let outcome = await controller.signIn(server: "https://b.example", username: "bob", password: "secret", adding: true)
+        if case .failed = outcome {} else { XCTFail("\(outcome)") }
+        XCTAssertEqual(recorded.logins, ["b.example"])
+        let withCode = await controller.signIn(server: "b.example", username: "bob", password: "secret", totpCode: "123456", adding: true)
+        if case .failed = withCode {} else { XCTFail("\(withCode)") }
+        XCTAssertEqual(recorded.logins, ["b.example", "b.example"])
+        XCTAssertEqual(controller.workspaces, [hostile], "A's entry is untouched")
+
+        // A signed in: adding B no longer switches to A instead.
+        let signedIn = Workspace(serverUrl: "https://a.example", workspaceId: "wb", name: "A", username: "alice")
+        let other = self.controller([signedIn], active: nil)
+        recorded.logins = []
+        let second = await other.signIn(server: "https://b.example", username: "bob", password: "secret", adding: true)
+        XCTAssertNotEqual(second, .switched)
+        XCTAssertEqual(recorded.logins, ["b.example"])
+        XCTAssertEqual(other.workspaces, [signedIn])
+
+        // Google: the sign-in sheet opens on B, not on A.
+        let sheet = FakeWebAuthenticator { _ in throw WebAuthenticationError.cancelled }
+        _ = await controller.signInWithGoogle(server: "https://b.example", adding: true, authenticator: sheet)
+        XCTAssertEqual(sheet.opened.map { $0.url.host }, ["b.example"])
+        // The same address (another spelling) is the registered workspace: signed in to again at its own address.
+        recorded.logins = []
+        _ = await controller.signIn(server: "HTTPS://A.example/", username: "alice", password: "pw", adding: true)
+        XCTAssertEqual(recorded.logins, ["a.example"])
+    }
+
+    /// GET /server read again does not change a workspace_id recorded before (a server cannot take another's).
+    @MainActor
+    func testRefreshingServerInfoKeepsTheRecordedId() async {
+        let mine = Workspace(serverUrl: "https://a.example", workspaceId: "wa", name: "A", username: "alice", signedOut: true)
+        let fresh = Workspace(serverUrl: "https://b.example", name: "b.example", username: "bob", signedOut: true)
+        let controller = controller([mine, fresh], active: mine.serverUrl)
+        URLProtocol.registerClass(StubProtocol.self)
+        defer { URLProtocol.unregisterClass(StubProtocol.self); StubProtocol.handler = nil }
+        let recorded = Recorded()
+        twoServers(recorded)
+        await controller.refreshServerInfo()
+        XCTAssertEqual(Set(recorded.serverInfo), ["a.example", "b.example"])
+        XCTAssertEqual(controller.workspaces.map(\.workspaceId), ["wa", "wb"], "A keeps its id; B records its first")
+        XCTAssertEqual(controller.workspaces.map(\.name), ["A", "B"])
     }
 
     func testRoutesANotificationToItsWorkspace() {

@@ -56,11 +56,13 @@ final class PushCenter {
         Task { await controller?.uploadPushTokens() }
     }
 
-    /// read.updated said the channel is fully read: drop its delivered notifications (thread-id = channel).
-    func clearNotifications(channelId: String) {
+    /// read.updated said the channel is fully read: drop its delivered notifications, of that workspace only
+    /// (WORKSPACES.md §7: by the payload's channel and workspace, not the thread id another server's channel could share).
+    func clearNotifications(channelId: String, workspaceId: String?) {
         let center = UNUserNotificationCenter.current()
         center.getDeliveredNotifications { delivered in
-            let ids = delivered.filter { $0.request.content.threadIdentifier == channelId }.map { $0.request.identifier }
+            let ids = delivered.filter { PushPayload(userInfo: $0.request.content.userInfo).isOf(channelId: channelId, workspaceId: workspaceId) }
+                .map { $0.request.identifier }
             if !ids.isEmpty { center.removeDeliveredNotifications(withIdentifiers: ids) }
         }
     }

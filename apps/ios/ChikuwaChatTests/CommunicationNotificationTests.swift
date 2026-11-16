@@ -51,6 +51,33 @@ final class CommunicationNotificationTests: XCTestCase {
         XCTAssertEqual(intent.recipients?.first?.isMe, true)
     }
 
+    /// WORKSPACES.md §7 (2026-11-16): the conversation, its thread and the sender are the workspace's own, so another
+    /// server's channel or person with the same id is never grouped (or cleared) with them.
+    func testIdsAreScopedToTheWorkspace() async throws {
+        let push = try XCTUnwrap(CommunicationPush(userInfo: dm(["workspace_id": "w1", "channel_type": "public"]), title: "#general"))
+        XCTAssertEqual(push.conversationId, "w1:c1")
+        XCTAssertEqual(push.senderKey, "w1:u1")
+        let intent = push.intent(image: nil, body: "hi")
+        XCTAssertEqual(intent.conversationIdentifier, "w1:c1")
+        XCTAssertEqual(intent.sender?.customIdentifier, "w1:u1")
+        XCTAssertEqual(intent.recipients?.last?.customIdentifier, "channel:w1:c1")
+        let other = try XCTUnwrap(CommunicationPush(userInfo: dm(["workspace_id": "w2"]), title: "Alice"))
+        XCTAssertNotEqual(other.conversationId, push.conversationId)
+        // The notification's thread follows (the server's thread-id is the bare channel id); a server without
+        // workspace_id keeps it.
+        let content = UNMutableNotificationContent()
+        content.title = "#general"
+        content.body = "hi"
+        content.threadIdentifier = "c1"
+        content.userInfo = dm(["workspace_id": "w1"])
+        let updated = await CommunicationNotification.update(content) { _ in nil }
+        XCTAssertEqual(updated.threadIdentifier, "w1:c1")
+        XCTAssertEqual(updated.body, "hi")
+        content.userInfo = dm()
+        let unscoped = await CommunicationNotification.update(content) { _ in nil }
+        XCTAssertEqual(unscoped.threadIdentifier, "c1")
+    }
+
     func testGroupDmAndPrivateChannelsAreGroupsToo() throws {
         for type in ["private", "group_dm"] {
             let push = try XCTUnwrap(CommunicationPush(userInfo: dm(["channel_type": type]), title: "グループ DM"))
