@@ -122,6 +122,21 @@ describe("the edit box's candidates (Markdown)", () => {
     expect(controller.setEditing).toHaveBeenCalledWith(null);
   });
 
+  it("Esc during an IME conversion cancels the conversion only, never the edit; afterwards Esc cancels", async () => {
+    const { controller, box } = await setUp("hi");
+    const area = within(box).getByLabelText("メッセージを編集") as HTMLTextAreaElement;
+    fireEvent.compositionStart(area);
+    act(() => void fireEvent.keyDown(area, { key: "Escape", isComposing: true, keyCode: 229 }));
+    act(() => void fireEvent.keyDown(area, { key: "Escape" })); // a browser that reports neither: the composition still is
+    fireEvent.compositionEnd(area);
+    act(() => void fireEvent.keyDown(area, { key: "Escape" })); // Safari: the key after compositionend (within the grace)
+    expect(controller.setEditing).not.toHaveBeenCalled();
+    expect(screen.getByLabelText("メッセージを編集")).toBe(area);
+    vi.spyOn(Date, "now").mockReturnValue(Date.now() + 5_000);
+    act(() => void fireEvent.keyDown(area, { key: "Escape" }));
+    expect(controller.setEditing).toHaveBeenCalledWith(null);
+  });
+
   it("never opens a list while a range is selected, nor takes the key that confirms a conversion", async () => {
     const { controller, box } = await setUp("hi");
     const area = within(box).getByLabelText("メッセージを編集") as HTMLTextAreaElement;

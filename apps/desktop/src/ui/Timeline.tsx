@@ -1657,6 +1657,9 @@ function MessageEditor({ controller, message }: { controller: AppController; mes
             }
           }
           if (e.key === "Escape") {
+            // Esc during an IME conversion cancels the conversion only, as in the rich editor (onRichKeyDown) and the
+            // screen's Esc (MainScreen): never the edit.
+            if (isImeKey({ isComposing: e.nativeEvent.isComposing, keyCode: e.keyCode }, composing.current, composedAt.current)) return;
             e.preventDefault();
             finish();
           } else if (isSendKey(e, controller.sendKey ?? "mod-enter") && !composing.current && !isImeKeyEvent(e)) {
