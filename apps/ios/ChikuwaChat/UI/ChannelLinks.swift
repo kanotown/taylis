@@ -255,13 +255,25 @@ enum TopicText {
             }
             if last < ns.length { text(ns.substring(from: last)) }
         }
+        func named(_ value: String) -> String {
+            BodyTokenizer.emphasisPieces(value).map { piece in
+                switch piece {
+                case .mention(let id): "@" + (nameOf(id) ?? "unknown")
+                case .mentionGroup: "@group"
+                case .mentionAll(let target): "@" + target
+                case .text(let text): text
+                default: ""
+                }
+            }.joined()
+        }
         let oneLine = topic.replacingOccurrences(of: #"\s*\n\s*"#, with: " ", options: .regularExpression)
         for token in BodyTokenizer.tokenizeInline(oneLine) {
             switch token {
             case .text(let value): mailtoSplit(value)
-            case .bold(let value): out.append(.bold(value))
-            case .italic(let value): out.append(.italic(value))
-            case .strike(let value): out.append(.strike(value))
+            // M188: a mention inside emphasis is named too (it showed as `<@…>`).
+            case .bold(let value): out.append(.bold(named(value)))
+            case .italic(let value): out.append(.italic(named(value)))
+            case .strike(let value): out.append(.strike(named(value)))
             case .code(let value): out.append(.code(value))
             case .codeBlock(let value, _): text(value)
             case .link(let url, let label):

@@ -66,6 +66,26 @@ final class InlineFormatFixtureTests: XCTestCase {
         }
     }
 
+    private struct EmphasisMentions: Decodable {
+        struct Case: Decodable { let name: String; let text: String; let pieces: [[String]] }
+        let emphasis_mentions: [Case]
+    }
+
+    /// M188: a mention inside bold, italic or strike is a piece of its own, drawn as the mention.
+    func testTheSharedEmphasisMentions() throws {
+        let url = URL(fileURLWithPath: #filePath).deletingLastPathComponent().deletingLastPathComponent().deletingLastPathComponent()
+            .appendingPathComponent("shared/inline-format.json")
+        let fixture = try JSONDecoder().decode(EmphasisMentions.self, from: Data(contentsOf: url))
+        XCTAssertFalse(fixture.emphasis_mentions.isEmpty)
+        for c in fixture.emphasis_mentions {
+            XCTAssertEqual(simple(BodyTokenizer.emphasisPieces(c.text)), c.pieces, c.name)
+        }
+        // The topic names them too.
+        let pieces = TopicText.pieces("**確認 <@01a0f811-c836-755b-925c-0d71f4c5cd22>**", nameOf: { _ in "山田 太郎" })
+        XCTAssertEqual(TopicText.plain("**確認 <@01a0f811-c836-755b-925c-0d71f4c5cd22>**", nameOf: { _ in "山田 太郎" }), "確認 @山田 太郎")
+        XCTAssertEqual(pieces.count, 1)
+    }
+
     private struct CodeBlocks: Decodable {
         struct Case: Decodable { let name: String; let body: String; let text: String }
         let code_blocks: [Case]

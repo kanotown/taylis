@@ -105,6 +105,31 @@ enum BodyTokenizer {
     // backslash) are text tokens of their own, so emphasis and escapes are never read inside them.
     private static let inline = #"(\*\*((?:\\.|[^*\n\\])+?)\*\*)|(``(?!`)(?:[^`\n]|`(?!`))+?``(?!`)|`([^`\n]+)`)|(\*((?:\\.|[^*\n\\])+)\*)|((?<![\p{L}\p{N}_])_(?![\s\u3000_])((?:\\.|[^\n\\])*?(?:\\.|[^\s\u3000_\\]))_(?![\p{L}\p{N}_]))|(~~((?:\\.|[^~\n\\])+)~~)|(\[([^\]\n]+)\]\((https?://[^\s)]+|(?:page|attachment):[0-9a-fA-F-]{36})\))|(<@group:([0-9a-f-]{36})>)|(<@([0-9a-f-]{36})>)|(<!(channel|here)>)|(https?://[^\s<>\u3000-\u303F\uFF00-\uFFEF]+)|(\\([_*~`$]))|([A-Za-z0-9._%+-]{1,64}@[A-Za-z0-9-]{1,63}(?:\.[A-Za-z0-9-]{1,63}){1,8}|¯\\_\(ツ\)_/¯)|(\$\$((?:\\.|[^$\n\\])+?)\$\$)|(\$(?![\s$])((?:\\.|[^$\n\\])*?(?:\\.|[^\s$\\]))\$(?![0-9A-Za-z]))"#
     private static let escaped = try! NSRegularExpression(pattern: #"\\([_*~`$])"#)
+    /// The mention tokens, as the inline pattern reads them (groups 14–19 there).
+    private static let mentionTokens = try! NSRegularExpression(pattern: #"<@group:([0-9a-f-]{36})>|<@([0-9a-f-]{36})>|<!(channel|here)>"#)
+
+    /// M188 (apps/shared/inline-format.json `emphasis_mentions`): the text of a bold, italic or strike token as text and
+    /// mention pieces. Emphasis holds text; a mention inside it is still drawn as the mention (it showed as `<@…>`).
+    static func emphasisPieces(_ text: String) -> [BodyToken] {
+        let ns = text as NSString
+        var pieces: [BodyToken] = []
+        var last = 0
+        for match in mentionTokens.matches(in: text, range: NSRange(location: 0, length: ns.length)) {
+            if match.range.location > last {
+                pieces.append(.text(ns.substring(with: NSRange(location: last, length: match.range.location - last))))
+            }
+            if match.range(at: 1).location != NSNotFound {
+                pieces.append(.mentionGroup(ns.substring(with: match.range(at: 1))))
+            } else if match.range(at: 2).location != NSNotFound {
+                pieces.append(.mention(ns.substring(with: match.range(at: 2))))
+            } else {
+                pieces.append(.mentionAll(ns.substring(with: match.range(at: 3))))
+            }
+            last = match.range.location + match.range.length
+        }
+        if last < ns.length || pieces.isEmpty { pieces.append(.text(ns.substring(from: last))) }
+        return pieces
+    }
 
     /// TeX math (apps/shared/math.json, markdown.ts MATH_MAX_LENGTH): inline `$…$` as Pandoc reads it (the opening `$`
     /// before a non-space, the closing one after a non-space and not before a digit or an ASCII letter), `$$…$$` within a
@@ -1028,12 +1053,19 @@ struct MessageBodyView: View {
         }
     }
 
+    /// M188: emphasis' text with its mentions drawn as mentions (the style is put on the whole by the caller).
+    private func emphasis(_ text: String, textSize: CGFloat) -> Text {
+        let pieces = BodyTokenizer.emphasisPieces(text)
+        if pieces.count == 1, case .text(let only) = pieces[0] { return emojiText(only, textSize: textSize) }
+        return pieces.reduce(Text(verbatim: "")) { $0 + render($1, textSize: textSize) }
+    }
+
     private func render(_ token: BodyToken, textSize: CGFloat) -> Text {
         switch token {
         case .text(let text): return emojiText(text, textSize: textSize)
-        case .bold(let text): return emojiText(text, textSize: textSize).bold()
-        case .italic(let text): return emojiText(text, textSize: textSize).italic()
-        case .strike(let text): return emojiText(text, textSize: textSize).strikethrough()
+        case .bold(let text): return emphasis(text, textSize: textSize).bold()
+        case .italic(let text): return emphasis(text, textSize: textSize).italic()
+        case .strike(let text): return emphasis(text, textSize: textSize).strikethrough()
         case .code(let text): return Self.inlineCode(text)
         case .codeBlock(let text, _): return Text(Self.untabbed(text)).font(Self.codeBlockFont)
         case .link(let url, let label):

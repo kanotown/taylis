@@ -106,6 +106,15 @@ final class ComposerSnapshotTests: XCTestCase {
         }
     }
 
+    /// M188: a mention inside bold is drawn as the mention, not `<@…>`.
+    func testMentionInsideBoldRenders() throws {
+        let yamada = UserPublic(id: "01a0f811-c836-755b-925c-0d71f4c5cd22", username: "yamada", displayName: "山田 太郎", role: "member",
+                                deactivatedAt: nil, createdAt: "", updatedAt: "")
+        let body = "**確認 <@01a0f811-c836-755b-925c-0d71f4c5cd22> さん** と _<!here> へ_ と ~~<@01a0f811-c836-755b-925c-0d71f4c5cd22>~~"
+        let view = MessageBodyView(text: body, users: [yamada.id: yamada], userLinks: true).padding()
+        _ = try render(view, size: CGSize(width: 393, height: 200), name: "M188-bold-mention-ios.png")
+    }
+
     func testUnavailableThumbnailRenders() throws {
         let controller = AppController()
         let attachment = AttachmentOut(id: "unavailable", filename: "実験結果.png", contentType: "image/png", sizeBytes: 1024, width: 640, height: 480, hasThumbnail: true, status: "attached", createdAt: "")
