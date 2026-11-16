@@ -78,6 +78,85 @@ final class CommunicationNotificationTests: XCTestCase {
         XCTAssertEqual(unscoped.threadIdentifier, "c1")
     }
 
+    /// 2026-11-16: the picture is fetched only from the push's own workspace (found by its workspace_id in the App Group
+    /// list, exactly one) at its address and under /api/v1/users/; anything else shows the initials.
+    func testThePictureComesOnlyFromTheWorkspacesOwnAddress() async throws {
+        typealias Saved = CommunicationNotification.SavedWorkspace
+        let lab = Saved(serverUrl: "https://chat.example.jp", workspaceId: "w1")
+        let other = Saved(serverUrl: "https://other.example", workspaceId: "w2")
+        func allowed(_ avatar: String, id: String? = "w1", in list: [Saved]) throws -> String? {
+            var info = dm(["sender_avatar_url": avatar])
+            info["workspace_id"] = id
+            let push = try XCTUnwrap(CommunicationPush(userInfo: info, title: "Alice"))
+            return CommunicationNotification.avatarURL(of: push, in: list)?.absoluteString
+        }
+        XCTAssertEqual(try allowed(avatar, in: [lab, other]), avatar)
+        XCTAssertEqual(try allowed("HTTPS://Chat.Example.jp:443/api/v1/users/u1/avatar/signed?v=1", in: [lab]),
+                       "HTTPS://Chat.Example.jp:443/api/v1/users/u1/avatar/signed?v=1")
+        for refused in ["https://evil.example/api/v1/users/u1/avatar/signed", "http://chat.example.jp/api/v1/users/u1/avatar/signed",
+                        "https://chat.example.jp:8443/api/v1/users/u1/avatar/signed", "https://chat.example.jp/api/v1/files/x",
+                        "https://chat.example.jp/api/v1/users/", "https://chat.example.jp/api/v1/users/../../internal",
+                        "https://chat.example.jp/api/v1/users/%2e%2e/%2e%2e/x", "https://user@chat.example.jp/api/v1/users/u1/avatar",
+                        "https://chat.example.jp.evil.example/api/v1/users/u1/avatar"] {
+            XCTAssertNil(try allowed(refused, in: [lab, other]), refused)
+        }
+        XCTAssertNil(try allowed(avatar, id: nil, in: [lab]), "no workspace_id")
+        XCTAssertNil(try allowed(avatar, id: "w9", in: [lab]), "an unknown workspace")
+        XCTAssertNil(try allowed(avatar, in: [lab, Saved(serverUrl: "https://evil.example", workspaceId: "w1")]), "two claim the id")
+        XCTAssertNil(try allowed(avatar, in: []), "no list (no App Group)")
+        // A workspace under a path: its own path.
+        let sub = Saved(serverUrl: "https://example.jp/chat", workspaceId: "w1")
+        XCTAssertNotNil(try allowed("https://example.jp/chat/api/v1/users/u1/avatar/signed", in: [sub]))
+        XCTAssertNil(try allowed("https://example.jp/api/v1/users/u1/avatar/signed", in: [sub]))
+
+        // The update loads only an allowed one.
+        let content = UNMutableNotificationContent()
+        content.title = "Alice"
+        content.body = "hi"
+        content.userInfo = dm(["workspace_id": "w1", "sender_avatar_url": "https://evil.example/api/v1/users/u1/avatar"])
+        _ = await CommunicationNotification.update(content, workspaces: [lab]) { url in
+            XCTFail("loaded \(url)")
+            return nil
+        }
+        content.userInfo = dm(["workspace_id": "w1"])
+        let loaded = LoadedURLs()
+        _ = await CommunicationNotification.update(content, workspaces: [lab]) { url in
+            await loaded.add(url)
+            return nil
+        }
+        let urls = await loaded.urls
+        XCTAssertEqual(urls.map(\.absoluteString), [avatar])
+    }
+
+    private actor LoadedURLs {
+        var urls: [URL] = []
+        func add(_ url: URL) { urls.append(url) }
+    }
+
+    /// The picture is read as it comes and given up past the cap (it was read whole first, however large).
+    func testThePictureIsReadUpToItsCap() async throws {
+        struct Bytes: AsyncSequence {
+            typealias Element = UInt8
+            let count: Int
+            struct AsyncIterator: AsyncIteratorProtocol {
+                var left: Int
+                mutating func next() async -> UInt8? {
+                    guard left > 0 else { return nil }
+                    left -= 1
+                    return 0x42
+                }
+            }
+            func makeAsyncIterator() -> AsyncIterator { AsyncIterator(left: count) }
+        }
+        let small = try await CommunicationNotification.collect(Bytes(count: 1000), limit: 1000)
+        XCTAssertEqual(small?.count, 1000)
+        let large = try await CommunicationNotification.collect(Bytes(count: 1001), limit: 1000)
+        XCTAssertNil(large)
+        let late = try await CommunicationNotification.collect(Bytes(count: 10), limit: 1000, deadline: Date().addingTimeInterval(-1))
+        XCTAssertNil(late)
+        XCTAssertEqual(CommunicationNotification.maxAvatarBytes, 1_000_000)
+    }
+
     func testGroupDmAndPrivateChannelsAreGroupsToo() throws {
         for type in ["private", "group_dm"] {
             let push = try XCTUnwrap(CommunicationPush(userInfo: dm(["channel_type": type]), title: "グループ DM"))

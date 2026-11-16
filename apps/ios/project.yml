@@ -109,9 +109,15 @@ targets:
     platform: iOS
     sources:
       - path: NotificationService
-        excludes: ["Info.plist"]
+        excludes: ["Info.plist", "NotificationService.entitlements"]
       - path: ChikuwaChat/Platform/CommunicationNotification.swift
       - path: ChikuwaChat/Platform/InitialsAvatar.swift
+    # 2026-11-16: the App Group (read only: the workspace list the app keeps there), so the sender's picture is fetched
+    # only from the workspace's own address. No Keychain group: the extension still holds no credentials.
+    entitlements:
+      path: NotificationService/NotificationService.entitlements
+      properties:
+        com.apple.security.application-groups: [group.jp.chikuwachat.ios]
     info:
       path: NotificationService/Info.plist
       properties:
@@ -122,6 +128,7 @@ targets:
           NSExtensionPointIdentifier: com.apple.usernotifications.service
           NSExtensionPrincipalClass: $(PRODUCT_MODULE_NAME).NotificationService
         NSUserActivityTypes: [INSendMessageIntent]
+        TaylisAppGroup: group.jp.chikuwachat.ios
     settings:
       base:
         PRODUCT_BUNDLE_IDENTIFIER: jp.chikuwachat.ios.NotificationService
