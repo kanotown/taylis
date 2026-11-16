@@ -243,7 +243,24 @@ private val OWN_LINK = Regex(
 )
 private const val CLOSING = ".,:;!?'\"…"
 
-private fun scan(body: String, pattern: Regex, withBlocks: Boolean): List<BodyToken> {
+/**
+ * java.util.regex recurses once per repetition of a group with alternatives, so a bold / italic / strike span of thousands
+ * of characters (a body may hold 20,000) overflows the stack (2026-11-16, a hostile-server review: such a message crashed
+ * every screen that drew it, again at each start). That body stays its plain text, lines kept.
+ */
+private fun scan(body: String, pattern: Regex, withBlocks: Boolean): List<BodyToken> = try {
+    scanTokens(body, pattern, withBlocks)
+} catch (_: StackOverflowError) {
+    if (!withBlocks) {
+        listOf(BodyToken.Text(body))
+    } else {
+        body.split("\n").flatMapIndexed { index, line ->
+            listOfNotNull(BodyToken.Newline.takeIf { index > 0 }, line.takeIf { it.isNotEmpty() }?.let { BodyToken.Text(it) })
+        }
+    }
+}
+
+private fun scanTokens(body: String, pattern: Regex, withBlocks: Boolean): List<BodyToken> {
     val tokens = ArrayList<BodyToken>()
     fun text(value: String) {
         if (value.isEmpty()) return

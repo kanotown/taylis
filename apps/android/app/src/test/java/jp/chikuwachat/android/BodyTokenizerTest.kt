@@ -86,4 +86,26 @@ class BodyTokenizerTest {
         assertEquals(1, parseBlocks("| a | b |\n| --- |").size)
         assertEquals("項目 担当 API 田中", plainText("| 項目 | 担当 |\n| --- | --- |\n| API | 田中 |"))
     }
+
+    /**
+     * 2026-11-16 (a hostile-server review): an emphasis span of thousands of characters overflowed java.util.regex's stack and
+     * crashed every screen that drew the message; that body now stays its text (lines kept), even on a small stack.
+     */
+    @Test fun aHugeEmphasisSpanStaysText() {
+        val failures = ArrayList<Throwable>()
+        val worker = Thread(null, {
+            try {
+                for (body in listOf("**" + "a".repeat(19_996) + "**", "_" + "a".repeat(19_998) + "_", "~~" + "a".repeat(19_996) + "~~")) {
+                    assertEquals(listOf(BodyToken.Text(body)), tokenizeInline(body))
+                    assertEquals(listOf(BodyToken.Text("x"), BodyToken.Newline, BodyToken.Text(body)), tokenizeBody("x\n$body"))
+                    assertEquals(body.take(199) + "…", plainText(body))
+                }
+            } catch (e: Throwable) {
+                failures.add(e)
+            }
+        }, "small-stack", 256L * 1024)
+        worker.start()
+        worker.join()
+        failures.firstOrNull()?.let { throw it }
+    }
 }
