@@ -420,6 +420,7 @@ final class AppController {
         previewLoads = [:]
         emojiLoads = []
         AvatarCache.shared.reset()
+        AlbumThumbnails.shared.clear() // per server: another workspace's photos never show here
         PushCenter.shared.pendingChannelId = nil
         let previous = store
         store = Store()

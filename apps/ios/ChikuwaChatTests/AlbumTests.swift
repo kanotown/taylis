@@ -426,3 +426,46 @@ final class AlbumViewerTests: XCTestCase {
         XCTAssertFalse(page.needsMorePixels(screenScale: 3))
     }
 }
+
+/// 2026-11-16: the album thumbnails are kept per server (another workspace's photo with the same attachment id never
+/// shows) and let go when the workspace on screen changes or signs out.
+@MainActor
+final class AlbumThumbnailsTests: XCTestCase {
+    override func tearDown() {
+        StubProtocol.handler = nil
+        AlbumThumbnails.shared.clear()
+    }
+
+    private func api(_ base: String) -> ApiClient {
+        let configuration = URLSessionConfiguration.ephemeral
+        configuration.protocolClasses = [StubProtocol.self]
+        return ApiClient(baseUrl: URL(string: base)!, session: URLSession(configuration: configuration))
+    }
+
+    func testThumbnailsAreKeptPerServerAndLetGo() async throws {
+        let png = UIGraphicsImageRenderer(size: CGSize(width: 40, height: 30), format: { let f = UIGraphicsImageRendererFormat(); f.scale = 1; return f }())
+            .image { context in UIColor.red.setFill(); context.fill(CGRect(x: 0, y: 0, width: 40, height: 30)) }.pngData()!
+        var asked: [String] = []
+        StubProtocol.handler = { request in
+            asked.append(request.url?.host ?? "")
+            return (200, png)
+        }
+        let controller = AppController(defaults: UserDefaults(suiteName: "album-thumbs-\(UUID().uuidString)")!)
+        let id = "0190a8c2-7d3e-7b1a-9c4e-000000000001"
+        controller.api = api("https://a.example")
+        let loaded = await AlbumThumbnails.shared.load(id, pixels: 64, controller: controller)
+        XCTAssertNotNil(loaded)
+        XCTAssertNotNil(AlbumThumbnails.shared.image(id, controller: controller))
+        // Another workspace: the same id is not that photo.
+        controller.api = api("https://b.example")
+        XCTAssertNil(AlbumThumbnails.shared.image(id, controller: controller))
+        _ = await AlbumThumbnails.shared.load(id, pixels: 64, controller: controller)
+        XCTAssertEqual(asked, ["a.example", "b.example"])
+        XCTAssertNotEqual(AlbumThumbnails.key(id, server: "https://a.example"), AlbumThumbnails.key(id, server: "https://b.example"))
+        // A switch or a sign-out lets every one go.
+        AlbumThumbnails.shared.clear()
+        XCTAssertNil(AlbumThumbnails.shared.image(id, controller: controller))
+        controller.api = api("https://a.example")
+        XCTAssertNil(AlbumThumbnails.shared.image(id, controller: controller))
+    }
+}

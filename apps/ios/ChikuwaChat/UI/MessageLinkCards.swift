@@ -476,7 +476,7 @@ private struct CardThumbnail: View {
         .clipShape(RoundedRectangle(cornerRadius: 6, style: .continuous))
         .accessibilityHidden(true)
         .task(id: attachmentId) {
-            image = AlbumThumbnails.shared.image(attachmentId)
+            image = AlbumThumbnails.shared.image(attachmentId, controller: controller)
             if image == nil { image = await AlbumThumbnails.shared.load(attachmentId, pixels: 512, controller: controller) }
         }
     }

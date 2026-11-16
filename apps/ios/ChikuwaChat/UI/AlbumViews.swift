@@ -10,7 +10,9 @@ import UIKit
 // MARK: thumbnails
 
 /// The grid's thumbnails (512 px from the server), downsampled to the cell and kept while there is room: scrolling
-/// back shows them without asking again, and the heap stays bounded however long the album.
+/// back shows them without asking again, and the heap stays bounded however long the album. Kept per server and
+/// let go when the workspace on screen changes or signs out (2026-11-16: keyed by the attachment id alone, another
+/// workspace's photo with the same id showed).
 @MainActor
 final class AlbumThumbnails {
     static let shared = AlbumThumbnails()
@@ -22,23 +24,37 @@ final class AlbumThumbnails {
     }()
     private var running: [String: Task<UIImage?, Never>] = [:]
 
-    func image(_ attachmentId: String) -> UIImage? { cache.object(forKey: attachmentId as NSString) }
+    /// The key of a thumbnail: the server (its normalized address hashed) and the attachment.
+    static func key(_ attachmentId: String, server: String) -> String { SafePaths.serverKey(server) + "|" + attachmentId }
+
+    func image(_ attachmentId: String, controller: AppController) -> UIImage? {
+        guard let server = controller.api?.baseUrl.absoluteString else { return nil }
+        return cache.object(forKey: Self.key(attachmentId, server: server) as NSString)
+    }
 
     func load(_ attachmentId: String, pixels: CGFloat, controller: AppController) async -> UIImage? {
-        if let known = image(attachmentId) { return known }
-        if let task = running[attachmentId] { return await task.value }
         guard let api = controller.api else { return nil }
+        let key = Self.key(attachmentId, server: api.baseUrl.absoluteString)
+        if let known = cache.object(forKey: key as NSString) { return known }
+        if let task = running[key] { return await task.value }
         let task = Task { () -> UIImage? in
             guard let data = try? await api.fetchData("/api/v1/attachments/\(attachmentId)/thumbnail", maxBytes: ApiClient.maxImageBytes) else { return nil }
             return await Task.detached(priority: .utility) { Self.downsample(data, pixels: pixels) }.value
         }
-        running[attachmentId] = task
+        running[key] = task
         let image = await task.value
-        running[attachmentId] = nil
+        running[key] = nil
         if let image {
-            cache.setObject(image, forKey: attachmentId as NSString, cost: Int(image.size.width * image.size.height * image.scale * image.scale * 4))
+            cache.setObject(image, forKey: key as NSString, cost: Int(image.size.width * image.size.height * image.scale * image.scale * 4))
         }
         return image
+    }
+
+    /// Another workspace comes on screen, or this one signs out: none of its thumbnails stay.
+    func clear() {
+        cache.removeAllObjects()
+        for task in running.values { task.cancel() }
+        running = [:]
     }
 
     /// At the cell's size; a server's absurd canvas is refused undecoded (ImageDecoding).
@@ -67,7 +83,7 @@ struct AlbumThumb: View {
             .clipped()
             .task(id: attachmentId) {
                 guard let attachmentId else { image = nil; return }
-                image = AlbumThumbnails.shared.image(attachmentId)
+                image = AlbumThumbnails.shared.image(attachmentId, controller: controller)
                 if image == nil { image = await AlbumThumbnails.shared.load(attachmentId, pixels: pixels, controller: controller) }
             }
     }

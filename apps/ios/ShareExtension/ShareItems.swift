@@ -91,7 +91,7 @@ enum ShareItems {
                 guard let url else { return continuation.resume(returning: nil) }
                 // The file is ours only inside this callback: copy it now (the system streams the copy).
                 let name = displayName(url.lastPathComponent, suggested: suggested, type: type)
-                let destination = folder.appendingPathComponent("\(index)-\(name)")
+                guard let destination = stagedFile(name, index: index, in: folder) else { return continuation.resume(returning: nil) }
                 do {
                     try? FileManager.default.removeItem(at: destination)
                     try FileManager.default.copyItem(at: url, to: destination)
@@ -110,8 +110,9 @@ enum ShareItems {
             }
             if let data = image?.jpegData(compressionQuality: 0.9) {
                 let name = displayName("image.jpg", suggested: provider.suggestedName, type: .jpeg)
-                let destination = folder.appendingPathComponent("\(index)-\(name)")
-                if (try? data.write(to: destination)) != nil { result = (destination, name) }
+                if let destination = stagedFile(name, index: index, in: folder), (try? data.write(to: destination)) != nil {
+                    result = (destination, name)
+                }
             }
         }
         guard let (url, name) = result else { return nil }
@@ -121,7 +122,8 @@ enum ShareItems {
     }
 
     /// The name to send: the provider's suggested name (the document's or photo's own) with the file's extension, else
-    /// the file's name; the type's extension when neither has one.
+    /// the file's name; the type's extension when neither has one. One path component (it names the staged copy too):
+    /// `/`, `\`, `:` and control characters become `_`, and `.` / `..` are `file` (2026-11-16: another app names it).
     static func displayName(_ fileName: String, suggested: String?, type: UTType?) -> String {
         let fileExtension = (fileName as NSString).pathExtension
         var name = fileName
@@ -130,8 +132,16 @@ enum ShareItems {
             if !fileExtension.isEmpty, (name as NSString).pathExtension.lowercased() != fileExtension.lowercased() { name += ".\(fileExtension)" }
         }
         if (name as NSString).pathExtension.isEmpty, let ext = type?.preferredFilenameExtension { name += ".\(ext)" }
-        let cleaned = name.replacingOccurrences(of: "/", with: "_").replacingOccurrences(of: ":", with: "_")
-        return cleaned.isEmpty ? "file" : cleaned
+        let cleaned = String(String.UnicodeScalarView(name.unicodeScalars.map { scalar -> Unicode.Scalar in
+            scalar == "/" || scalar == "\\" || scalar == ":" || scalar.properties.generalCategory == .control ? "_" : scalar
+        })).trimmingCharacters(in: .whitespacesAndNewlines)
+        return cleaned.isEmpty || cleaned == "." || cleaned == ".." ? "file" : cleaned
+    }
+
+    /// The staged copy's place: `<index>-<name>` directly in `folder`, nil if it would be anywhere else.
+    static func stagedFile(_ name: String, index: Int, in folder: URL) -> URL? {
+        let destination = folder.appendingPathComponent("\(index)-\(name)")
+        return destination.standardizedFileURL.deletingLastPathComponent().path == folder.standardizedFileURL.path ? destination : nil
     }
 
     /// A small preview of a staged file (QuickLook draws it from the file on disk).
