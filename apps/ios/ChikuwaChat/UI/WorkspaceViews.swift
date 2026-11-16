@@ -40,11 +40,17 @@ final class WorkspaceIconCache {
         loading.insert(key)
         Task {
             defer { loading.remove(key) }
-            if let data = try? await fetcher(serverUrl, version), let image = UIImage(data: data) {
+            // Decoded at the tile's size, off the main thread (ImageDecoding: a server's huge canvas is refused); the
+            // widgets get that small picture, not the server's bytes.
+            if let data = try? await fetcher(serverUrl, version),
+               let (image, png) = await Task.detached(priority: .utility, operation: { () -> (UIImage, Data)? in
+                   guard let image = ImageDecoding.downsample(data, maxPixelSize: ImageDecoding.iconPixels), let png = image.pngData() else { return nil }
+                   return (image, png)
+               }).value {
                 // An older version of this server's icon is not shown again: let it go.
                 images = images.filter { !$0.key.hasPrefix(serverUrl + "|") }
                 images[key] = image
-                WidgetWorkspaceIcons.store(data, serverUrl: serverUrl, version: version) // the widgets' headers
+                WidgetWorkspaceIcons.store(png, serverUrl: serverUrl, version: version) // the widgets' headers
             } else {
                 failed.insert(key)
             }

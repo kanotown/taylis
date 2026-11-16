@@ -133,27 +133,28 @@ final class CommunicationNotificationTests: XCTestCase {
         func add(_ url: URL) { urls.append(url) }
     }
 
-    /// The picture is read as it comes and given up past the cap (it was read whole first, however large).
-    func testThePictureIsReadUpToItsCap() async throws {
-        struct Bytes: AsyncSequence {
-            typealias Element = UInt8
-            let count: Int
-            struct AsyncIterator: AsyncIteratorProtocol {
-                var left: Int
-                mutating func next() async -> UInt8? {
-                    guard left > 0 else { return nil }
-                    left -= 1
-                    return 0x42
-                }
-            }
-            func makeAsyncIterator() -> AsyncIterator { AsyncIterator(left: count) }
+    /// The picture is read as it comes and given up past the cap (it was read whole first, however large), and never
+    /// from where its URL redirects.
+    func testThePictureIsReadUpToItsCapAndNotRedirected() async throws {
+        let configuration = URLSessionConfiguration.ephemeral
+        configuration.protocolClasses = [ImageStub.self]
+        let session = URLSession(configuration: configuration)
+        defer { ImageStub.answer = nil }
+        let url = URL(string: avatar)!
+        ImageStub.answer = .init(type: "image/png", body: Data(count: 1000), declaresLength: true)
+        let fits = await CommunicationNotification.fetchAvatar(url, session: session)
+        XCTAssertEqual(fits?.count, 1000)
+        for declares in [true, false] { // refused at its declared length, or as it grows past the cap
+            ImageStub.answer = .init(type: "image/png", body: Data(count: CommunicationNotification.maxAvatarBytes + 1), declaresLength: declares)
+            let large = await CommunicationNotification.fetchAvatar(url, session: session)
+            XCTAssertNil(large, "declared: \(declares)")
         }
-        let small = try await CommunicationNotification.collect(Bytes(count: 1000), limit: 1000)
-        XCTAssertEqual(small?.count, 1000)
-        let large = try await CommunicationNotification.collect(Bytes(count: 1001), limit: 1000)
-        XCTAssertNil(large)
-        let late = try await CommunicationNotification.collect(Bytes(count: 10), limit: 1000, deadline: Date().addingTimeInterval(-1))
-        XCTAssertNil(late)
+        ImageStub.answer = .init(type: "text/html", body: Data(count: 10), declaresLength: true)
+        let html = await CommunicationNotification.fetchAvatar(url, session: session)
+        XCTAssertNil(html)
+        ImageStub.answer = .init(type: "image/png", body: Data(count: 10), declaresLength: true, redirect: URL(string: "https://elsewhere.example/x.png"))
+        let redirected = await CommunicationNotification.fetchAvatar(url, session: session)
+        XCTAssertNil(redirected)
         XCTAssertEqual(CommunicationNotification.maxAvatarBytes, 1_000_000)
     }
 
@@ -295,4 +296,45 @@ final class CommunicationNotificationTests: XCTestCase {
         let inChannel = await CommunicationNotification.senderPicture(channel) { _ in nil }
         XCTAssertEqual(inChannel, fallback)
     }
+}
+
+/// A picture's server in memory: the answer's type, its body (in 64 KB chunks), whether it declares its length, or a
+/// redirect.
+final class ImageStub: URLProtocol {
+    struct Answer {
+        var type: String
+        var body: Data
+        var declaresLength: Bool
+        var redirect: URL? = nil
+    }
+
+    nonisolated(unsafe) static var answer: Answer?
+
+    override class func canInit(with request: URLRequest) -> Bool { true }
+    override class func canonicalRequest(for request: URLRequest) -> URLRequest { request }
+
+    override func startLoading() {
+        guard let answer = Self.answer, let url = request.url else {
+            client?.urlProtocol(self, didFailWithError: URLError(.cannotConnectToHost))
+            return
+        }
+        if let target = answer.redirect {
+            let response = HTTPURLResponse(url: url, statusCode: 302, httpVersion: "HTTP/1.1", headerFields: ["Location": target.absoluteString])!
+            client?.urlProtocol(self, wasRedirectedTo: URLRequest(url: target), redirectResponse: response)
+            return
+        }
+        var headers = ["Content-Type": answer.type]
+        if answer.declaresLength { headers["Content-Length"] = String(answer.body.count) }
+        let response = HTTPURLResponse(url: url, statusCode: 200, httpVersion: "HTTP/1.1", headerFields: headers)!
+        client?.urlProtocol(self, didReceive: response, cacheStoragePolicy: .notAllowed)
+        var offset = 0
+        while offset < answer.body.count {
+            let end = min(offset + 65_536, answer.body.count)
+            client?.urlProtocol(self, didLoad: answer.body.subdata(in: offset..<end))
+            offset = end
+        }
+        client?.urlProtocolDidFinishLoading(self)
+    }
+
+    override func stopLoading() {}
 }

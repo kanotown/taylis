@@ -649,9 +649,9 @@ struct DbCoverImage: View {
             await loader.load {
                 guard let api = controller.api else { throw URLError(.notConnectedToInternet) }
                 do {
-                    return try await api.fetchData(cover.path)
+                    return try await api.fetchData(cover.path, maxBytes: ApiClient.maxImageBytes)
                 } catch ApiError.api(_, let code, _) where code == "thumbnail_not_found" && cover.thumbnail {
-                    return try await api.fetchData(DbRowCover(attachmentId: cover.attachmentId, thumbnail: false).path)
+                    return try await api.fetchData(DbRowCover(attachmentId: cover.attachmentId, thumbnail: false).path, maxBytes: ApiClient.maxImageBytes)
                 }
             }
         }

@@ -135,7 +135,7 @@ struct FileRowView: View {
         .task(id: attachment.id) {
             // M82: a video's server poster as well (`has_poster`; its `has_thumbnail` is false).
             guard attachment.hasThumbnail || attachment.showsServerPoster, image == nil else { return }
-            if let data = try? await controller.api?.fetchData("/api/v1/attachments/\(attachment.id)/thumbnail") { image = UIImage(data: data) }
+            if let data = try? await controller.api?.fetchData("/api/v1/attachments/\(attachment.id)/thumbnail", maxBytes: ApiClient.maxImageBytes) { image = await ImageDecoding.downsampleOff(data, maxPixelSize: ImageDecoding.thumbnailPixels) }
         }
     }
 

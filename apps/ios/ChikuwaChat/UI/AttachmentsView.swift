@@ -397,8 +397,8 @@ struct VideoTile: View {
     private func findShape() async {
         if found == nil, let known = VideoSizes.size(attachment.id) { found = known } // the same box: no change
         if model.fetchesPoster, poster == nil {
-            if let api = controller.api, let data = try? await api.fetchData("/api/v1/attachments/\(attachment.id)/thumbnail"),
-               let image = UIImage(data: data) {
+            if let api = controller.api, let data = try? await api.fetchData("/api/v1/attachments/\(attachment.id)/thumbnail", maxBytes: ApiClient.maxImageBytes),
+               let image = await ImageDecoding.downsampleOff(data, maxPixelSize: ImageDecoding.thumbnailPixels) {
                 poster = image
                 posterFailed = false
                 if VideoFit.recorded(attachment) == nil, found == nil { remember(image.size) }
@@ -483,7 +483,12 @@ final class AttachmentImageLoader {
             let data = try await fetch()
             try Task.checkCancellation()
             guard current == request else { return }
-            image = UIImage(data: data)
+            // A thumbnail or a page's picture at most 2048 px, decoded off the main thread; a server's absurd canvas
+            // is refused (ImageDecoding, 2026-11-16: UIImage(data:) decoded it at its own size when drawn).
+            let decoded = await ImageDecoding.downsampleOff(data, maxPixelSize: ImageDecoding.thumbnailPixels)
+            try Task.checkCancellation()
+            guard current == request else { return }
+            image = decoded
             failed = image == nil
         } catch {
             guard !Task.isCancelled, current == request else { return }
@@ -564,7 +569,7 @@ struct ThumbnailView: View {
                 guard moves, let api = controller.api else { return }
                 let id = attachment.id
                 await animated.run(key: "\(api.baseUrl.absoluteString)|\(id)", fill: fillPixels) {
-                    try await api.fetchData("/api/v1/attachments/\(id)/content")
+                    try await api.fetchData("/api/v1/attachments/\(id)/content", maxBytes: ApiClient.maxImageBytes)
                 }
             }
     }
@@ -629,7 +634,7 @@ struct ThumbnailView: View {
         .task(id: "\(attachment.id):\(attempt)") {
             await loader.load {
                 guard let api = controller.api else { throw URLError(.notConnectedToInternet) }
-                return try await api.fetchData("/api/v1/attachments/\(attachment.id)/thumbnail")
+                return try await api.fetchData("/api/v1/attachments/\(attachment.id)/thumbnail", maxBytes: ApiClient.maxImageBytes)
             }
         }
         .fullScreenCover(isPresented: $viewing) {
@@ -1010,7 +1015,7 @@ private struct PendingTile: View {
                 guard look == .file, item.isImage || item.showsServerPoster, let controller else { return }
                 await thumbnail.load {
                     guard let api = controller.api else { throw URLError(.notConnectedToInternet) }
-                    return try await api.fetchData("/api/v1/attachments/\(item.id)/thumbnail")
+                    return try await api.fetchData("/api/v1/attachments/\(item.id)/thumbnail", maxBytes: ApiClient.maxImageBytes)
                 }
             }
             .fullScreenCover(isPresented: $viewing) {

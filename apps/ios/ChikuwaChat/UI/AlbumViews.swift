@@ -29,7 +29,7 @@ final class AlbumThumbnails {
         if let task = running[attachmentId] { return await task.value }
         guard let api = controller.api else { return nil }
         let task = Task { () -> UIImage? in
-            guard let data = try? await api.fetchData("/api/v1/attachments/\(attachmentId)/thumbnail") else { return nil }
+            guard let data = try? await api.fetchData("/api/v1/attachments/\(attachmentId)/thumbnail", maxBytes: ApiClient.maxImageBytes) else { return nil }
             return await Task.detached(priority: .utility) { Self.downsample(data, pixels: pixels) }.value
         }
         running[attachmentId] = task
@@ -41,16 +41,9 @@ final class AlbumThumbnails {
         return image
     }
 
+    /// At the cell's size; a server's absurd canvas is refused undecoded (ImageDecoding).
     nonisolated static func downsample(_ data: Data, pixels: CGFloat) -> UIImage? {
-        guard let source = CGImageSourceCreateWithData(data as CFData, nil) else { return nil }
-        let options: [CFString: Any] = [
-            kCGImageSourceCreateThumbnailFromImageAlways: true,
-            kCGImageSourceCreateThumbnailWithTransform: true,
-            kCGImageSourceShouldCacheImmediately: true,
-            kCGImageSourceThumbnailMaxPixelSize: max(64, pixels),
-        ]
-        guard let image = CGImageSourceCreateThumbnailAtIndex(source, 0, options as CFDictionary) else { return nil }
-        return UIImage(cgImage: image)
+        ImageDecoding.downsample(data, maxPixelSize: Int(max(64, pixels).rounded(.up)))
     }
 }
 

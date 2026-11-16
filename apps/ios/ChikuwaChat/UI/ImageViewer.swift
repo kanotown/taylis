@@ -476,9 +476,11 @@ final class ImagePagerController: UIViewController, UIScrollViewDelegate, UIGest
         let load = self.load
         loads[i] = Task { [weak self] in
             let url = await load(item)
+            var decoded: (image: UIImage, animation: AnimatedImageSource?)?
+            if let url { decoded = await Self.decodeOff(url) } // off the main thread (ImageDecoding makes the bitmap)
             guard let self, !Task.isCancelled else { return }
             loads[i] = nil
-            guard let url, let decoded = Self.decode(url) else { pages[i].state = .failed; return }
+            guard let url, let decoded else { pages[i].state = .failed; return }
             files[i] = url
             onFile(item.id, url)
             if abs(i - index) <= 1 { present(decoded, at: i) }
@@ -492,9 +494,12 @@ final class ImagePagerController: UIViewController, UIScrollViewDelegate, UIGest
         pages[i].setPlaying(i == index && view.window != nil)
     }
 
-    private static func decode(_ url: URL) -> (image: UIImage, animation: AnimatedImageSource?)? {
-        guard let data = try? Data(contentsOf: url), let image = UIImage(data: data) else { return nil }
-        return (image, AnimatedImageSource(data: data))
+    /// The photo at most `ImageDecoding.viewerPixels` (48 MP photos stay whole; a server's absurd canvas is refused, a
+    /// huge one scaled down), and its frames when it moves (the file mapped, not read into memory).
+    nonisolated static func decode(_ url: URL) -> (image: UIImage, animation: AnimatedImageSource?)? {
+        guard let image = ImageDecoding.decode(contentsOf: url) else { return nil }
+        let animation = (try? Data(contentsOf: url, options: .mappedIfSafe)).flatMap(AnimatedImageSource.init(data:))
+        return (image, animation)
     }
 
     /// The page the pager came to rest on: the photos that left the screen go back to unzoomed.
@@ -559,8 +564,7 @@ final class ImagePagerController: UIViewController, UIScrollViewDelegate, UIGest
     /// An original (some 48 MB decoded) is decoded off the main thread.
     private static func decodeOff(_ url: URL) async -> (image: UIImage, animation: AnimatedImageSource?)? {
         await Task.detached(priority: .userInitiated) { () -> (image: UIImage, animation: AnimatedImageSource?)? in
-            guard let data = try? Data(contentsOf: url), let image = UIImage(data: data) else { return nil }
-            return (image.preparingForDisplay() ?? image, AnimatedImageSource(data: data))
+            decode(url) // decoded already (ImageDecoding makes the bitmap at once)
         }.value
     }
 

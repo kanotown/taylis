@@ -193,17 +193,49 @@ struct LinkPreviewCard: View {
                 }
             }
             Spacer(minLength: 0)
-            if let image = preview?.imageUrl, let imageUrl = URL(string: image) {
-                AsyncImage(url: imageUrl) { phase in
-                    if let image = phase.image { image.resizable().scaledToFill() } else { Color.clear }
-                }
-                .frame(width: Self.imageSide, height: Self.imageSide)
-                .clipShape(RoundedRectangle(cornerRadius: 6, style: .continuous))
+            if let image = preview?.imageUrl, let imageUrl = ExternalLink.url(image) {
+                LinkPreviewImage(url: imageUrl)
+                    .frame(width: Self.imageSide, height: Self.imageSide)
+                    .clipShape(RoundedRectangle(cornerRadius: 6, style: .continuous))
             }
         }
         .frame(minHeight: Self.imageSide, alignment: .top)
         .padding(10)
         .overlay(RoundedRectangle(cornerRadius: 8, style: .continuous).strokeBorder(Color(.separator), lineWidth: 1))
         .contentShape(RoundedRectangle(cornerRadius: 8, style: .continuous))
+    }
+}
+
+/// A link card's picture (the page's Open Graph image, from its own site): at most `maxBytes`, read as it comes, and
+/// decoded at the card's size (2026-11-16: AsyncImage read any answer whole and decoded it at its own size).
+struct LinkPreviewImage: View {
+    let url: URL
+    @State private var image: UIImage?
+
+    static let maxBytes = 5 * 1024 * 1024
+
+    var body: some View {
+        Group {
+            if let image { Image(uiImage: image).resizable().scaledToFill() } else { Color.clear }
+        }
+        .task(id: url) { image = await Self.load(url) }
+    }
+
+    private static let cache: NSCache<NSURL, UIImage> = {
+        let cache = NSCache<NSURL, UIImage>()
+        cache.countLimit = 200
+        return cache
+    }()
+
+    /// The picture, or nil (an error, a redirect off http(s), not an image, too large or too slow).
+    static func load(_ url: URL, session: URLSession = .shared) async -> UIImage? {
+        if let hit = cache.object(forKey: url as NSURL) { return hit }
+        var request = URLRequest(url: url, timeoutInterval: 15)
+        request.setValue("image/*", forHTTPHeaderField: "Accept")
+        guard let (data, http) = try? await CappedDownload.get(request, session: session, maxBytes: maxBytes, deadline: Date().addingTimeInterval(20)),
+              http.statusCode == 200, http.url.map({ ExternalLink.isAllowed($0) }) ?? false,
+              let image = await ImageDecoding.downsampleOff(data, maxPixelSize: ImageDecoding.previewPixels) else { return nil }
+        cache.setObject(image, forKey: url as NSURL)
+        return image
     }
 }

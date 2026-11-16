@@ -700,9 +700,15 @@ final class ApiClient: SyncApi, DraftApi, ChannelLinksApi, ActivityApi, CanvasAp
         return "/api/v1/server/icon?v=" + (version.addingPercentEncoding(withAllowedCharacters: query) ?? version)
     }
 
-    /// The workspace icon's PNG (no Authorization header: the picture is public; URLCache keeps it per version).
+    /// The workspace icon's PNG (no Authorization header: the picture is public; URLCache keeps it per version), at most
+    /// `maxIconBytes`.
     func serverIcon(version: String) async throws -> Data {
-        try await requestRaw("GET", Self.serverIconPath(version: version), body: nil, auth: false, retry401: false, timeout: 15).0
+        var request = URLRequest(url: try endpoint(Self.serverIconPath(version: version)))
+        request.timeoutInterval = 15
+        request.setValue(UILanguage.shared.acceptLanguage, forHTTPHeaderField: "Accept-Language")
+        let (data, status) = try await capped(request, maxBytes: Self.maxIconBytes)
+        guard (200..<300).contains(status) else { throw ApiError.api(status: status, code: "http_\(status)", message: "Request failed") }
+        return data
     }
 
     /// GET /sync/summary: the badge of a workspace that is not open (WORKSPACES.md §6).
@@ -752,13 +758,20 @@ final class ApiClient: SyncApi, DraftApi, ChannelLinksApi, ActivityApi, CanvasAp
         return url
     }
 
-    /// Authenticated GET returning the raw body (thumbnails, downloads).
-    func fetchData(_ path: String) async throws -> Data {
-        try await requestData("GET", path, body: nil, contentType: nil, retry401: true).0
+    /// What a picture's answer may hold (2026-11-16: a hostile server's answer was read whole, however large): a workspace
+    /// icon, a profile picture or a custom emoji; a thumbnail, a display size or a photo.
+    static let maxIconBytes = 2 * 1024 * 1024
+    static let maxImageBytes = 50 * 1024 * 1024
+
+    /// Authenticated GET returning the raw body (thumbnails, downloads). `maxBytes`: the answer is read as it comes and
+    /// refused (`response_too_large`) past that many bytes; nil for a file's own bytes (an attachment of any size).
+    func fetchData(_ path: String, maxBytes: Int? = nil) async throws -> Data {
+        try await requestData("GET", path, body: nil, contentType: nil, retry401: true, maxBytes: maxBytes).0
     }
 
     /// `fromFile` uploads the body from a file instead of `body` (large attachments).
-    private func requestData(_ method: String, _ path: String, body: Data?, fromFile: URL? = nil, contentType: String?, retry401: Bool) async throws -> (Data, Int) {
+    private func requestData(_ method: String, _ path: String, body: Data?, fromFile: URL? = nil, contentType: String?, retry401: Bool,
+                             maxBytes: Int? = nil) async throws -> (Data, Int) {
         if accessToken == nil, refreshToken != nil { _ = try await refresh() }
         var request = URLRequest(url: try endpoint(path))
         request.httpMethod = method
@@ -767,20 +780,25 @@ final class ApiClient: SyncApi, DraftApi, ChannelLinksApi, ActivityApi, CanvasAp
         if let contentType { request.setValue(contentType, forHTTPHeaderField: "Content-Type") }
         if let accessToken { request.setValue("Bearer \(accessToken)", forHTTPHeaderField: "Authorization") }
         if fromFile == nil { request.httpBody = body }
-        let (data, response): (Data, URLResponse)
-        do {
-            if let fromFile {
-                (data, response) = try await session.upload(for: request, fromFile: fromFile)
-            } else {
-                (data, response) = try await session.data(for: request)
+        let data: Data, status: Int
+        if let maxBytes, fromFile == nil {
+            (data, status) = try await capped(request, maxBytes: maxBytes)
+        } else {
+            let response: URLResponse
+            do {
+                if let fromFile {
+                    (data, response) = try await session.upload(for: request, fromFile: fromFile)
+                } else {
+                    (data, response) = try await session.data(for: request)
+                }
+            } catch {
+                throw ApiError.network(error)
             }
-        } catch {
-            throw ApiError.network(error)
+            status = (response as? HTTPURLResponse)?.statusCode ?? 0
         }
-        let status = (response as? HTTPURLResponse)?.statusCode ?? 0
         if status == 401 && retry401 {
             _ = try await refresh()
-            return try await requestData(method, path, body: body, fromFile: fromFile, contentType: contentType, retry401: false)
+            return try await requestData(method, path, body: body, fromFile: fromFile, contentType: contentType, retry401: false, maxBytes: maxBytes)
         }
         if !(200...299).contains(status) {
             struct Envelope: Decodable { struct Inner: Decodable { let code: String; let message: String }; let error: Inner }
@@ -788,6 +806,19 @@ final class ApiClient: SyncApi, DraftApi, ChannelLinksApi, ActivityApi, CanvasAp
             throw ApiError.api(status: status, code: envelope?.error.code ?? "http_\(status)", message: envelope?.error.message ?? "Request failed")
         }
         return (data, status)
+    }
+
+    /// The answer to `request` read as it comes, refused past `maxBytes` (a declared length over it is refused before
+    /// any byte is read): a hostile server's huge or endless answer never sits in memory whole.
+    private func capped(_ request: URLRequest, maxBytes: Int) async throws -> (Data, Int) {
+        do {
+            let (data, response) = try await CappedDownload.get(request, session: session, maxBytes: maxBytes)
+            return (data, response.statusCode)
+        } catch CappedDownload.Failure.tooLarge {
+            throw ApiError.api(status: 0, code: "response_too_large", message: "Response too large")
+        } catch {
+            throw ApiError.network(error)
+        }
     }
 
     /// M14c: the bodies earlier edits replaced, oldest first (author only; 403 for others).

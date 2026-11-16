@@ -1,3 +1,4 @@
+import ImageIO
 import UIKit
 import XCTest
 @testable import ChikuwaChat
@@ -228,5 +229,104 @@ final class CheckerboardTests: XCTestCase {
         XCTAssertFalse(page.checker.isHidden)
         page.state = .loading
         XCTAssertTrue(page.checker.isHidden)
+    }
+}
+
+/// 2026-11-16 (a hostile-server review): pictures from a server are decoded at the size they are shown, absurd canvases
+/// are refused before any pixel is decoded, and a picture's answer is read only up to its cap.
+@MainActor
+final class ImageDecodingTests: XCTestCase {
+    /// A PNG whose header declares `width` × `height` and holds no pixels (a few dozen bytes; decoded whole, gigabytes).
+    static func declaredPNG(width: UInt32, height: UInt32) -> Data {
+        func crc32(_ bytes: [UInt8]) -> UInt32 {
+            var crc: UInt32 = 0xFFFF_FFFF
+            for byte in bytes {
+                crc ^= UInt32(byte)
+                for _ in 0..<8 { crc = crc & 1 == 1 ? (crc >> 1) ^ 0xEDB8_8320 : crc >> 1 }
+            }
+            return ~crc
+        }
+        func be(_ value: UInt32) -> [UInt8] { [UInt8(value >> 24), UInt8(value >> 16 & 0xff), UInt8(value >> 8 & 0xff), UInt8(value & 0xff)] }
+        func chunk(_ type: String, _ body: [UInt8]) -> [UInt8] {
+            let typed = Array(type.utf8) + body
+            return be(UInt32(body.count)) + typed + be(crc32(typed))
+        }
+        let header = be(width) + be(height) + [8, 6, 0, 0, 0] // 8-bit RGBA
+        let pixels: [UInt8] = [0x78, 0x9C, 0x63, 0x00, 0x00, 0x00, 0x01, 0x00, 0x01] // zlib of a single byte
+        return Data([0x89, 0x50, 0x4E, 0x47, 0x0D, 0x0A, 0x1A, 0x0A] + chunk("IHDR", header) + chunk("IDAT", pixels) + chunk("IEND", []))
+    }
+
+    private func png(_ size: CGSize) -> Data {
+        let format = UIGraphicsImageRendererFormat()
+        format.scale = 1
+        return UIGraphicsImageRenderer(size: size, format: format).image { context in
+            UIColor.systemTeal.setFill()
+            context.fill(CGRect(origin: .zero, size: size))
+        }.pngData()!
+    }
+
+    func testPicturesAreDecodedAtTheSizeShown() throws {
+        let wide = png(CGSize(width: 1000, height: 500))
+        let icon = try XCTUnwrap(ImageDecoding.downsample(wide, maxPixelSize: ImageDecoding.iconPixels))
+        XCTAssertEqual(icon.cgImage?.width, 256)
+        XCTAssertEqual(icon.cgImage?.height, 128)
+        // Never enlarged.
+        let small = try XCTUnwrap(ImageDecoding.downsample(png(CGSize(width: 40, height: 20)), maxPixelSize: 512))
+        XCTAssertEqual(small.cgImage?.width, 40)
+        XCTAssertNil(ImageDecoding.downsample(Data("<svg/>".utf8), maxPixelSize: 256))
+        // A viewer keeps every pixel under its budget and scales a larger one down to it.
+        XCTAssertEqual(ImageDecoding.longSide((8064, 6048), maxPixels: ImageDecoding.viewerPixels), 8064, "a 48 MP photo stays whole")
+        let scaled = ImageDecoding.longSide((20000, 10000), maxPixels: ImageDecoding.viewerPixels)
+        XCTAssertLessThanOrEqual(Double(scaled) * Double(scaled) / 2, Double(ImageDecoding.viewerPixels))
+        XCTAssertGreaterThan(scaled, 9000)
+        let file = FileManager.default.temporaryDirectory.appendingPathComponent("decode-\(UUID().uuidString).png")
+        try wide.write(to: file)
+        defer { try? FileManager.default.removeItem(at: file) }
+        XCTAssertEqual(ImageDecoding.decode(contentsOf: file)?.cgImage?.width, 1000)
+        XCTAssertEqual(ImageDecoding.downsample(contentsOf: file, maxPixelSize: 100)?.cgImage?.width, 100)
+    }
+
+    func testAnAbsurdCanvasIsRefusedUndecoded() throws {
+        let bomb = Self.declaredPNG(width: 30000, height: 30000) // 900 MP declared in some 70 bytes
+        XCTAssertLessThan(bomb.count, 200)
+        let source = try XCTUnwrap(CGImageSourceCreateWithData(bomb as CFData, nil))
+        XCTAssertNil(ImageDecoding.pixelSize(source))
+        XCTAssertNil(ImageDecoding.downsample(bomb, maxPixelSize: 256))
+        XCTAssertNil(CustomEmoji.decode(bomb), "an emoji too")
+        XCTAssertNil(CustomEmoji.decode(Self.declaredPNG(width: 5000, height: 5000)), "an emoji's own limit")
+        let file = FileManager.default.temporaryDirectory.appendingPathComponent("bomb-\(UUID().uuidString).png")
+        try bomb.write(to: file)
+        defer { try? FileManager.default.removeItem(at: file) }
+        XCTAssertNil(ImageDecoding.decode(contentsOf: file))
+        XCTAssertNil(ImagePagerController.decode(file))
+    }
+
+    /// fetchData's cap: a declared length over it is refused at once, an answer that grows past it as it comes.
+    func testAPicturesAnswerIsReadOnlyUpToItsCap() async throws {
+        let configuration = URLSessionConfiguration.ephemeral
+        configuration.protocolClasses = [StubProtocol.self]
+        let api = ApiClient(baseUrl: URL(string: "http://server")!, session: URLSession(configuration: configuration))
+        defer { StubProtocol.handler = nil }
+        StubProtocol.handler = { _ in (200, Data(count: ApiClient.maxIconBytes + 1)) }
+        do {
+            _ = try await api.fetchData("/api/v1/users/u/avatar", maxBytes: ApiClient.maxIconBytes)
+            XCTFail("an answer over the cap was taken")
+        } catch {
+            XCTAssertEqual((error as? ApiError)?.code, "response_too_large")
+        }
+        StubProtocol.handler = { _ in (200, Data(count: 1000)) }
+        let fits = try await api.fetchData("/api/v1/users/u/avatar", maxBytes: ApiClient.maxIconBytes)
+        XCTAssertEqual(fits.count, 1000)
+        // Without a cap (a file's own bytes) nothing changes; an error answer still reads as before.
+        StubProtocol.handler = { _ in (200, Data(count: ApiClient.maxIconBytes + 1)) }
+        let file = try await api.fetchData("/api/v1/attachments/a/content")
+        XCTAssertEqual(file.count, ApiClient.maxIconBytes + 1)
+        StubProtocol.handler = { _ in (404, Data(#"{"error":{"code":"attachment_not_found","message":"x","details":{}}}"#.utf8)) }
+        do {
+            _ = try await api.fetchData("/api/v1/attachments/a/thumbnail", maxBytes: ApiClient.maxImageBytes)
+            XCTFail("a 404 was taken")
+        } catch {
+            XCTAssertEqual((error as? ApiError)?.code, "attachment_not_found")
+        }
     }
 }

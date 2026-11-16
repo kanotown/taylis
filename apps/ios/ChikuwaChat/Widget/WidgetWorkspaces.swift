@@ -235,9 +235,11 @@ enum WidgetWorkspaceIcons {
         WidgetCenter.shared.reloadAllTimelines()
     }
 
-    /// The icon of a workspace's current version, when the app has kept it.
+    /// The icon of a workspace's current version, when the app has kept it: at the tile's size (a widget has little
+    /// memory; a file an older build kept is the server's own bytes, ImageDecoding).
     static func image(for workspace: Workspace, in folder: URL = folder) -> UIImage? {
         guard let version = workspace.iconVersion, !version.isEmpty else { return nil }
-        return UIImage(contentsOfFile: file(serverUrl: workspace.serverUrl, version: version, in: folder).path)
+        return ImageDecoding.downsample(contentsOf: file(serverUrl: workspace.serverUrl, version: version, in: folder),
+                                        maxPixelSize: ImageDecoding.iconPixels)
     }
 }

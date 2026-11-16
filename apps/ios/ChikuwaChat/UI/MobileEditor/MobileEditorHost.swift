@@ -66,12 +66,12 @@ extension AppController: MobileEditorHost, EditorAssetSource {
 
     func attachmentData(_ id: String) async throws -> Data {
         guard let api else { throw ApiError.network(URLError(.cancelled)) }
-        return try await api.fetchData("/api/v1/attachments/\(id)/content")
+        return try await api.fetchData("/api/v1/attachments/\(id)/content", maxBytes: ApiClient.maxImageBytes)
     }
 
     func emojiData(_ name: String) async throws -> Data {
         guard let api, let emoji = store.customEmoji[name] else { throw ApiError.network(URLError(.cancelled)) }
-        return try await api.fetchData("/api/v1/emoji/\(emoji.id)/image")
+        return try await api.fetchData("/api/v1/emoji/\(emoji.id)/image", maxBytes: ApiClient.maxIconBytes)
     }
 }
 

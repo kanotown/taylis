@@ -34,7 +34,7 @@ enum AlbumFiles {
                                                [SafePaths.idComponent(attachmentId) + ".img"]) else { return nil }
         if FileManager.default.fileExists(atPath: destination.path) { return destination }
         do {
-            let data = try await api.fetchData(AlbumRules.displayPath(attachmentId))
+            let data = try await api.fetchData(AlbumRules.displayPath(attachmentId), maxBytes: ApiClient.maxImageBytes)
             try FileManager.default.createDirectory(at: destination.deletingLastPathComponent(), withIntermediateDirectories: true)
             try data.write(to: destination, options: .atomic)
             return destination
@@ -349,9 +349,9 @@ struct AlbumSlideshow: View {
     private func fetch(_ item: DriveItemOut) async {
         guard !AlbumRules.isVideo(item), images[item.id] == nil, let attachmentId = item.file?.attachmentId,
               let url = await AlbumFiles.display(attachmentId, controller: controller) else { return }
+        // The display size (2048 px): decoded with a pixel budget, a server's absurd canvas refused (ImageDecoding).
         let image = await Task.detached(priority: .userInitiated) { () -> UIImage? in
-            guard let data = try? Data(contentsOf: url), let image = UIImage(data: data) else { return nil }
-            return image.preparingForDisplay() ?? image
+            ImageDecoding.decode(contentsOf: url)
         }.value
         if let image { images[item.id] = image }
     }

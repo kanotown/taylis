@@ -354,8 +354,8 @@ struct DriveViewing: Identifiable {
                 let ticket = try await api.driveDownloadTicket(item.id)
                 guard let url = DriveFiles.absolute(ticket.url, base: api.baseUrl) else { return nil }
                 var poster: UIImage?
-                if item.file?.hasPoster == true, let data = try? await api.fetchData("/api/v1/attachments/\(attachment.id)/thumbnail") {
-                    poster = UIImage(data: data)
+                if item.file?.hasPoster == true, let data = try? await api.fetchData("/api/v1/attachments/\(attachment.id)/thumbnail", maxBytes: ApiClient.maxImageBytes) {
+                    poster = await ImageDecoding.downsampleOff(data, maxPixelSize: ImageDecoding.thumbnailPixels)
                 }
                 return DriveViewing(kind: .video(attachment, url, poster: poster))
             } catch {

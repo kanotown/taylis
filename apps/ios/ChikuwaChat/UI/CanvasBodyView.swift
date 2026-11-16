@@ -453,10 +453,10 @@ struct CanvasImageView: View {
             await loader.load {
                 guard let api = controller.api else { throw URLError(.notConnectedToInternet) }
                 do {
-                    return try await api.fetchData("/api/v1/attachments/\(attachmentId)/thumbnail")
+                    return try await api.fetchData("/api/v1/attachments/\(attachmentId)/thumbnail", maxBytes: ApiClient.maxImageBytes)
                 } catch ApiError.api(_, let code, _) where code == "thumbnail_not_found" {
                     // A small image the server made no thumbnail of: the file itself (an image is checked by UIImage).
-                    return try await api.fetchData("/api/v1/attachments/\(attachmentId)/content?inline=1")
+                    return try await api.fetchData("/api/v1/attachments/\(attachmentId)/content?inline=1", maxBytes: ApiClient.maxImageBytes)
                 }
             }
         }

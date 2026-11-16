@@ -167,31 +167,16 @@ enum CommunicationNotification {
     /// The picture's bytes, or nil (any error, a redirect, a non-image answer, too large or too slow). Read as they
     /// come and given up past `maxAvatarBytes` or `avatarTimeout` (it read the whole answer first, however large).
     @Sendable static func fetchAvatar(_ url: URL) async -> Data? {
+        await fetchAvatar(url, session: .shared)
+    }
+
+    /// The same with a session of the caller's (tests). From the URL the push names, never from where it redirects.
+    static func fetchAvatar(_ url: URL, session: URLSession) async -> Data? {
         var request = URLRequest(url: url, cachePolicy: .useProtocolCachePolicy, timeoutInterval: avatarTimeout)
         request.setValue("image/png", forHTTPHeaderField: "Accept")
-        guard let (bytes, response) = try? await URLSession.shared.bytes(for: request, delegate: NoRedirects()),
-              let http = response as? HTTPURLResponse, http.statusCode == 200, (http.mimeType ?? "").hasPrefix("image/"),
-              http.expectedContentLength <= Int64(maxAvatarBytes) else { return nil }
-        guard let data = try? await collect(bytes, limit: maxAvatarBytes, deadline: Date().addingTimeInterval(avatarTimeout)),
-              !data.isEmpty else { return nil }
+        guard let (data, http) = try? await CappedDownload.get(request, session: session, maxBytes: maxAvatarBytes, followRedirects: false,
+                                                               deadline: Date().addingTimeInterval(avatarTimeout)),
+              http.statusCode == 200, (http.mimeType ?? "").hasPrefix("image/"), !data.isEmpty else { return nil }
         return data
-    }
-
-    /// The bytes of `sequence`, or nil once there are more than `limit` of them or `deadline` passed.
-    static func collect<S: AsyncSequence>(_ sequence: S, limit: Int, deadline: Date = .distantFuture) async throws -> Data? where S.Element == UInt8 {
-        var data = Data()
-        for try await byte in sequence {
-            guard data.count < limit, Date() < deadline else { return nil }
-            data.append(byte)
-        }
-        return data
-    }
-
-    /// The picture is fetched from the URL the push names, never from where it redirects.
-    private final class NoRedirects: NSObject, URLSessionTaskDelegate, @unchecked Sendable {
-        func urlSession(_ session: URLSession, task: URLSessionTask, willPerformHTTPRedirection response: HTTPURLResponse,
-                        newRequest request: URLRequest, completionHandler: @escaping (URLRequest?) -> Void) {
-            completionHandler(nil)
-        }
     }
 }

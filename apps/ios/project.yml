@@ -112,6 +112,7 @@ targets:
         excludes: ["Info.plist", "NotificationService.entitlements"]
       - path: ChikuwaChat/Platform/CommunicationNotification.swift
       - path: ChikuwaChat/Platform/InitialsAvatar.swift
+      - path: ChikuwaChat/Platform/CappedDownload.swift
     # 2026-11-16: the App Group (read only: the workspace list the app keeps there), so the sender's picture is fetched
     # only from the workspace's own address. No Keychain group: the extension still holds no credentials.
     entitlements:
@@ -198,6 +199,8 @@ targets:
       - path: ChikuwaChat/Share/ShareSession.swift
       - path: ChikuwaChat/Api/JSON.swift
       - path: ChikuwaChat/App/Workspaces.swift
+      # The workspace icons in the headers, decoded at their size (2026-11-16).
+      - path: ChikuwaChat/Platform/ImageDecoding.swift
     entitlements:
       path: Widgets/Widgets.entitlements
       properties:

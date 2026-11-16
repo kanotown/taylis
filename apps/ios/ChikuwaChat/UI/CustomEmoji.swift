@@ -142,8 +142,13 @@ enum CustomEmoji {
     /// shows for 0.1 s, as browsers do). Frames are drawn at `animatedHeight`, lighter than the still one.
     /// The still is read by ImageIO already at the stored copy's pixels (`thumbnail`), which averages every source pixel:
     /// a 512 px picture drawn straight into 144 px skipped some of them, and a thin outline came out broken.
+    /// An emoji (each of its frames) has at most this many pixels (2026-11-16: a server's huge canvas was decoded whole,
+    /// up to 120 times); the server keeps them far smaller.
+    static let maxSourcePixels = 4096 * 4096
+
     static func decode(_ data: Data, pack: Bool = false) -> (still: UIImage, animation: EmojiAnimation?)? {
         guard let source = CGImageSourceCreateWithData(data as CFData, nil), CGImageSourceGetCount(source) > 0,
+              let size = ImageDecoding.pixelSize(source), size.width * size.height <= maxSourcePixels,
               let first = CGImageSourceCreateImageAtIndex(source, 0, nil) else { return nil }
         let height = pack ? packStoredHeight : storedHeight
         let drawn = storedFit(CGSize(width: first.width, height: first.height), height: height).drawn

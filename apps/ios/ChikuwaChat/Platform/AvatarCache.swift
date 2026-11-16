@@ -35,7 +35,11 @@ final class AvatarCache {
         Task {
             defer { loading.remove(key) }
             let escaped = version.addingPercentEncoding(withAllowedCharacters: .urlQueryAllowed) ?? version
-            if let data = try? await fetcher("/api/v1/users/\(id)/avatar?v=\(escaped)"), let image = UIImage(data: data) {
+            // Decoded at the size it is shown, off the main thread (ImageDecoding: a server's huge canvas is refused).
+            if let data = try? await fetcher("/api/v1/users/\(id)/avatar?v=\(escaped)"),
+               let image = await Task.detached(priority: .userInitiated, operation: {
+                   ImageDecoding.downsample(data, maxPixelSize: ImageDecoding.avatarPixels)
+               }).value {
                 images[key] = image
             }
         }

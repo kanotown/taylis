@@ -657,7 +657,7 @@ struct DriveThumbnail: View {
             guard let path = DriveRules.thumbnailPath(item) else { return }
             await loader.load {
                 guard let api = controller.api else { throw URLError(.notConnectedToInternet) }
-                return try await api.fetchData(path)
+                return try await api.fetchData(path, maxBytes: ApiClient.maxImageBytes)
             }
         }
     }

@@ -206,7 +206,7 @@ struct LendingPhoto: View {
             guard let photo, photo.hasThumbnail else { return }
             await loader.load {
                 guard let api = controller.api else { throw URLError(.notConnectedToInternet) }
-                return try await api.fetchData("/api/v1/attachments/\(photo.id)/thumbnail")
+                return try await api.fetchData("/api/v1/attachments/\(photo.id)/thumbnail", maxBytes: ApiClient.maxImageBytes)
             }
         }
     }

@@ -658,7 +658,7 @@ final class AppController {
         }
         AvatarCache.shared.fetcher = { [weak api] path in
             guard let api else { throw ApiError.api(status: 0, code: "signed_out", message: "") }
-            return try await api.fetchData(path)
+            return try await api.fetchData(path, maxBytes: ApiClient.maxIconBytes) // a profile picture
         }
         let engine = SyncEngine(
             api: api,
@@ -1187,7 +1187,7 @@ final class AppController {
             CustomEmoji.decode(data, pack: pack).map { DecodedEmoji(still: $0.still, animation: $0.animation) }
         }
         let path = EmojiImageCache.imagePath(id: emoji.id, version: emoji.imageVersion)
-        let fetch: () async throws -> Data = { try await api.fetchData(path) }
+        let fetch: () async throws -> Data = { try await api.fetchData(path, maxBytes: ApiClient.maxIconBytes) }
         Task {
             defer { if target === store { emojiLoads.remove(emoji.id) } }
             guard let loaded = await cache.image(id: emoji.id, version: emoji.imageVersion, variant: variant, decode: decode, fetch: fetch),
@@ -1214,8 +1214,8 @@ final class AppController {
         Task {
             defer { if target === store { emojiLoads.remove(key) } }
             guard let loaded = await cache.image(id: "tab-\(pack.id)", version: version, variant: "tab",
-                                                 decode: { UIImage(data: $0).map { DecodedEmoji(still: $0) } },
-                                                 fetch: { try await api.fetchData("/api/v1/emoji/packs/\(pack.id)/tab") }),
+                                                 decode: { ImageDecoding.downsample($0, maxPixelSize: ImageDecoding.iconPixels).map { DecodedEmoji(still: $0) } },
+                                                 fetch: { try await api.fetchData("/api/v1/emoji/packs/\(pack.id)/tab", maxBytes: ApiClient.maxIconBytes) }),
                   target === store else { return }
             store.packTabImages[key] = loaded.image.still
         }

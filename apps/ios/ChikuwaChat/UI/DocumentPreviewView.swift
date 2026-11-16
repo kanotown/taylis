@@ -61,7 +61,7 @@ struct DocumentPreviewCard: View {
                 .task(id: attachment.id) {
                     await loader.load {
                         guard let api = controller.api else { throw URLError(.notConnectedToInternet) }
-                        return try await api.fetchData("/api/v1/attachments/\(attachment.id)/preview/thumbnail")
+                        return try await api.fetchData("/api/v1/attachments/\(attachment.id)/preview/thumbnail", maxBytes: ApiClient.maxImageBytes)
                     }
                 }
                 Divider()
