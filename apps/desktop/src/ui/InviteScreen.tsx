@@ -4,6 +4,7 @@ import { type FormEvent, useEffect, useState } from "react";
 import type { InvitePreviewOut } from "../api/types";
 import type { AppController } from "../state/app";
 import { fullTimestamp } from "./format";
+import { useInsecureServerCheck } from "./InsecureServerDialog";
 import { inviteErrorText, parseInviteLink } from "./invite";
 import { AuthShell } from "./LoginScreen";
 import { Button, Field, Input } from "./primitives";
@@ -25,26 +26,36 @@ export function InviteScreen({ controller, onBack, onDone, initialLink }: { cont
   const minLength = preview?.password_min_length ?? 8;
   const mismatch = repeat !== "" && password !== repeat;
 
-  const check = async (event: FormEvent) => {
+  const check = (event: FormEvent) => {
     event.preventDefault();
-    await runCheck();
+    runCheck();
   };
   useEffect(() => {
-    if (initialLink) void runCheck();
+    if (initialLink) runCheck();
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
 
-  const runCheck = async () => {
+  // M190: a link to a server on the internet over plain HTTP is confirmed before the server is first asked.
+  const insecure = useInsecureServerCheck();
+  const runCheck = () => {
     const parsed = parseInviteLink(link);
     if (!parsed) {
       setError(t("inviteScreen.badLink"));
       return;
     }
+    setError(null);
+    insecure.check(parsed.server, (server) => {
+      // 「https で接続」: the link in the field says https too.
+      if (server !== parsed.server) setLink((text) => text.trim().replace(/^http:/i, "https:"));
+      void lookUp({ server, token: parsed.token });
+    });
+  };
+  const lookUp = async (found: { server: string; token: string }) => {
     setBusy(true);
     setError(null);
     try {
-      setPreview(await controller.previewInvite(parsed.server, parsed.token));
-      setTarget(parsed);
+      setPreview(await controller.previewInvite(found.server, found.token));
+      setTarget(found);
     } catch (err) {
       setError(inviteErrorText(err));
     } finally {
@@ -116,6 +127,7 @@ export function InviteScreen({ controller, onBack, onDone, initialLink }: { cont
           <ArrowLeft size={12} /> {target ? t("inviteScreen.otherLink") : t("inviteScreen.backToLogin")}
         </button>
       </form>
+      {insecure.dialog}
     </AuthShell>
   );
 }

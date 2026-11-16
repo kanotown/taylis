@@ -5,6 +5,7 @@ import { ApiClient } from "../api/client";
 import { isWeb } from "../platform/env";
 import type { AppController } from "../state/app";
 import { isServerInfo, normalizeServerUrl } from "../state/workspaces";
+import { useInsecureServerCheck } from "./InsecureServerDialog";
 import { Button, Field, Input } from "./primitives";
 import { type GoogleButtonText, googleButtonText } from "./sso";
 import { WorkspaceIcon } from "./workspaceIcons";
@@ -68,20 +69,33 @@ export function LoginScreen({ controller, onDone, onInvite }: { controller: AppC
     };
   }, [iconKey, entry]);
 
-  const signInWithGoogle = async () => {
-    setLeaving(true);
-    await controller.startGoogleSignIn(server);
-    setLeaving(false); // still here: the start failed and the form shows why
+  // M190: plain HTTP to a server on the internet is confirmed first (「https で接続」 puts the https URL in the field).
+  const insecure = useInsecureServerCheck();
+  const take = (target: string) => {
+    if (target !== server.trim()) setServer(target);
   };
+
+  const signInWithGoogle = () =>
+    insecure.check(server.trim(), (target) => {
+      take(target);
+      setLeaving(true);
+      void controller.startGoogleSignIn(target).then(() => setLeaving(false)); // still here: the start failed and the form shows why
+    });
 
   if (controller.ssoState !== "idle") return <SsoWaiting controller={controller} />;
 
-  const submit = async (event: FormEvent) => {
+  const submit = (event: FormEvent) => {
     event.preventDefault();
-    setBusy(true);
-    await controller.login(server.trim(), username.trim(), password, needsCode ? totpCode.replace(/\s+/g, "") : undefined);
-    setBusy(false);
-    onDone();
+    // The code step of the same sign-in (the password went already) is not asked again.
+    const ask = needsCode ? (target: string, proceed: (target: string) => void) => proceed(target) : insecure.check;
+    ask(server.trim(), (target) => {
+      take(target);
+      setBusy(true);
+      void controller.login(target, username.trim(), password, needsCode ? totpCode.replace(/\s+/g, "") : undefined).then(() => {
+        setBusy(false);
+        onDone();
+      });
+    });
   };
 
   return (
@@ -138,7 +152,7 @@ export function LoginScreen({ controller, onDone, onInvite }: { controller: AppC
               variant="secondary"
               className={google.subtitle ? "h-auto min-h-9 w-full gap-2.5 whitespace-normal py-2" : "w-full"}
               disabled={leaving || busy}
-              onClick={() => void signInWithGoogle()}
+              onClick={signInWithGoogle}
               aria-label={google.title}
             >
               {/* The organisation's own login gets a neutral mark; Google's "G" stays with 「Google でログイン」. */}
@@ -168,6 +182,7 @@ export function LoginScreen({ controller, onDone, onInvite }: { controller: AppC
           </button>
         )}
       </form>
+      {insecure.dialog}
     </AuthShell>
   );
 }
