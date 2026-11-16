@@ -19,6 +19,7 @@ use tauri_plugin_deep_link::DeepLinkExt;
 mod background;
 mod downloads;
 mod local_store;
+mod navigation;
 #[cfg(target_os = "macos")]
 mod mac_notify;
 #[cfg(any(target_os = "macos", windows))]
@@ -186,6 +187,8 @@ pub fn run() {
     #[cfg(any(windows, target_os = "linux"))]
     let builder = builder.plugin(tauri_plugin_single_instance::init(|app, _args, _cwd| show_main_window(app)));
     builder
+        // The window never leaves the app: links, dropped links and script that would load another page (navigation.rs).
+        .plugin(navigation::init())
         .plugin(tauri_plugin_deep_link::init())
         .plugin(tauri_plugin_sql::Builder::default().build())
         .plugin(tauri_plugin_notification::init())
