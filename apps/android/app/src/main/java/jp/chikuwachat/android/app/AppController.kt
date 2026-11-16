@@ -2507,8 +2507,9 @@ class AppController(private val app: Application) {
         val meta = runCatching { api.attachment(attachmentId) }.getOrNull() ?: return null
         if (!meta.contentType.startsWith("image/")) return null
         val path = if (meta.hasThumbnail) "/api/v1/attachments/$attachmentId/thumbnail" else "/api/v1/attachments/$attachmentId/content?inline=1"
-        val bytes = runCatching { api.fetchBytes(path) }.getOrNull() ?: return null
-        return (jp.chikuwachat.android.ui.EditorImageType.of(bytes) ?: meta.contentType) to bytes
+        val bytes = runCatching { api.fetchBytes(path, jp.chikuwachat.android.ui.EditorImageType.MAX_BYTES) }.getOrNull() ?: return null
+        // 2026-11-16: the type its bytes are (PNG, JPEG, GIF or WebP), never the server's (an SVG would run on the editor's origin).
+        return (jp.chikuwachat.android.ui.EditorImageType.of(bytes) ?: return null) to bytes
     }
 
     /** M153a: a custom emoji's image for the bundled page editor (`/emoji/<id>`), off the main thread. */
@@ -2517,7 +2518,8 @@ class AppController(private val app: Application) {
         val emoji = store.customEmoji.values.firstOrNull { it.id == emojiId }?.takeIf { !it.isText } ?: return null
         // docs/EMOJI.md, image cache: the same copy on disk as the app's own pictures.
         val bytes = emojiKey(emoji)?.let { emojiPictures.bytes(it) } ?: return null
-        return (jp.chikuwachat.android.ui.EditorImageType.of(bytes) ?: emoji.contentType) to bytes
+        // 2026-11-16: a picture by its own bytes only (the emoji's stated type is the server's word).
+        return (jp.chikuwachat.android.ui.EditorImageType.of(bytes) ?: return null) to bytes
     }
 
     /**

@@ -89,6 +89,7 @@ import jp.chikuwachat.android.sync.WikiLinks
 import jp.chikuwachat.android.sync.WikiTree
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.runBlocking
+import kotlinx.coroutines.withTimeoutOrNull
 import java.io.ByteArrayInputStream
 
 /*
@@ -112,6 +113,8 @@ private const val ATTACHMENT_URL = "https://$ASSET_HOST/attachment/{id}"
 private const val EMOJI_URL = "https://$ASSET_HOST/emoji/"
 /** The pictures of open pages kept decoded-ready for the WebView (bytes, by attachment or emoji id). */
 private const val IMAGE_CACHE_BYTES = 16 * 1024 * 1024
+/** The longest a picture's fetch holds one of the WebView's request threads (2026-11-16): then the editor's box. */
+private const val EDITOR_IMAGE_WAIT_MS = 15_000L
 /** How often one page screen reads the editor's page again after its render process ended, before giving up. */
 private const val MAX_RELOADS = 3
 private val UUID = Regex("^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$", RegexOption.IGNORE_CASE)
@@ -351,9 +354,17 @@ class MobileEditorHost(private val context: Context, private val controller: App
         return refuse()
     }
 
+    /**
+     * 2026-11-16 (a hostile-server review): only a PNG, JPEG, GIF or WebP by its own bytes is served (never the server's
+     * type: an SVG or HTML on the editor's origin could run script there), with nosniff and a CSP that allows nothing; the
+     * fetch on the WebView's thread waits at most [EDITOR_IMAGE_WAIT_MS].
+     */
     private fun image(key: String, fetch: suspend () -> Pair<String, ByteArray>?): WebResourceResponse {
-        val cached = images.get(key) ?: runCatching { runBlocking { fetch() } }.getOrNull()?.also { images.put(key, it) } ?: return refuse()
-        return WebResourceResponse(cached.first, null, 200, "OK", mapOf("Cache-Control" to "private, max-age=3600"), ByteArrayInputStream(cached.second))
+        val cached = images.get(key)
+            ?: runCatching { runBlocking { withTimeoutOrNull(EDITOR_IMAGE_WAIT_MS) { fetch() } } }.getOrNull()?.also { images.put(key, it) }
+            ?: return refuse()
+        val type = EditorImageType.of(cached.second) ?: return refuse()
+        return WebResourceResponse(type, null, 200, "OK", EditorImageType.HEADERS, ByteArrayInputStream(cached.second))
     }
 
     private fun refuse(): WebResourceResponse = WebResourceResponse("text/plain", "utf-8", 404, "Not Found", emptyMap(), ByteArrayInputStream(ByteArray(0)))
@@ -531,8 +542,21 @@ private fun EditorKeyboardRow(onCommand: (EditorCommand) -> Unit, onImage: () ->
     }
 }
 
-/** The type of a picture served to the WebView, from its first bytes (a thumbnail's type is not in its metadata). */
+/**
+ * The type of a picture served to the WebView, from its first bytes (a thumbnail's type is not in its metadata). Only these
+ * four raster types are ever served (2026-11-16): anything else, an SVG among them, is refused whatever the server says.
+ */
 internal object EditorImageType {
+    /** The most of a picture the editor is given (2026-11-16). */
+    const val MAX_BYTES = 20L * 1024 * 1024
+
+    /** Every picture's headers: kept privately for an hour, never sniffed as another type, no script or loads of its own. */
+    val HEADERS: Map<String, String> = mapOf(
+        "Cache-Control" to "private, max-age=3600",
+        "X-Content-Type-Options" to "nosniff",
+        "Content-Security-Policy" to "default-src 'none'; sandbox",
+    )
+
     fun of(bytes: ByteArray): String? = when {
         bytes.size >= 8 && bytes[0] == 0x89.toByte() && bytes[1] == 'P'.code.toByte() && bytes[2] == 'N'.code.toByte() && bytes[3] == 'G'.code.toByte() -> "image/png"
         bytes.size >= 3 && bytes[0] == 0xFF.toByte() && bytes[1] == 0xD8.toByte() && bytes[2] == 0xFF.toByte() -> "image/jpeg"

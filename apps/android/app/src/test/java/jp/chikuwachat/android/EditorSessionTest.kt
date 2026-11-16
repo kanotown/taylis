@@ -420,4 +420,19 @@ class EditorSessionTest {
         assertNull(EditorImageType.of("hello".toByteArray()))
         assertNull(EditorImageType.of(ByteArray(0)))
     }
+
+    /**
+     * 2026-11-16 (a hostile-server review): the editor's origin serves only raster pictures by their own bytes, whatever
+     * type the server names (an SVG or HTML there could run script with the bridge), never sniffed, with a CSP that
+     * allows nothing of their own.
+     */
+    @Test fun onlyRasterPicturesAreServedToTheEditor() {
+        assertNull(EditorImageType.of("<svg xmlns=\"http://www.w3.org/2000/svg\" onload=\"alert(1)\"/>".toByteArray()))
+        assertNull(EditorImageType.of("<?xml version=\"1.0\"?><svg/>".toByteArray()))
+        assertNull(EditorImageType.of("<!doctype html><script>x()</script>".toByteArray()))
+        assertNull(EditorImageType.of("GIF8".toByteArray())) // too short for a GIF
+        assertEquals("nosniff", EditorImageType.HEADERS["X-Content-Type-Options"])
+        assertEquals("default-src 'none'; sandbox", EditorImageType.HEADERS["Content-Security-Policy"])
+        assertEquals("private, max-age=3600", EditorImageType.HEADERS["Cache-Control"])
+    }
 }
