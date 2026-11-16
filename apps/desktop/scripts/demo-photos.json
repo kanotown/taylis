@@ -1,0 +1,149 @@
+{
+  "about": "Real photographs for the demo workspace's album and #雑談 post (scripts/docs-shots-setup.mjs), from Wikimedia Commons, all CC0 (no attribution required). The setup downloads `url` (Commons' 1920 px rendition; 1280 px wide for a portrait) into a cache outside the repository and checks `sha256`; the photo files are not committed.",
+  "photos": [
+    {
+      "id": "lake",
+      "title": "Kamikochi - Kamikochi6522",
+      "theme": "mountain lake: Taisho Pond in Kamikochi (Nagano) reflecting autumn foliage",
+      "source": "https://commons.wikimedia.org/wiki/File:Kamikochi_-_Kamikochi6522.jpg",
+      "url": "https://upload.wikimedia.org/wikipedia/commons/thumb/3/3d/Kamikochi_-_Kamikochi6522.jpg/1920px-Kamikochi_-_Kamikochi6522.jpg",
+      "creator": "lumoplank",
+      "license": "CC0",
+      "sha256": "768aeda40c47be10c13152cabff2039b0c78a4d1cca67a77317e31a7ecddf2db"
+    },
+    {
+      "id": "stars-lake",
+      "title": "Milky Way Lake Mountains (Unsplash)",
+      "theme": "clear starry night: the Milky Way over a mountain lake, lights on the shore",
+      "source": "https://commons.wikimedia.org/wiki/File:Milky_Way_Lake_Mountains_(Unsplash).jpg",
+      "url": "https://upload.wikimedia.org/wikipedia/commons/thumb/f/ff/Milky_Way_Lake_Mountains_%28Unsplash%29.jpg/1920px-Milky_Way_Lake_Mountains_%28Unsplash%29.jpg",
+      "creator": "Andrew Coelho (Unsplash)",
+      "license": "CC0",
+      "license_note": "CC0 1.0: published on Unsplash before 5 June 2017 (Commons template {{Unsplash}})",
+      "sha256": "210a7b6050576e76e463ef873975b74289a6d3bc4c610bc117a96254ff472662"
+    },
+    {
+      "id": "river",
+      "title": "Kamikochi - Kamikochi6530",
+      "theme": "river: the Azusa River in Kamikochi, autumn trees and snow-dusted peaks",
+      "source": "https://commons.wikimedia.org/wiki/File:Kamikochi_-_Kamikochi6530.jpg",
+      "url": "https://upload.wikimedia.org/wikipedia/commons/thumb/9/98/Kamikochi_-_Kamikochi6530.jpg/1920px-Kamikochi_-_Kamikochi6530.jpg",
+      "creator": "lumoplank",
+      "license": "CC0",
+      "sha256": "fd78edb147a76851f57bd78d1748044a13ff7896f69fe486e0ad1b1ebbd5970e"
+    },
+    {
+      "id": "larch-forest",
+      "title": "Kamikochi - Kamikochi6531",
+      "theme": "mountain trail: a larch forest in autumn colour, Kamikochi",
+      "source": "https://commons.wikimedia.org/wiki/File:Kamikochi_-_Kamikochi6531.jpg",
+      "url": "https://upload.wikimedia.org/wikipedia/commons/thumb/b/bd/Kamikochi_-_Kamikochi6531.jpg/1920px-Kamikochi_-_Kamikochi6531.jpg",
+      "creator": "lumoplank",
+      "license": "CC0",
+      "sha256": "22558e8137361286b4a7679e2677b5551f1d712d8b10b8624a04b3aefd883936"
+    },
+    {
+      "id": "soba",
+      "title": "Mori-soba 002",
+      "theme": "local food: mori soba on a bamboo tray",
+      "source": "https://commons.wikimedia.org/wiki/File:Mori-soba_002.jpg",
+      "url": "https://upload.wikimedia.org/wikipedia/commons/thumb/8/8f/Mori-soba_002.jpg/1920px-Mori-soba_002.jpg",
+      "creator": "Ocdp",
+      "license": "CC0",
+      "sha256": "6724cffe45f7b8b43afa618d59a34d60836aa8af42a5f85d2511f7f8aa7a0ba3"
+    },
+    {
+      "id": "seminar-room",
+      "title": "White conference room (Unsplash)",
+      "theme": "seminar room: a table, chairs and a whiteboard",
+      "source": "https://commons.wikimedia.org/wiki/File:White_conference_room_(Unsplash).jpg",
+      "url": "https://upload.wikimedia.org/wikipedia/commons/thumb/2/2b/White_conference_room_%28Unsplash%29.jpg/1920px-White_conference_room_%28Unsplash%29.jpg",
+      "creator": "Breather (Unsplash)",
+      "license": "CC0",
+      "license_note": "CC0 1.0: published on Unsplash before 5 June 2017 (Commons template {{Unsplash}})",
+      "sha256": "c2e1bc76508a87c18f6f4e345bc298aee0957707353442d6f1f4a0169c6668e4"
+    },
+    {
+      "id": "nozawana",
+      "title": "野沢菜 served at a minshuku in Hakuba",
+      "theme": "local food: nozawana pickles served at a minshuku in Hakuba (Nagano)",
+      "source": "https://commons.wikimedia.org/wiki/File:%E9%87%8E%E6%B2%A2%E8%8F%9C_served_at_a_minshuku_in_Hakuba.jpg",
+      "url": "https://upload.wikimedia.org/wikipedia/commons/thumb/3/3f/%E9%87%8E%E6%B2%A2%E8%8F%9C_served_at_a_minshuku_in_Hakuba.jpg/1920px-%E9%87%8E%E6%B2%A2%E8%8F%9C_served_at_a_minshuku_in_Hakuba.jpg",
+      "creator": "Syced",
+      "license": "CC0",
+      "sha256": "03a53ddb7cbe017f9ded15c3b72748bf2eccc7ca59c47831cef1cb15bb5c8d56"
+    },
+    {
+      "id": "campfire",
+      "title": "Fire and logs at night (Unsplash)",
+      "theme": "campfire at night (hands only, no face)",
+      "source": "https://commons.wikimedia.org/wiki/File:Fire_and_logs_at_night_(Unsplash).jpg",
+      "url": "https://upload.wikimedia.org/wikipedia/commons/thumb/6/6d/Fire_and_logs_at_night_%28Unsplash%29.jpg/1920px-Fire_and_logs_at_night_%28Unsplash%29.jpg",
+      "creator": "Sandis Helvigs (Unsplash)",
+      "license": "CC0",
+      "license_note": "CC0 1.0: published on Unsplash before 5 June 2017 (Commons template {{Unsplash}})",
+      "sha256": "cf258cd3958077dfcadd6aee8ffb500c458f0552916d65561f545566555c0eb8"
+    },
+    {
+      "id": "stars-tent",
+      "title": "Stars (Unsplash)",
+      "theme": "clear starry night with a shooting star over a lit tent",
+      "source": "https://commons.wikimedia.org/wiki/File:Stars_(Unsplash).jpg",
+      "url": "https://upload.wikimedia.org/wikipedia/commons/thumb/6/65/Stars_%28Unsplash%29.jpg/1920px-Stars_%28Unsplash%29.jpg",
+      "creator": "Alan Chen (Unsplash)",
+      "license": "CC0",
+      "license_note": "CC0 1.0: published on Unsplash before 5 June 2017 (Commons template {{Unsplash}})",
+      "sha256": "6b53fa8d193ff87bb8b70df6ed6590b4c1bd89c3fb4049bffa78b8085d56ff59"
+    },
+    {
+      "id": "ryokan-room",
+      "title": "Ryokan Matsumae in Nara",
+      "theme": "quiet ryokan room: tatami, futons and a low table",
+      "source": "https://commons.wikimedia.org/wiki/File:Ryokan_Matsumae_in_Nara.jpg",
+      "url": "https://upload.wikimedia.org/wikipedia/commons/thumb/0/0f/Ryokan_Matsumae_in_Nara.jpg/1920px-Ryokan_Matsumae_in_Nara.jpg",
+      "creator": "Mx. Granger",
+      "license": "CC0",
+      "sha256": "a8673ebaa48e414492648c454ace74c0e4a77cd2d603114cc9ed3d5d31c85474"
+    },
+    {
+      "id": "morning-mist",
+      "title": "Okuhida - Shinhotaka6511",
+      "theme": "morning mist: a snow-dusted ridge above the clouds in the valley, Okuhida",
+      "source": "https://commons.wikimedia.org/wiki/File:Okuhida_-_Shinhotaka6511.jpg",
+      "url": "https://upload.wikimedia.org/wikipedia/commons/thumb/0/08/Okuhida_-_Shinhotaka6511.jpg/1920px-Okuhida_-_Shinhotaka6511.jpg",
+      "creator": "lumoplank",
+      "license": "CC0",
+      "sha256": "2e607192c41141f314505d8054ad7bf3852c0602ffdc550fa9d7e3916bd06800"
+    },
+    {
+      "id": "pond",
+      "title": "Kamikochi - Kamikochi6537",
+      "theme": "mountain pond with autumn trees under a peak, Kamikochi",
+      "source": "https://commons.wikimedia.org/wiki/File:Kamikochi_-_Kamikochi6537.jpg",
+      "url": "https://upload.wikimedia.org/wikipedia/commons/thumb/c/c8/Kamikochi_-_Kamikochi6537.jpg/1920px-Kamikochi_-_Kamikochi6537.jpg",
+      "creator": "lumoplank",
+      "license": "CC0",
+      "sha256": "6ea4437dc1290aa556ad7ef78bd074240f51b6a70ed4256753d5748265a51f06"
+    },
+    {
+      "id": "waterfall",
+      "title": "Karuizawa - Karuizawa6420",
+      "theme": "waterfall: a wide curtain fall over a mossy ledge in autumn, Karuizawa (Nagano)",
+      "source": "https://commons.wikimedia.org/wiki/File:Karuizawa_-_Karuizawa6420.jpg",
+      "url": "https://upload.wikimedia.org/wikipedia/commons/thumb/e/eb/Karuizawa_-_Karuizawa6420.jpg/1920px-Karuizawa_-_Karuizawa6420.jpg",
+      "creator": "lumoplank",
+      "license": "CC0",
+      "sha256": "a3cd8838a72f086568f05f609e8473194a3a6a39522dc407c785ead362872c9e"
+    },
+    {
+      "id": "maples",
+      "title": "Karuizawa - Karuizawa6424",
+      "theme": "autumn leaves: Japanese maples in red and yellow, Karuizawa (Nagano)",
+      "source": "https://commons.wikimedia.org/wiki/File:Karuizawa_-_Karuizawa6424.jpg",
+      "url": "https://upload.wikimedia.org/wikipedia/commons/thumb/1/1d/Karuizawa_-_Karuizawa6424.jpg/1280px-Karuizawa_-_Karuizawa6424.jpg",
+      "creator": "lumoplank",
+      "license": "CC0",
+      "sha256": "1680c2fe65605154366112a29db7bad95f663263fd0f64cdb31a3227bb8a1304"
+    }
+  ]
+}

@@ -3,18 +3,21 @@
 // action buttons and two workflows, a post with a table and the screenshot account's quick reactions (custom emoji among
 // them); since 2026-11-16 also files and folders in the 研究室ドライブ, a photo album, the equipment ledger (lending
 // switched on) with a few loans, a post that links to another message (its card) and a post of the screenshot account
-// with two photos (to edit). Fictional content only; run it against a throwaway demo database, never a real workspace.
+// with two photos (to edit), with reactions and two replies; three members acknowledge the seminar notice.
+// The photos are real photographs (CC0, Wikimedia Commons, since 2026-11-17), listed with their sources in
+// scripts/demo-photos.json: downloaded once into PHOTO_CACHE and checked against their SHA-256 (not in the repository).
+// Fictional content otherwise; run it against a throwaway demo database, never a real workspace.
 // Usage: API=http://127.0.0.1:8061 ADMIN_USER=tanaka ADMIN_PASS=... REVIEW_PASS=... [SEED_LOG=…] node scripts/docs-shots-setup.mjs
-//   SEED_LOG   seed-demo's output (the lines `  <name>\t<password>`): the loans are made as watanabe and takahashi;
-//              without it there are no loans by them
-//   LINK_BASE  the address the screenshots' browser client counts as the server (default APP_URL, else
-//              http://localhost:1422): the message link is written with it, so the client draws its card
-//   CDP_PORT   headless Chrome's DevTools port for painting the photos (default 9444; Google Chrome in /Applications)
+//   SEED_LOG     seed-demo's output (the lines `  <name>\t<password>`): the loans (watanabe, takahashi), the reactions and
+//                replies on the screenshot account's photo post and the acknowledgements are made as those members;
+//                without it there are none of them
+//   LINK_BASE    the address the screenshots' browser client counts as the server (default APP_URL, else
+//                http://localhost:1422): the message link is written with it, so the client draws its card
+//   PHOTO_CACHE  where the photos are kept between runs (default: taylis-demo-photos in the OS temp directory)
 // Run again, it refreshes the attendance board and adds what is missing; the Docs pages, the database and the action buttons
 // are made only when the Docs page 「研究室マニュアル」 does not exist yet.
-import { spawn } from "node:child_process";
 import { createHash } from "node:crypto";
-import { mkdtempSync, readFileSync, rmSync } from "node:fs";
+import { existsSync, mkdirSync, readFileSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 
@@ -24,14 +27,29 @@ const uuid = () => crypto.randomUUID();
 const sleep = (ms) => new Promise((r) => setTimeout(r, ms));
 
 async function login(username, password) {
-  const r = await fetch(`${API}/auth/login`, { method: "POST", headers: { "content-type": "application/json" }, body: JSON.stringify({ username, password, device: { platform: "web", device_name: "docs-shots" } }) });
-  if (!r.ok) throw new Error(`login ${username}: ${r.status} ${await r.text()}`);
-  return (await r.json()).access_token;
+  for (let attempt = 0; ; attempt++) {
+    const r = await fetch(`${API}/auth/login`, { method: "POST", headers: { "content-type": "application/json" }, body: JSON.stringify({ username, password, device: { platform: "web", device_name: "docs-shots" } }) });
+    // The server allows a few logins a minute per address: wait for the next minute.
+    if (r.status === 429 && attempt < 3) {
+      await sleep(20000);
+      continue;
+    }
+    if (!r.ok) throw new Error(`login ${username}: ${r.status} ${await r.text()}`);
+    return (await r.json()).access_token;
+  }
 }
 
 const token = await login(process.env.ADMIN_USER ?? "tanaka", process.env.ADMIN_PASS ?? "");
 // One login for the screenshot account (the server limits logins per IP).
 const reviewToken = process.env.REVIEW_PASS ? await login("review", process.env.REVIEW_PASS) : null;
+// The other demo members, from seed-demo's output (SEED_LOG): a token each, logged in once; null without a password.
+const seedLog = process.env.SEED_LOG ? readFileSync(process.env.SEED_LOG, "utf8") : "";
+const passwordOf = (who) => seedLog.split("\n").map((l) => l.trim().split(/\s+/)).find((p) => p[0] === who && p.length === 2)?.[1];
+const members = new Map();
+async function member(who) {
+  if (!members.has(who)) members.set(who, passwordOf(who) ? await login(who, passwordOf(who)) : null);
+  return members.get(who);
+}
 /** A JSON request as the account of `as` (a token). */
 async function call(as, method, path, body) {
   const r = await fetch(`${API}${path}`, { method, headers: { authorization: `Bearer ${as}`, "content-type": "application/json" }, body: body === undefined ? undefined : JSON.stringify(body) });
@@ -105,14 +123,18 @@ if (meeting && !workflows.some((w) => w.name === "ゼミの案内")) {
   });
 }
 
-// One seminar notice posted with it (a fixed idempotency key: running this again returns the same post).
+// One seminar notice posted with it (a fixed idempotency key: running this again returns the same post), acknowledged
+// by three members (with SEED_LOG), so its bar reads 「3/7 人が確認」.
 const notice = (await api("GET", `/channels/${meeting}/workflows`)).find((w) => w.name === "ゼミの案内");
 if (notice) {
   const monday = new Date(Date.now() + ((8 - new Date().getDay()) % 7 || 7) * 86400000).toISOString().slice(0, 10);
-  await api("POST", `/workflows/${notice.id}/submit`, {
+  const posted = await api("POST", `/workflows/${notice.id}/submit`, {
     client_msg_id: "6f1e3c2a-7d1b-4c8e-9a51-2b7d0c9e4f10",
     values: { 日時: `${monday}T10:00`, 場所: "演習室 2", 発表者: [byName.yamamoto.id, byName.ito.id] },
   });
+  for (const who of ["watanabe", "takahashi", "ito"]) {
+    if (await member(who)) await call(await member(who), "PUT", `/messages/${posted.id}/ack`);
+  }
 }
 
 // A table pasted from a spreadsheet (the composer turns it into a Markdown table) in #学会準備, as the admin. A fixed
@@ -153,171 +175,77 @@ if (process.env.REVIEW_PASS) {
 
 // ---- the drive, an album, lending, a message link, a post to edit (2026-11-16) --------------------------------------
 
-/**
- * Photo-like pictures (landscapes of a lab retreat; no people), painted on a canvas in headless Chrome: JPEG bytes for
- * each [scene, seed]. Only called when something below needs new photos.
- */
-async function paintPhotos(specs) {
-  const port = Number(process.env.CDP_PORT ?? 9444);
-  const profile = mkdtempSync(join(tmpdir(), "taylis-docs-photos-"));
-  const chrome = spawn("/Applications/Google Chrome.app/Contents/MacOS/Google Chrome", ["--headless=new", `--remote-debugging-port=${port}`, `--user-data-dir=${profile}`, "--no-first-run", "--disable-gpu", "about:blank"], { stdio: "ignore" });
-  try {
-    let target = null;
-    for (let i = 0; i < 60 && !target; i++) {
-      try {
-        target = (await (await fetch(`http://127.0.0.1:${port}/json`)).json()).find((t) => t.type === "page");
-      } catch {}
-      if (!target) await sleep(250);
+// The real photographs (scripts/demo-photos.json): fetched once into PHOTO_CACHE, checked against their SHA-256.
+const PHOTOS = JSON.parse(readFileSync(new URL("./demo-photos.json", import.meta.url), "utf8")).photos;
+const PHOTO_CACHE = process.env.PHOTO_CACHE ?? join(tmpdir(), "taylis-demo-photos");
+const sha256 = (bytes) => createHash("sha256").update(bytes).digest("hex");
+
+/** The JPEG bytes of the photo `id`, from the cache or (once) from its source. */
+async function photo(id) {
+  const entry = PHOTOS.find((p) => p.id === id);
+  if (!entry) throw new Error(`no photo "${id}" in demo-photos.json`);
+  const file = join(PHOTO_CACHE, `${id}.jpg`);
+  if (existsSync(file) && sha256(readFileSync(file)) === entry.sha256) return readFileSync(file);
+  for (let attempt = 0; ; attempt++) {
+    const r = await fetch(entry.url, { headers: { "user-agent": "docs-shots-setup/1.0 (demo screenshots)" } });
+    // Wikimedia answers 429 to quick runs of thumbnail requests: wait and try again.
+    if (r.status === 429 && attempt < 6) {
+      await sleep(15000 * (attempt + 1));
+      continue;
     }
-    if (!target) throw new Error("Chrome did not start");
-    const ws = new WebSocket(target.webSocketDebuggerUrl);
-    await new Promise((r) => (ws.onopen = r));
-    let n = 0;
-    const waiting = new Map();
-    ws.onmessage = (e) => {
-      const m = JSON.parse(e.data);
-      waiting.get(m.id)?.(m);
-      waiting.delete(m.id);
-    };
-    const evaluate = (expression) =>
-      new Promise((ok, fail) => {
-        const id = ++n;
-        waiting.set(id, (m) => (m.error || m.result.exceptionDetails ? fail(new Error(JSON.stringify(m.error ?? m.result.exceptionDetails))) : ok(m.result.result.value)));
-        ws.send(JSON.stringify({ id, method: "Runtime.evaluate", params: { expression, returnByValue: true } }));
-      });
-    await evaluate(PAINTER);
-    const out = [];
-    for (const [scene, seed] of specs) {
-      const url = await evaluate(`paint(${JSON.stringify(scene)}, ${seed}, 1800, 1200)`);
-      out.push(Buffer.from(url.slice(url.indexOf(",") + 1), "base64"));
-    }
-    ws.close();
-    return out;
-  } finally {
-    chrome.kill();
-    await sleep(300);
-    rmSync(profile, { recursive: true, force: true });
+    if (!r.ok) throw new Error(`photo ${id}: ${r.status} from ${entry.url}`);
+    const bytes = Buffer.from(await r.arrayBuffer());
+    if (sha256(bytes) !== entry.sha256) throw new Error(`photo ${id}: the download's SHA-256 is ${sha256(bytes)}, not demo-photos.json's (the source changed: choose again or update the entry)`);
+    mkdirSync(PHOTO_CACHE, { recursive: true });
+    writeFileSync(file, bytes);
+    await sleep(2000);
+    return bytes;
   }
 }
 
-// The painter (runs in the page). Each scene is a few gradients, ridges, trees or soft lights, then film grain and a
-// vignette so it reads as a photo at thumbnail size.
-const PAINTER = String.raw`window.paint = (scene, seed, W, H) => {
-  const c = document.createElement("canvas"); c.width = W; c.height = H;
-  const x = c.getContext("2d");
-  let s = seed >>> 0;
-  const R = () => { s = (s + 0x6d2b79f5) >>> 0; let t = s; t = Math.imul(t ^ (t >>> 15), t | 1); t ^= t + Math.imul(t ^ (t >>> 7), t | 61); return ((t ^ (t >>> 14)) >>> 0) / 4294967296; };
-  const lin = (y0, y1, stops) => { const g = x.createLinearGradient(0, y0, 0, y1); for (const [o, col] of stops) g.addColorStop(o, col); return g; };
-  const fill = (style, y = 0, h = H) => { x.fillStyle = style; x.fillRect(0, y, W, h); };
-  const glow = (cx, cy, r, col) => { const g = x.createRadialGradient(cx, cy, 0, cx, cy, r); g.addColorStop(0, col); g.addColorStop(1, "rgba(0,0,0,0)"); x.fillStyle = g; x.fillRect(0, 0, W, H); };
-  const soft = (px, fn) => { x.save(); x.filter = "blur(" + px + "px)"; fn(); x.restore(); };
-  const mist = (y, h, a) => fill(lin(y - h, y + h, [[0, "rgba(255,255,255,0)"], [0.5, "rgba(255,255,255," + a + ")"], [1, "rgba(255,255,255,0)"]]), y - h, 2 * h);
-  const ridge = (base, amp, col, rough = 1) => {
-    const p = [R() * 6, R() * 6, R() * 6, R() * 6];
-    x.beginPath(); x.moveTo(0, H);
-    for (let i = 0; i <= 240; i++) {
-      const u = i / 240;
-      x.lineTo(u * W, base - amp * (0.5 * Math.sin(u * 2.7 + p[0]) + 0.3 * Math.sin(u * 6.1 + p[1]) + rough * (0.14 * Math.sin(u * 17 + p[2]) + 0.06 * Math.sin(u * 41 + p[3]) + 0.03 * (R() - 0.5))));
-    }
-    x.lineTo(W, H); x.closePath(); x.fillStyle = col; x.fill();
+/**
+ * `jpeg` without its own EXIF, XMP, IPTC and comment segments, and with a small EXIF block that says only when it was
+ * taken: DateTimeOriginal `at` ("YYYY-MM-DDTHH:MM:SS", Japan time) with OffsetTimeOriginal +09:00. The album groups the
+ * photos by that day.
+ */
+function withCaptureTime(jpeg, at) {
+  if (jpeg[0] !== 0xff || jpeg[1] !== 0xd8) throw new Error("not a JPEG");
+  const date = Buffer.from(`${at.replaceAll("-", ":").replace("T", " ")}\0`, "latin1");
+  const offset = Buffer.from("+09:00\0", "latin1");
+  // TIFF, little endian: IFD0 (one entry: where the Exif IFD is) at 8, the Exif IFD (two entries) at 26, the values at 56.
+  const tiff = Buffer.alloc(56 + date.length + offset.length);
+  const entry = (at, tag, type, count, value) => {
+    tiff.writeUInt16LE(tag, at);
+    tiff.writeUInt16LE(type, at + 2);
+    tiff.writeUInt32LE(count, at + 4);
+    tiff.writeUInt32LE(value, at + 8);
   };
-  const trees = (base, size, col, count) => {
-    x.fillStyle = col;
-    for (let i = 0; i < count; i++) {
-      const cx = R() * W, h = size * (0.6 + R() * 0.8), w = h * 0.28, b = base + R() * size * 0.3;
-      x.beginPath(); x.moveTo(cx, b - h);
-      for (let k = 1; k <= 3; k++) { x.lineTo(cx + (w * k) / 3, b - h + (h * k) / 3); x.lineTo(cx + (w * k) / 7, b - h + (h * k) / 3 - h * 0.06); }
-      for (let k = 3; k >= 1; k--) { x.lineTo(cx - (w * k) / 7, b - h + (h * k) / 3 - h * 0.06); x.lineTo(cx - (w * k) / 3, b - h + (h * k) / 3); }
-      x.closePath(); x.fill();
-      x.fillRect(cx - w * 0.04, b - h * 0.02, w * 0.08, h * 0.1);
-    }
-  };
-  const lights = (n, cols, rMin, rMax, yMin, yMax, aMin, aMax) => {
-    for (let i = 0; i < n; i++) {
-      x.globalAlpha = aMin + R() * (aMax - aMin); x.fillStyle = cols[Math.floor(R() * cols.length)];
-      x.beginPath(); x.arc(R() * W, yMin + R() * (yMax - yMin), rMin + R() * (rMax - rMin), 0, 7); x.fill();
-    }
-    x.globalAlpha = 1;
-  };
-  const reflect = (hz, tint) => {
-    x.save(); x.translate(0, 2 * hz); x.scale(1, -1); x.globalAlpha = 0.6; x.drawImage(c, 0, 0, W, hz, 0, 0, W, hz); x.restore();
-    fill(lin(hz, H, [[0, tint + "0.25)"], [1, tint + "0.7)"]]), hz, H - hz);
-    x.fillStyle = "rgba(255,255,255,0.10)";
-    for (let i = 0; i < 90; i++) x.fillRect(R() * W, hz + 4 + R() * (H - hz), 40 + R() * 260, 1 + R() * 2);
-  };
-  const ridges = (list) => { for (const [base, amp, col, m] of list) { ridge(base * H, amp * H, col); if (m) mist(base * H - amp * H * 0.2, H * 0.05, m); } };
-  const scenes = {
-    mountains() {
-      fill(lin(0, H * 0.7, [[0, "#6f99cf"], [0.6, "#e9c3a4"], [1, "#f6dcc0"]]));
-      glow(W * (0.55 + R() * 0.3), H * 0.42, H * 0.5, "rgba(255,226,180,0.8)");
-      ridges([[0.5, 0.13, "#a6b3c9", 0.3], [0.6, 0.1, "#8193b0", 0.25], [0.72, 0.09, "#5a6a88", 0.2], [0.86, 0.07, "#36425a", 0], [0.97, 0.05, "#20283a", 0]]);
-    },
-    lake() {
-      const hz = H * 0.6;
-      fill(lin(0, hz, [[0, "#5d93d1"], [0.7, "#b9d5ee"], [1, "#e4eef5"]]), 0, hz);
-      soft(24, () => lights(10, ["#ffffff"], W * 0.04, W * 0.1, H * 0.05, H * 0.3, 0.5, 0.8));
-      ridges([[0.48, 0.12, "#8ea7c4", 0.25], [0.55, 0.09, "#5f7f78", 0.15]]);
-      trees(hz, H * 0.08, "#2f4a3a", 70);
-      reflect(hz, "rgba(28,58,84,");
-    },
-    sunset() {
-      const hz = H * 0.66;
-      fill(lin(0, hz, [[0, "#29305e"], [0.4, "#9c517a"], [0.75, "#ef8a4c"], [1, "#ffcf86"]]), 0, hz);
-      const sx = W * (0.35 + R() * 0.3);
-      glow(sx, hz - H * 0.05, H * 0.45, "rgba(255,200,120,0.75)");
-      x.fillStyle = "#fff3d0"; x.beginPath(); x.arc(sx, hz - H * 0.05, H * 0.045, 0, 7); x.fill();
-      fill(lin(hz, H, [[0, "#3b3556"], [1, "#11152a"]]), hz, H - hz);
-      for (let i = 0; i < 260; i++) { const y = hz + Math.pow(R(), 1.6) * (H - hz); x.fillStyle = "rgba(255," + (150 + Math.floor(R() * 80)) + ",90," + (0.5 - (y - hz) / (H - hz) * 0.4) + ")"; x.fillRect(sx - (y - hz) * 0.6 * R() - 10, y, 20 + R() * 90 * (1 + (y - hz) / 200), 1.5 + R() * 2); }
-      x.fillStyle = "#1c1730"; x.beginPath(); x.moveTo(0, hz); x.quadraticCurveTo(W * 0.12, hz - H * 0.07, W * 0.26, hz); x.fill();
-    },
-    forest() {
-      fill(lin(0, H, [[0, "#d7dfda"], [1, "#a5b8ad"]]));
-      glow(W * 0.7, H * 0.2, H * 0.6, "rgba(255,248,225,0.6)");
-      const layers = [["rgba(120,145,132,0.55)", 0.55, 0.22, 40], ["rgba(84,112,98,0.75)", 0.68, 0.28, 34], ["rgba(52,78,64,0.9)", 0.84, 0.36, 26], ["#1f3326", 1.02, 0.5, 18]];
-      for (const [col, base, size, n] of layers) { trees(H * base, H * size, col, n); mist(H * base - H * size * 0.3, H * 0.06, 0.28); }
-      fill(lin(H * 0.9, H, [[0, "rgba(31,51,38,0)"], [1, "#1f3326"]]), H * 0.9, H * 0.1);
-    },
-    stars() {
-      fill(lin(0, H, [[0, "#050817"], [0.75, "#18264d"], [1, "#2e3f6b"]]));
-      soft(40, () => { x.save(); x.translate(W / 2, H * 0.35); x.rotate(-0.5 + R() * 0.3); x.fillStyle = "rgba(200,210,255,0.16)"; x.fillRect(-W, -H * 0.08, 2 * W, H * 0.16); x.restore(); });
-      lights(1400, ["#ffffff", "#dfe6ff", "#fff1d6"], 0.4, 1.6, 0, H * 0.8, 0.3, 1);
-      soft(2, () => lights(40, ["#ffffff"], 1.5, 2.6, 0, H * 0.7, 0.7, 1));
-      ridge(H * 0.84, H * 0.06, "#070a14");
-      const tx = W * (0.35 + R() * 0.35), ty = H * 0.93;
-      glow(tx, ty - H * 0.04, H * 0.18, "rgba(255,170,80,0.55)");
-      x.fillStyle = "#e89a4a"; x.beginPath(); x.moveTo(tx - H * 0.08, ty); x.lineTo(tx, ty - H * 0.09); x.lineTo(tx + H * 0.08, ty); x.fill();
-      x.fillStyle = "#070a14"; x.fillRect(0, ty, W, H - ty);
-    },
-    campfire() {
-      fill(lin(0, H, [[0, "#0f0805"], [1, "#2b150a"]]));
-      soft(18, () => lights(46, ["#ff9a3c", "#ffc35a", "#ff6a2a", "#ffd98a"], H * 0.02, H * 0.08, 0, H * 0.75, 0.25, 0.7));
-      glow(W * 0.5, H * 1.02, H * 0.65, "rgba(255,120,40,0.85)");
-      glow(W * 0.5, H * 0.95, H * 0.25, "rgba(255,220,140,0.9)");
-      lights(70, ["#ffd38a", "#ffae5a"], 1, 2.4, H * 0.35, H * 0.9, 0.5, 1);
-    },
-    meadow() {
-      const hz = H * 0.55;
-      fill(lin(0, hz, [[0, "#3f86d3"], [1, "#b4d6f2"]]));
-      soft(22, () => { x.fillStyle = "rgba(255,255,255,0.9)"; for (let i = 0; i < 7; i++) { const cx = R() * W, cy = H * (0.1 + R() * 0.3), w = W * (0.08 + R() * 0.1); for (let k = 0; k < 5; k++) { x.beginPath(); x.ellipse(cx + (k - 2) * w * 0.45, cy + R() * 20, w * 0.5, w * 0.28, 0, 0, 7); x.fill(); } } });
-      ridge(hz + H * 0.03, H * 0.09, "#9fb6c9");
-      const hill = (y, col, amp) => { x.beginPath(); x.moveTo(0, H); x.lineTo(0, y); x.bezierCurveTo(W * 0.3, y - amp, W * 0.6, y + amp, W, y - amp * 0.5); x.lineTo(W, H); x.closePath(); x.fillStyle = col; x.fill(); };
-      hill(hz + H * 0.02, "#86b45a", H * 0.06); hill(hz + H * 0.12, "#5f9a3c", H * 0.08); hill(hz + H * 0.26, "#3f7a2a", H * 0.07);
-      lights(500, ["#fff6a8", "#ffffff", "#f5d24a"], 1, 3, H * 0.84, H, 0.6, 1);
-    },
-    autumn() {
-      fill(lin(0, H, [[0, "#3a2416"], [1, "#6e3f1d"]]));
-      soft(26, () => lights(70, ["#d9452b", "#f08a24", "#f6c343", "#b8321f", "#e8642c"], H * 0.04, H * 0.12, -H * 0.05, H * 1.05, 0.45, 0.85));
-      soft(3, () => lights(26, ["#e8542a", "#f39a2b", "#f7c544"], H * 0.012, H * 0.03, 0, H, 0.85, 1));
-    },
-  };
-  scenes[scene]();
-  const img = x.getImageData(0, 0, W, H), d = img.data;
-  for (let i = 0; i < d.length; i += 4) { const n = (R() - 0.5) * 16; d[i] += n; d[i + 1] += n; d[i + 2] += n; }
-  x.putImageData(img, 0, 0);
-  const v = x.createRadialGradient(W / 2, H / 2, H * 0.45, W / 2, H / 2, H * 1.05); v.addColorStop(0, "rgba(0,0,0,0)"); v.addColorStop(1, "rgba(0,0,0,0.38)");
-  x.fillStyle = v; x.fillRect(0, 0, W, H);
-  return c.toDataURL("image/jpeg", 0.86);
-};`;
+  tiff.write("II", 0, "latin1");
+  tiff.writeUInt16LE(42, 2);
+  tiff.writeUInt32LE(8, 4);
+  tiff.writeUInt16LE(1, 8);
+  entry(10, 0x8769, 4, 1, 26);
+  tiff.writeUInt16LE(2, 26);
+  entry(28, 0x9003, 2, date.length, 56);
+  entry(40, 0x9011, 2, offset.length, 56 + date.length);
+  date.copy(tiff, 56);
+  offset.copy(tiff, 56 + date.length);
+  const header = Buffer.alloc(4);
+  header.writeUInt16BE(0xffe1, 0);
+  header.writeUInt16BE(2 + 6 + tiff.length, 2);
+  const exif = Buffer.concat([header, Buffer.from("Exif\0\0", "latin1"), tiff]);
+  // The segments up to the image data, without APP1 (EXIF, XMP), APP13 (IPTC) and COM; the EXIF block after APP0 (JFIF).
+  const kept = [];
+  let i = 2;
+  while (jpeg[i] === 0xff && jpeg[i + 1] !== 0xda) {
+    const end = i + 2 + jpeg.readUInt16BE(i + 2);
+    if (![0xe1, 0xed, 0xfe].includes(jpeg[i + 1])) kept.push(jpeg.subarray(i, end));
+    i = end;
+  }
+  if (jpeg[i] !== 0xff) throw new Error("unexpected JPEG layout");
+  const jfif = kept[0]?.[1] === 0xe0 ? [kept.shift()] : [];
+  return Buffer.concat([jpeg.subarray(0, 2), ...jfif, exif, ...kept, jpeg.subarray(i)]);
+}
 
 /** A one-page PDF (Helvetica, ASCII text) padded with comment lines to about `kb` KB, so its size reads like a real one. */
 function pdf(title, lines, kb) {
@@ -388,29 +316,46 @@ if (!(labTop.items ?? []).some((i) => i.name === "論文")) {
   for (const [parent, name, bytes, age] of files) await driveUpload(token, parent, name, bytes, daysAgo(age));
 }
 
-// A photo album in the 研究室ドライブ: twelve photos of a two-day lab retreat (made when it is missing).
+// A photo album in the 研究室ドライブ: twelve photos of a two-day lab retreat (made when it is missing), each with the
+// time it was taken (in its EXIF, so the album groups them by day).
 const RETREAT = "ゼミ合宿 2026（長野）";
 const ALBUM_SHOTS = [
-  ["meadow", 11, "2026-11-07T10:12"], ["autumn", 12, "2026-11-07T11:40"], ["lake", 13, "2026-11-07T13:05"], ["forest", 14, "2026-11-07T14:30"],
-  ["mountains", 15, "2026-11-07T15:50"], ["sunset", 16, "2026-11-07T16:45"], ["campfire", 17, "2026-11-07T19:20"], ["stars", 18, "2026-11-07T21:10"],
-  ["mountains", 21, "2026-11-08T06:05"], ["lake", 22, "2026-11-08T06:40"], ["forest", 23, "2026-11-08T09:15"], ["meadow", 24, "2026-11-08T11:30"],
+  ["river", "2026-11-07T10:12:31"], ["larch-forest", "2026-11-07T11:03:48"], ["soba", "2026-11-07T12:31:05"], ["seminar-room", "2026-11-07T14:02:17"],
+  ["nozawana", "2026-11-07T18:47:52"], ["campfire", "2026-11-07T20:05:09"], ["stars-tent", "2026-11-07T21:18:44"], ["ryokan-room", "2026-11-07T22:40:13"],
+  ["morning-mist", "2026-11-08T06:24:36"], ["pond", "2026-11-08T08:55:02"], ["waterfall", "2026-11-08T10:10:27"], ["maples", "2026-11-08T11:20:58"],
 ];
 const albums = (await api("GET", "/drive/albums")).items ?? [];
 if (!albums.some((a) => JSON.stringify(a).includes(RETREAT))) {
   const created = await api("POST", "/drive/albums", { client_op_id: uuid(), name: RETREAT, location_id: labDrive.id, description: "11/7〜8 のゼミ合宿の写真です。撮った写真はここに追加してください。", starts_on: "2026-11-07", ends_on: "2026-11-08" });
-  const photos = await paintPhotos(ALBUM_SHOTS.map(([scene, seed]) => [scene, seed]));
-  for (const [i, [, , at]] of ALBUM_SHOTS.entries()) await driveUpload(token, created.folder?.id ?? created.album.folder_id, `IMG_${2041 + i * 3}.jpg`, photos[i], Date.parse(`${at}:00+09:00`));
+  for (const [i, [id, at]] of ALBUM_SHOTS.entries()) {
+    await driveUpload(token, created.folder?.id ?? created.album.folder_id, `IMG_${2041 + i * 3}.jpg`, withCaptureTime(await photo(id), at), Date.parse(`${at}+09:00`));
+  }
 }
 
-// A post of the screenshot account in #雑談 with two photos (the edit shot takes a file off it and adds emoji).
+// A post of the screenshot account in #雑談 with two photos (the edit shot takes a file off it and adds emoji): the lake
+// by the lodge and its starry sky. Reactions and two replies from the members (with SEED_LOG; fixed idempotency keys).
 const chat = channelId("雑談");
 const SCOUTING = "合宿の宿の下見に行ってきました。湖のすぐそばで、夜は星がよく見えるそうです。";
 if (process.env.REVIEW_PASS && chat) {
   const recent = (await call(reviewToken, "GET", `/channels/${chat}/messages?limit=100`)).messages;
-  if (!recent.some((m) => m.body?.startsWith(SCOUTING))) {
-    const [lake, stars] = await paintPhotos([["lake", 31], ["stars", 32]]);
-    const ids = [await attach(reviewToken, "IMG_1984.jpg", lake, "image/jpeg"), await attach(reviewToken, "IMG_1990.jpg", stars, "image/jpeg")];
-    await call(reviewToken, "POST", `/channels/${chat}/messages`, { client_msg_id: "7c4e2b19-5a3d-4f60-8e21-9b0d6a3f1c58", body: SCOUTING, attachment_ids: ids });
+  let scouting = recent.find((m) => m.body?.startsWith(SCOUTING) && !m.parent_id);
+  if (!scouting) {
+    const ids = [
+      await attach(reviewToken, "IMG_1984.jpg", withCaptureTime(await photo("lake"), "2026-10-24T15:42:10"), "image/jpeg"),
+      await attach(reviewToken, "IMG_1990.jpg", withCaptureTime(await photo("stars-lake"), "2026-10-24T21:06:33"), "image/jpeg"),
+    ];
+    scouting = await call(reviewToken, "POST", `/channels/${chat}/messages`, { client_msg_id: "7c4e2b19-5a3d-4f60-8e21-9b0d6a3f1c58", body: SCOUTING, attachment_ids: ids });
+  }
+  for (const [who, emoji] of [["yamamoto", "😍"], ["ito", "😍"], ["nakamura", "😍"], ["tanaka", "✨"], ["watanabe", "✨"], ["suzuki", ":thanks:"]]) {
+    const as = who === "tanaka" ? token : await member(who);
+    if (as) await call(as, "PUT", `/messages/${scouting.id}/reactions/${encodeURIComponent(emoji)}`);
+  }
+  for (const [who, key, body] of [
+    ["yamamoto", "3d6a9e42-8b1c-4f07-a5e3-6c2b8d0f9a71", "星空すごい…！夜に外に出られるのが楽しみです ✨"],
+    ["tanaka", "b5f20c7e-4d93-4a6b-8e1f-0a7c3d9b2e54", "いいところですね。予約はこのまま進めてください。"],
+  ]) {
+    const as = who === "tanaka" ? token : await member(who);
+    if (as) await call(as, "POST", `/channels/${chat}/messages`, { client_msg_id: key, body, parent_id: scouting.id });
   }
 }
 
@@ -459,10 +404,8 @@ if (!items.some((i) => i.code === "CAM-01")) {
     await call(as, "POST", `/lending/items/${made[code].id}/borrow`, { client_request_id: uuid(), due_on: due(days), purpose, permission_confirmed: permission, approver_id: permission ? byName.tanaka.id : null });
   };
   if (reviewToken) await borrow(reviewToken, "BOOK-12", 14, "論文紹介の準備");
-  const seedLog = process.env.SEED_LOG ? readFileSync(process.env.SEED_LOG, "utf8") : "";
-  const passwordOf = (who) => seedLog.split("\n").map((l) => l.trim().split(/\s+/)).find((p) => p[0] === who && p.length === 2)?.[1];
   for (const [who, code, days, purpose] of [["watanabe", "CAM-01", 3, "学会発表の撮影"], ["takahashi", "PC-01", 10, "学会でのデモ"]]) {
-    if (passwordOf(who)) await borrow(await login(who, passwordOf(who)), code, days, purpose);
+    if (await member(who)) await borrow(await member(who), code, days, purpose);
   }
 }
 
