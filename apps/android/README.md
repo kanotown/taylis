@@ -28,7 +28,11 @@ SDK の場所は `local.properties` (`sdk.dir=...`、git 管理外) か環境変
 
 ## ビルド・テスト
 
+ビルドの前に、同梱のページエディタ (`apps/shared/mobile-editor/dist`、生成物でコミットしない。docs/WIKI.md §30.3) を作る。
+無いと Gradle の `copyMobileEditor` が作り方を表示して止まる。
+
 ```sh
+(cd apps/desktop && npm ci && npm run build:mobile-editor)
 cd apps/android
 ./gradlew :app:testDebugUnitTest      # JVM テスト (同期エンジン、契約 fixture、API クライアント)
 ./gradlew :app:lintDebug              # Android Lint

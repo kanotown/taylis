@@ -6,6 +6,7 @@ iOS クライアント。Swift / SwiftUI / Swift Concurrency。Apple 標準フ�
 ## 開発
 
 ```
+(cd ../desktop && npm ci && npm run build:mobile-editor)   # 同梱のページエディタ (apps/shared/mobile-editor/dist)。生成物でコミットしないので、ビルドの前に必ず作る
 brew install xcodegen            # プロジェクト生成ツール (開発時のみ)
 xcodegen generate                # project.yml から ChikuwaChat.xcodeproj を生成 (生成物はコミット済み)
 open ChikuwaChat.xcodeproj       # Xcode で開き、Team を選んで実機にインストール (App Store は使わない)
