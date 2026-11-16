@@ -16,6 +16,7 @@ import uuid
 from dataclasses import dataclass
 from datetime import datetime, timedelta
 from typing import NamedTuple
+from urllib.parse import quote
 
 from sqlalchemy.exc import IntegrityError
 from sqlalchemy.ext.asyncio import AsyncSession
@@ -75,7 +76,15 @@ def return_url(
         key = "sso_ticket" if ticket is not None else "sso_error"
         return f"{settings.public_base_url.rstrip('/')}/#{key}={value}"
     key = "ticket" if ticket is not None else "sso_error"
-    return f"{NATIVE_RETURN}?{key}={value}"
+    # `iss` (RFC 9207 style, 2026-11-16): which server issued the answer. The apps refuse a ticket
+    # whose issuer is not the server they started the sign-in with, so a hostile server that
+    # redirects its start to another server's cannot have that server's ticket sent to it.
+    return f"{NATIVE_RETURN}?{key}={value}&iss={quote(issuer(settings), safe='')}"
+
+
+def issuer(settings: Settings) -> str:
+    """This server's public base URL as the apps compare it: no trailing slash."""
+    return settings.public_base_url.rstrip("/")
 
 
 class Completion(NamedTuple):

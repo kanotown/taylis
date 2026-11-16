@@ -132,7 +132,10 @@ def returned(response: Response) -> dict[str, str]:
     url = urlparse(location)
     if url.scheme == "chikuwachat":
         assert location.startswith("chikuwachat://sso?")
-        return {k: v[0] for k, v in parse_qs(url.query).items()}
+        query = {k: v[0] for k, v in parse_qs(url.query).items()}
+        # The issuer: the apps refuse an answer from a server other than the one they started with.
+        assert query.pop("iss") == BASE
+        return query
     assert location.startswith(f"{BASE}/#")
     return {k: v[0] for k, v in parse_qs(url.fragment).items()}
 
@@ -377,9 +380,9 @@ async def test_nonce_provider_failures_and_cancel(
     assert back.headers["cache-control"] == "no-store"
     assert back.headers["referrer-policy"] == "no-referrer"
     page = back.text
-    assert 'content="0;url=chikuwachat://sso?sso_error=cancelled"' in page
-    assert 'href="chikuwachat://sso?sso_error=cancelled"' in page
-    assert 'location.replace("chikuwachat://sso?sso_error=cancelled")' in page
+    assert 'content="0;url=chikuwachat://sso?sso_error=cancelled&amp;iss=https%3A%2F%2Fchat.example.ac.jp"' in page
+    assert 'href="chikuwachat://sso?sso_error=cancelled&amp;iss=https%3A%2F%2Fchat.example.ac.jp"' in page
+    assert 'location.replace("chikuwachat://sso?sso_error=cancelled&iss=https%3A%2F%2Fchat.example.ac.jp")' in page
     assert "このタブは閉じてかまいません" in page
     assert page.count("アプリが開かないときは") == 1
     assert await db.scalar(select(SsoTicket.ticket_hash)) is None
@@ -393,7 +396,7 @@ async def test_nonce_provider_failures_and_cancel(
             headers={"Cookie": f"{sso.COOKIE}={state}"},
         )
         assert back.status_code == 302
-        assert back.headers["location"] == "chikuwachat://sso?sso_error=cancelled"
+        assert back.headers["location"] == "chikuwachat://sso?sso_error=cancelled&iss=https%3A%2F%2Fchat.example.ac.jp"
 
 
 # --- the ID token's claims -------------------------------------------------------------------

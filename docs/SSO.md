@@ -94,6 +94,11 @@ SSO が無効なら 3 つとも 404 `sso_disabled`。
    スクリプトで `chikuwachat://sso?…` を開き、開かないときのボタン付き) を返す。既定のブラウザから開くため、302 だけではタブが
    読み込み中のような空白のまま残った (2026-10-04)。iOS (ASWebAuthenticationSession) と Android (Custom Tabs) は 302 のまま。
    フラグメントにするのは、チケットがサーバのアクセスログやリファラに残らないため。
+   アプリへの戻り先には、発行したサーバの `iss=<PUBLIC_BASE_URL>`（末尾の `/` なし、URL エンコード）も付ける（2026-11-16、
+   RFC 9207 の考え方）。アプリは、`iss` がログインを始めたサーバ（正規化したサーバ URL）と違う・無い答えを断る
+   （「別のサーバからの応答です」）。悪意のあるサーバ A が開始を別のサーバ B の `/auth/sso/google/start` に転送すると、
+   B のチケットが A に送られ、A が自分の verifier で B のセッションを得られた（PKCE は開始した側を守らない）。
+   失敗の `sso_error` にも同じ `iss` を付ける。Web は同じオリジンのフラグメントなので付けない。
 
 失敗したら同じ戻り先に `sso_error=<code>` を付けて戻す。コードは `cancelled` (Google で取り消し、`error=access_denied`)、`expired`
 (state が無い・期限切れ・使用済み・Cookie 不一致)、`domain_not_allowed`、`email_not_verified`、`not_registered`

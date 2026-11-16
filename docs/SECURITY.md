@@ -167,6 +167,8 @@ refresh(token):
   他のアプリも登録できるので、交換 (`POST /auth/sso/exchange`) には開始時の `challenge` の元の `verifier` と
   同じ `platform` が要る (RFC 7636 と同じ考え方)。チケットは最初の交換で使用済み (失敗でも)。誤りは
   `401 invalid_ticket` だけを返す。
+- 発行元（2026-11-16）：アプリへの戻り先には `iss=<PUBLIC_BASE_URL>` を付け、アプリは始めたサーバと違えば断る
+  （SSO.md §3 の 6。悪意のあるサーバが開始を別のサーバへ転送し、そのサーバのチケットを受け取る「取り違え」を防ぐ）。
 - 2 要素認証 (§2.7) は SSO のログインでは求めない (Google の 2 段階認証に任せる)。Google で作られた人は
   パスワードを持たず (`password_hash` NULL、`UserMe.has_password = false`)、パスワードでのログインは必ず失敗し、
   パスワード変更と TOTP の設定は `409 password_not_set`。
