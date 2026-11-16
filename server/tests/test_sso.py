@@ -380,9 +380,10 @@ async def test_nonce_provider_failures_and_cancel(
     assert back.headers["cache-control"] == "no-store"
     assert back.headers["referrer-policy"] == "no-referrer"
     page = back.text
-    assert 'content="0;url=chikuwachat://sso?sso_error=cancelled&amp;iss=https%3A%2F%2Fchat.example.ac.jp"' in page
-    assert 'href="chikuwachat://sso?sso_error=cancelled&amp;iss=https%3A%2F%2Fchat.example.ac.jp"' in page
-    assert 'location.replace("chikuwachat://sso?sso_error=cancelled&iss=https%3A%2F%2Fchat.example.ac.jp")' in page
+    back_to = "chikuwachat://sso?sso_error=cancelled&iss=https%3A%2F%2Fchat.example.ac.jp"
+    assert f'content="0;url={back_to.replace("&", "&amp;")}"' in page
+    assert f'href="{back_to.replace("&", "&amp;")}"' in page
+    assert f'location.replace("{back_to}")' in page
     assert "このタブは閉じてかまいません" in page
     assert page.count("アプリが開かないときは") == 1
     assert await db.scalar(select(SsoTicket.ticket_hash)) is None
@@ -396,7 +397,10 @@ async def test_nonce_provider_failures_and_cancel(
             headers={"Cookie": f"{sso.COOKIE}={state}"},
         )
         assert back.status_code == 302
-        assert back.headers["location"] == "chikuwachat://sso?sso_error=cancelled&iss=https%3A%2F%2Fchat.example.ac.jp"
+        assert (
+            back.headers["location"]
+            == "chikuwachat://sso?sso_error=cancelled&iss=https%3A%2F%2Fchat.example.ac.jp"
+        )
 
 
 # --- the ID token's claims -------------------------------------------------------------------
