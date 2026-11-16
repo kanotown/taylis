@@ -104,12 +104,14 @@ private val RULE_LINE = Regex("""^-{3,}\s*$""")
 // M107 (apps/shared/inline-format.json): `_` emphasis follows CommonMark's word rule: the opening `_` is not preceded and the
 // closing one not followed by a letter, digit or `_`, so snake_case and e-mail addresses stay as they are. `\_` `\*` `\~`
 // `\`` are the literal character (also inside emphasis). E-mail addresses (and the shrug, which keeps its backslash) are
-// text tokens of their own, so emphasis and escapes are never read inside them.
+// text tokens of their own, so emphasis and escapes are never read inside them. Inside `_…_` an `_` counts only after a
+// letter or digit (snake_case): one after anything else could open emphasis itself, so the search for a closer stops there
+// and the rule runs in linear time (2026-11-16: `_a ` repeated took seconds; the shared `timing` list).
 // The math alternatives are written as unrolled loops (`[^$\n\\]*(?:\\.[^$\n\\]*)*`): java.util.regex recurses once per
 // repetition of a group with alternatives, so `(?:\\.|[^$\n\\])*?` overflowed the stack on a formula of MATH_MAX_LENGTH+ chars.
 private const val INLINE =
     // i18n: keep (inline-format pattern)
-    """(\*\*((?:\\.|[^*\n\\])+?)\*\*)|(``(?!`)(?:[^`\n]|`(?!`))+?``(?!`)|`([^`\n]+)`)|(\*((?:\\.|[^*\n\\])+)\*)|((?<![\p{L}\p{N}_])_(?![\s\u3000_])((?:\\.|[^\n\\])*?(?:\\.|[^\s\u3000_\\]))_(?![\p{L}\p{N}_]))|(~~((?:\\.|[^~\n\\])+)~~)|(\[([^\]\n]+)\]\((https?://[^\s)]+)\))|(<@group:([0-9a-f-]{36})>)|(<@([0-9a-f-]{36})>)|(<!(channel|here)>)|(https?://[^\s\p{Z}<>\u3000-\u303F\uFF00-\uFFEF]+)|(\\([_*~`$]))|([A-Za-z0-9._%+-]{1,64}@[A-Za-z0-9-]{1,63}(?:\.[A-Za-z0-9-]{1,63}){1,8}|¯\\_\(ツ\)_/¯)|(\$\$((?=[^$\n])[^$\n\\]*(?:\\.[^$\n\\]*)*)\$\$)|(\$(?![\s$])([^$\n\\]*(?:\\.[^$\n\\]*)*(?:(?<!\s)|(?<=\\\s)))\$(?![0-9A-Za-z]))"""
+    """(\*\*((?:\\.|[^*\n\\])+?)\*\*)|(``(?!`)(?:[^`\n]|`(?!`))+?``(?!`)|`([^`\n]+)`)|(\*((?:\\.|[^*\n\\])+)\*)|((?<![\p{L}\p{N}_])_(?![\s\u3000_])((?:\\.|[^\n\\_]|(?<=[\p{L}\p{N}])_)*?(?:\\.|[^\s\u3000_\\]))_(?![\p{L}\p{N}_]))|(~~((?:\\.|[^~\n\\])+)~~)|(\[([^\]\n]+)\]\((https?://[^\s)]+)\))|(<@group:([0-9a-f-]{36})>)|(<@([0-9a-f-]{36})>)|(<!(channel|here)>)|(https?://[^\s\p{Z}<>\u3000-\u303F\uFF00-\uFFEF]+)|(\\([_*~`$]))|([A-Za-z0-9._%+-]{1,64}@[A-Za-z0-9-]{1,63}(?:\.[A-Za-z0-9-]{1,63}){1,8}|¯\\_\(ツ\)_/¯)|(\$\$((?=[^$\n])[^$\n\\]*(?:\\.[^$\n\\]*)*)\$\$)|(\$(?![\s$])([^$\n\\]*(?:\\.[^$\n\\]*)*(?:(?<!\s)|(?<=\\\s)))\$(?![0-9A-Za-z]))"""
 private val INLINE_PATTERN = Regex(INLINE)
 
 /**

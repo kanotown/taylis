@@ -75,4 +75,34 @@ class InlineFormatTest {
         assertEquals("確認 @ さん", visibleText(tokenizeInline("**確認 <@$id> さん**")))
         assertEquals(listOf(TopicToken.Bold("確認 @山田 太郎")), TopicText.tokens("**確認 <@$id>**") { "山田 太郎" })
     }
+
+    /**
+     * 2026-11-16 (a hostile-server review): the italic rule runs in linear time. Each shared `timing` body tokenizes (as a
+     * line, as a whole body and as a notification's plain text) within its `max_ms`; `_a ` repeated took seconds before.
+     */
+    @Test
+    fun theSharedTimings() {
+        val file = File("../../shared/inline-format.json")
+        val cases = Codec.plain.parseToJsonElement(file.readText()).jsonObject["timing"]!!.jsonArray
+        assertTrue(cases.isNotEmpty())
+        // Class loading and the patterns' compilation are not what is measured.
+        tokenizeBody("_a_ **b** `c`")
+        plainText("_a_ **b** `c`")
+        for (case in cases) {
+            val c = case.jsonObject
+            val name = c["name"]!!.jsonPrimitive.content
+            val body = c["unit"]!!.jsonPrimitive.content.repeat(c["repeat"]!!.jsonPrimitive.content.toInt())
+            val maxMs = c["max_ms"]!!.jsonPrimitive.content.toLong()
+            for ((what, run) in listOf<Pair<String, () -> Unit>>(
+                "line" to { tokenizeInline(body) },
+                "body" to { tokenizeBody(body) },
+                "plain" to { plainText(body) },
+            )) {
+                val started = System.nanoTime()
+                run()
+                val ms = (System.nanoTime() - started) / 1_000_000
+                assertTrue("$name ($what): $ms ms > $maxMs ms", ms <= maxMs)
+            }
+        }
+    }
 }
