@@ -55,6 +55,57 @@ final class ComposerSnapshotTests: XCTestCase {
         XCTAssertGreaterThan(image.size.width, 0)
     }
 
+    /// M187 (MOBILE_UI.md §30): the message editor offers the composer's candidates and メンション / 絵文字 / 書式.
+    func testMessageEditorOffersCandidatesAndTools() throws {
+        let controller = AppController()
+        let store = controller.store
+        store.upsertUser(UserPublic(id: "00000000-0000-7000-8000-000000000001", username: "yamada", displayName: "山田 太郎", role: "member", deactivatedAt: nil, createdAt: "", updatedAt: ""))
+        let channel = ChannelOut(id: "c1", type: "public", name: "研究室", topic: nil, purpose: nil, archived: false, createdBy: nil, lastSeq: 0,
+                                 lastMessageAt: nil, createdAt: "", updatedAt: "", membership: MembershipOut(role: "member", joinedAt: ""), dmUserIds: nil)
+        store.upsertChannel(channel, isMember: true)
+        let mention = EditMessageView(initial: "確認をお願いします @山田", controller: controller, channelId: "c1") { _, _ in nil }
+        _ = try render(mention, size: CGSize(width: 393, height: 760), name: "M187-edit-mention-ios.png")
+        let party = CustomEmojiOut(id: "e1", name: "tada_party", contentType: "image/png", width: 32, height: 32, createdBy: "u", createdAt: "",
+                                   kind: "text", label: "おめでとう", color: "#d97706")
+        store.customEmoji = ["tada_party": party]
+        let emoji = EditMessageView(initial: "できました :tad", controller: controller, channelId: "c1") { _, _ in nil }
+        _ = try render(emoji, size: CGSize(width: 393, height: 760), name: "M187-edit-emoji-ios.png")
+    }
+
+    /// M187: in the editor, `:` typed in the middle of the text offers its candidates (iOS 26 reports the cursor), as on
+    /// Android and the desktop. Types through the text view the way the keyboard does (UITextInput.insertText).
+    func testMessageEditorOffersCandidatesAtTheCursor() throws {
+        let controller = AppController()
+        let party = CustomEmojiOut(id: "e1", name: "tada_party", contentType: "image/png", width: 32, height: 32, createdBy: "u", createdAt: "",
+                                   kind: "text", label: "おめでとう", color: "#d97706")
+        controller.store.customEmoji = ["tada_party": party]
+        let scene = UIApplication.shared.connectedScenes.compactMap { $0 as? UIWindowScene }.first
+        let window = scene.map { UIWindow(windowScene: $0) } ?? UIWindow(frame: CGRect(x: 0, y: 0, width: 393, height: 760))
+        window.frame = CGRect(x: 0, y: 0, width: 393, height: 760)
+        let host = UIHostingController(rootView: EditMessageView(initial: "了解です 明日伺います", controller: controller, channelId: "c1") { _, _ in nil })
+        window.rootViewController = host
+        window.makeKeyAndVisible()
+        defer { window.isHidden = true }
+        RunLoop.current.run(until: Date().addingTimeInterval(0.6))
+        func textView(in view: UIView) -> UITextView? {
+            if let found = view as? UITextView { return found }
+            return view.subviews.lazy.compactMap { textView(in: $0) }.first
+        }
+        let field = try XCTUnwrap(textView(in: host.view))
+        field.becomeFirstResponder()
+        field.selectedRange = NSRange(location: 4, length: 0)  // after 「了解です」
+        RunLoop.current.run(until: Date().addingTimeInterval(0.3))
+        field.insertText(" :tad")
+        RunLoop.current.run(until: Date().addingTimeInterval(0.6))
+        XCTAssertEqual(field.text, "了解です :tad 明日伺います")
+        let image = UIGraphicsImageRenderer(bounds: window.bounds).image { context in
+            if !window.drawHierarchy(in: window.bounds, afterScreenUpdates: true) { window.layer.render(in: context.cgContext) }
+        }
+        if let dir = ProcessInfo.processInfo.environment["SNAPSHOT_DIR"], let data = image.pngData() {
+            try data.write(to: URL(fileURLWithPath: dir).appendingPathComponent("M187-edit-midtext-ios.png"))
+        }
+    }
+
     func testUnavailableThumbnailRenders() throws {
         let controller = AppController()
         let attachment = AttachmentOut(id: "unavailable", filename: "実験結果.png", contentType: "image/png", sizeBytes: 1024, width: 640, height: 480, hasThumbnail: true, status: "attached", createdAt: "")

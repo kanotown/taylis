@@ -1543,9 +1543,19 @@ struct MessageEditFiles: Equatable {
 /// M186 (docs/CHANNEL_FILES.md §7.6): under the text, the message's files (× takes one off) and 「ファイルを追加」 with
 /// the composer's pickers and uploads; 保存 waits for the uploads, and for each failed one to be taken off or sent
 /// again. Nothing changes on the server until 保存.
+/// M187 (MOBILE_UI.md §30): the composer's help with the text too — the `:` emoji and `@` mention candidates, and
+/// メンション, 絵文字 (the workspace's own emoji and packs) and 書式 under the text. Nothing that only a new post has.
 struct EditMessageView: View {
     @Environment(\.dismiss) private var dismiss
     @State private var text: String
+    /// The cursor and selection (iOS 26), where the emoji, the `@` and the formatting go, as in the composer.
+    @State private var selection = ComposerSelection()
+    @State private var showEmojiPicker = false
+    /// Bumped as the text changes, so an open 書式 menu closes once the user types (the composer's `menuEpoch`).
+    @State private var menuEpoch = 0
+    /// Bumped as the cursor moves (iOS 26), so the candidates follow it: `selection` is a plain object SwiftUI does not
+    /// watch.
+    @State private var caretEpoch = 0
     @State private var files: MessageEditFiles
     /// Upload batches in progress (the spinner tile; 保存 waits).
     @State private var uploading = 0
@@ -1558,21 +1568,66 @@ struct EditMessageView: View {
     @State private var showFileImporter = false
     /// Editing means typing: the keyboard is up as the editor opens (testers, 2026-09-30).
     @FocusState private var focused: Bool
-    /// The uploads and the thumbnails (nil: the text alone, without the files).
+    /// The uploads and the thumbnails, the people and the emoji (nil: the text alone, without the files).
     let controller: AppController?
+    /// The message's conversation (and thread): the `@` candidates' order (MOBILE_UI.md §23).
+    let channelId: String
+    let parentId: String?
     /// Saves the text and, when they changed, the files' ids (`MessageEditFiles.attachmentIds`): nil once the server took
     /// it, else why not (shown here, the editor stays).
     let onSave: (String, [String]?) async -> String?
 
-    init(initial: String, attachments: [AttachmentOut] = [], controller: AppController? = nil,
-         onSave: @escaping (String, [String]?) async -> String?) {
+    init(initial: String, attachments: [AttachmentOut] = [], controller: AppController? = nil, channelId: String = "",
+         parentId: String? = nil, onSave: @escaping (String, [String]?) async -> String?) {
         _text = State(initialValue: initial)
         _files = State(initialValue: MessageEditFiles(attachments))
         self.controller = controller
+        self.channelId = channelId
+        self.parentId = parentId
         self.onSave = onSave
     }
 
     private var trimmed: String { text.trimmingCharacters(in: .whitespacesAndNewlines) }
+
+    /// The text before the cursor, which the candidates read (a word in the middle completes in place; Android and the
+    /// desktop do the same). Before iOS 26, and whenever the reported cursor does not belong to this text, the cursor is
+    /// the end: the composer's rule.
+    private var typed: String {
+        _ = caretEpoch
+        return ComposerCompletions.typed(text, range: selection.range(in: text))
+    }
+
+    private var mentionCandidates: [Mentions.Candidate] {
+        ComposerCompletions.mentions(typed, users: controller.map { Array($0.store.users.values) } ?? [], controller: controller,
+                                     channelId: channelId, parentId: parentId)
+    }
+
+    private var emojiCandidates: [EmojiEntry] {
+        mentionCandidates.isEmpty ? ComposerCompletions.emoji(typed, controller: controller) : []
+    }
+
+    /// A candidate picked: the word before the cursor completed, the rest of the text kept.
+    private func complete(_ completed: (String) -> String) {
+        let result = ComposerCompletions.complete(text, cursor: selection.range(in: text).lowerBound, completed)
+        setText(result.text, selecting: result.selection)
+    }
+
+    private func setText(_ value: String, selecting range: Range<Int>) {
+        text = value
+        selection.select(range, in: value)
+        focused = true
+    }
+
+    /// Text at the cursor, in place of the selection (the end of the text before iOS 26).
+    private func insert(_ inserted: String) {
+        let result = ComposerSelection.insert(inserted, into: text, at: selection.range(in: text))
+        setText(result.text, selecting: result.selection)
+    }
+
+    private func apply(_ format: ComposerFormat) {
+        let result = format.apply(to: text, selection: selection.range(in: text))
+        setText(result.text, selecting: result.selection)
+    }
 
     private static let hasCamera = UIImagePickerController.isSourceTypeAvailable(.camera)
 
@@ -1612,10 +1667,15 @@ struct EditMessageView: View {
                         .font(.footnote).foregroundStyle(.red)
                         .padding([.horizontal, .top])
                 }
-                TextEditor(text: $text)
+                textEditor
                     .focused($focused)
                     .disabled(saving)
                     .padding()
+                CompletionChips(emoji: emojiCandidates, mentions: mentionCandidates, controller: controller,
+                                onEmoji: { entry in EmojiUsage.note(entry.glyph); complete { Emoji.complete($0, glyph: entry.glyph) } },
+                                onMention: { candidate in complete { Mentions.complete($0, username: candidate.username) } })
+                    .disabled(saving)
+                toolRow
                 if controller != nil { filesBar }
             }
             .navigationTitle("メッセージを編集")
@@ -1634,6 +1694,19 @@ struct EditMessageView: View {
             }
             .interactiveDismissDisabled(saving)
             .attachmentPickers(photos: $showPhotoPicker, camera: $showCamera, files: $showFileImporter, uploader: uploader)
+            .adaptivePopover(isPresented: $showEmojiPicker) {
+                EmojiPickerView(custom: controller.map { Array($0.store.customEmoji.values) } ?? [], images: controller?.store.emojiImages ?? [:],
+                                animations: controller?.store.emojiAnimations ?? [:],
+                                onNeedImage: { emoji in controller?.loadEmojiImage(emoji) },
+                                packs: controller?.store.sortedEmojiPacks ?? [], packTabs: controller?.store.packTabImages ?? [:],
+                                onNeedPackTab: { controller?.loadPackTab($0) }) { glyph in EmojiUsage.note(glyph); insert(glyph) }
+            }
+            // MOBILE_UI.md §23: while the @ list is open, the conversation's members are read for it.
+            .task(id: ComposerCompletions.membersKey(typed, controller: controller, channelId: channelId)) {
+                guard ComposerCompletions.membersKey(typed, controller: controller, channelId: channelId) != nil, let controller else { return }
+                await controller.readMentionMembers(channelId)
+            }
+            .onChange(of: text) { menuEpoch &+= 1 }
             // An upload's error here: the conversation's banner is under the sheet.
             .overlay(alignment: .bottom) { if let controller { ErrorToast(controller: controller) } }
         }
@@ -1645,6 +1718,55 @@ struct EditMessageView: View {
     private func close() {
         failures.forEach { $0.retry?.discard() }
         dismiss()
+    }
+
+    /// The text, with its cursor and selection reported on iOS 26 (where the emoji, the `@` and the formatting go).
+    @ViewBuilder private var textEditor: some View {
+        if #available(iOS 26.0, *) {
+            // The editor reports the cursor before the text it belongs to (a key: the selection's setter, then the text's).
+            // The report is given back as it came meanwhile (a nil here was written back into the editor and lost the
+            // cursor), and paired with the text once this update is over; a newer report wins.
+            TextEditor(text: $text, selection: Binding(get: { selection.selection(for: text) },
+                                                       set: { reported in
+                                                           selection.raw = reported
+                                                           selection.text = text
+                                                           selection.reports &+= 1
+                                                           let report = selection.reports
+                                                           DispatchQueue.main.async {
+                                                               guard selection.reports == report else { return }
+                                                               selection.text = text
+                                                               caretEpoch &+= 1
+                                                           }
+                                                       }))
+        } else {
+            TextEditor(text: $text)
+        }
+    }
+
+    /// M187: メンション, 絵文字 and 書式, as under the composer's input while typing.
+    private var toolRow: some View {
+        HStack(spacing: 6) {
+            toolButton("at", label: tr("メンション")) { insert("@") }
+            toolButton("face.smiling", label: tr("絵文字")) { showEmojiPicker = true }
+            Menu {
+                ForEach(ComposerFormat.allCases) { format in
+                    Button(format.label, systemImage: format.icon) { apply(format) }
+                }
+            } label: {
+                Image(systemName: "textformat").font(.system(size: 20)).frame(width: 44, height: 44)
+            }
+            .accessibilityLabel("書式")
+            .id(menuEpoch)
+            Spacer()
+        }
+        .foregroundStyle(Color.secondary)
+        .padding(.horizontal, 8)
+        .disabled(saving)
+    }
+
+    private func toolButton(_ icon: String, label: String, action: @escaping () -> Void) -> some View {
+        Button(action: action) { Image(systemName: icon).font(.system(size: 20)).frame(width: 44, height: 44) }
+            .accessibilityLabel(label)
     }
 
     /// Why each failed upload failed, its 再試行, and what 保存 waits for.
@@ -1817,24 +1939,13 @@ struct ComposerView: View {
         setText(value, selecting: value.count..<value.count)
     }
     /// MOBILE_UI.md §23: while the @ list is open, the channel's members are read for it (once; again when they change).
-    private var mentionMembersKey: String? {
-        guard Mentions.query(text) != nil, let controller else { return nil }
-        return "\(channelId):\(controller.store.memberListVersion[channelId, default: 0])"
-    }
+    private var mentionMembersKey: String? { ComposerCompletions.membersKey(text, controller: controller, channelId: channelId) }
     private var candidates: [Mentions.Candidate] {
-        guard let query = Mentions.query(text) else { return [] }
-        // MOBILE_UI.md §23: the people of this conversation first (the thread's, then the channel's), me last.
-        return Mentions.candidates(query, users: users, groups: controller.map { Array($0.store.groups.values) } ?? [],
-                                   aiBotIds: controller?.aiHub?.knownBotUserIds,
-                                   context: controller.map { Mentions.context(store: $0.store, channelId: channelId, parentId: parentId) } ?? .init())
+        ComposerCompletions.mentions(text, users: users, controller: controller, channelId: channelId, parentId: parentId)
     }
     /// `:tada` completes to an emoji (M11f) when no mention is being typed.
     private var emojiCandidates: [EmojiEntry] {
-        guard candidates.isEmpty, let query = Emoji.query(text) else { return [] }
-        // M100: also by label and keywords (":ありがとう" finds :hpd-bow:).
-        let found = Emoji.customCandidates(query, custom: controller.map { Array($0.store.customEmoji.values) } ?? [])
-        let custom = found.map { EmojiEntry(shortcode: $0.name, glyph: ":\($0.name):", category: "custom", keywords: $0.label ?? "") }
-        return Array((custom + Emoji.candidates(query)).prefix(8))
+        candidates.isEmpty ? ComposerCompletions.emoji(text, controller: controller) : []
     }
 
     private var trimmed: String { text.trimmingCharacters(in: .whitespacesAndNewlines) }
@@ -2115,33 +2226,18 @@ struct ComposerView: View {
     }
 
     /// The cursor or selection as character offsets (iOS 26 reports it; before, the end of the text).
-    private func selectedRange() -> Range<Int> {
-        let end = text.count
-        if #available(iOS 26.0, *), let current = selection.selection(for: text), case .selection(let range) = current.indices,
-           let offsets = ComposerSelection.offsets(range, in: text) {
-            return offsets
-        }
-        return end..<end
-    }
+    private func selectedRange() -> Range<Int> { selection.range(in: text) }
 
     private func setText(_ value: String, selecting range: Range<Int>) {
         textBinding.wrappedValue = value
-        if #available(iOS 26.0, *) {
-            let lower = value.index(value.startIndex, offsetBy: min(range.lowerBound, value.count))
-            let upper = value.index(value.startIndex, offsetBy: min(range.upperBound, value.count))
-            selection.raw = lower == upper ? TextSelection(insertionPoint: lower) : TextSelection(range: lower..<upper)
-            selection.text = value
-        }
+        selection.select(range, in: value)
         focused = true
     }
 
     /// Text at the cursor, in place of the selection (the end of the text before iOS 26).
     private func insert(_ inserted: String) {
-        var chars = Array(text)
-        let range = selectedRange().clamped(to: 0..<(chars.count + 1))
-        chars.replaceSubrange(range.lowerBound..<min(range.upperBound, chars.count), with: Array(inserted))
-        let cursor = range.lowerBound + inserted.count
-        setText(String(chars), selecting: cursor..<cursor)
+        let result = ComposerSelection.insert(inserted, into: text, at: selectedRange())
+        setText(result.text, selecting: result.selection)
     }
 
     private func apply(_ format: ComposerFormat) {
@@ -2173,46 +2269,9 @@ struct ComposerView: View {
                     .frame(maxWidth: .infinity, alignment: .leading)
                     .padding(.horizontal, 12).padding(.top, 4)
             }
-            if !emojiCandidates.isEmpty {
-                ScrollView(.horizontal, showsIndicators: false) {
-                    HStack(spacing: 6) {
-                        ForEach(emojiCandidates, id: \.shortcode) { entry in
-                            Button { EmojiUsage.note(entry.glyph); textBinding.wrappedValue = Emoji.complete(text, glyph: entry.glyph) } label: {
-                                if entry.category == "custom", let controller {
-                                    // The image (or text pill) and its label, not `:name:` twice.
-                                    CustomEmoji.text(entry.glyph, custom: controller.store.customEmoji, images: controller.store.emojiImages,
-                                                     onNeed: { controller.loadEmojiImage($0) })
-                                        + Text("  \(entry.keywords.isEmpty ? ":\(entry.shortcode):" : entry.keywords)").foregroundStyle(.secondary)
-                                } else {
-                                    Text(entry.glyph) + Text("  :\(entry.shortcode):").foregroundStyle(.secondary)
-                                }
-                            }
-                            .font(.footnote)
-                            .buttonStyle(.bordered)
-                            .controlSize(.small)
-                        }
-                    }
-                    .padding(.horizontal, 12)
-                }
-                .padding(.top, 6)
-            }
-            if !candidates.isEmpty {
-                ScrollView(.horizontal, showsIndicators: false) {
-                    HStack(spacing: 6) {
-                        ForEach(candidates) { candidate in
-                            Button { textBinding.wrappedValue = Mentions.complete(text, username: candidate.username) } label: {
-                                Text("@\(candidate.username)").fontWeight(.semibold) + Text("  \(candidate.label)").foregroundStyle(.secondary)
-                                    + (candidate.kind == "ai" ? Text("  AI").font(.caption2).bold().foregroundStyle(Color.accentColor) : Text(""))
-                            }
-                            .font(.footnote)
-                            .buttonStyle(.bordered)
-                            .controlSize(.small)
-                        }
-                    }
-                    .padding(.horizontal, 12)
-                }
-                .padding(.top, 6)
-            }
+            CompletionChips(emoji: emojiCandidates, mentions: candidates, controller: controller,
+                            onEmoji: { entry in EmojiUsage.note(entry.glyph); textBinding.wrappedValue = Emoji.complete(text, glyph: entry.glyph) },
+                            onMention: { textBinding.wrappedValue = Mentions.complete(text, username: $0.username) })
             if !commandHits.isEmpty || !templateHits.isEmpty || !workflowHits.isEmpty {
                 ScrollView(.horizontal, showsIndicators: false) {
                     HStack(spacing: 6) {
@@ -2427,6 +2486,8 @@ extension MessageRow: Equatable {
 /// The composer's cursor and selection: a `TextSelection?` from iOS 26, kept untyped so the view builds for iOS 17.
 final class ComposerSelection {
     var raw: Any?
+    /// M187: how many cursors the field has reported, so a pairing made later knows whether a newer report came.
+    var reports = 0
     /// The text the selection belongs to. Its indices are only good for that text: after a send cleared the input,
     /// an emoji chosen from the picker went in at an index past the end and the app crashed (testers, 2026-09-29).
     var text: String?
@@ -2452,6 +2513,38 @@ final class ComposerSelection {
         @unknown default:
             return nil
         }
+    }
+
+    /// The cursor or selection in `current` as character offsets (iOS 26 reports it; before, the end of the text).
+    func range(in current: String) -> Range<Int> {
+        let end = current.count
+        if #available(iOS 26.0, *), let selected = selection(for: current), case .selection(let range) = selected.indices,
+           let offsets = Self.offsets(range, in: current) {
+            return offsets
+        }
+        return end..<end
+    }
+
+    /// The cursor (or the selection) at `range` of `value`, the text the input is given with it (iOS 26; before, the
+    /// input keeps its own).
+    func select(_ range: Range<Int>, in value: String) {
+        if #available(iOS 26.0, *) {
+            let lower = value.index(value.startIndex, offsetBy: min(range.lowerBound, value.count))
+            let upper = value.index(value.startIndex, offsetBy: min(range.upperBound, value.count))
+            raw = lower == upper ? TextSelection(insertionPoint: lower) : TextSelection(range: lower..<upper)
+            text = value
+        }
+    }
+
+    /// `inserted` in place of `range` of `text` (character offsets, clamped to it): the new text and the cursor after it.
+    static func insert(_ inserted: String, into text: String, at range: Range<Int>) -> (text: String, selection: Range<Int>) {
+        var chars = Array(text)
+        // Both ends within the text: a range starting past its end (clamped to `count + 1` before) trapped here.
+        let lower = min(max(range.lowerBound, 0), chars.count)
+        let upper = min(max(range.upperBound, lower), chars.count)
+        chars.replaceSubrange(lower..<upper, with: Array(inserted))
+        let cursor = lower + inserted.count
+        return (String(chars), cursor..<cursor)
     }
 
     /// `range` as character offsets in `text`, or nil when an index is not a position in it (made in another text, past

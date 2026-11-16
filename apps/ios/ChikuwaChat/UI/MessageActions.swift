@@ -132,8 +132,10 @@ private struct MessageSheets: ViewModifier {
                     }
                 case .edit:
                     // M186: with the message's files (× takes one off, 「ファイルを追加」 adds).
+                    // M187: with the composer's emoji, mentions and formatting.
                     EditMessageView(initial: Mentions.decode(message.body, users: store.users, groups: store.groups),
-                                    attachments: message.attachments, controller: controller) { body, attachmentIds in
+                                    attachments: message.attachments, controller: controller,
+                                    channelId: message.channelId, parentId: message.parentId) { body, attachmentIds in
                         await controller.editMessage(message.id, body: Mentions.encode(body, users: store.users.values, groups: Array(store.groups.values)),
                                                      attachmentIds: attachmentIds)
                     }
