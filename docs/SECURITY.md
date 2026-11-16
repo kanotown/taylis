@@ -660,6 +660,33 @@ PDF と Office の文書のプレビュー (docs/PREVIEWS.md)。他人が送っ�
   `Referrer-Policy: no-referrer`、`X-Frame-Options: DENY` を付ける。
 - Docker イメージはタグではなくダイジェストで固定する。
 
+### 6.1 アプリが接続するサーバの URL（M190）
+
+公式アプリ（Desktop の Tauri アプリ・iOS・Android）は、利用者が入力したサーバ URL にそのまま接続する。LAN のサーバのために
+iOS は ATS の `NSAllowsArbitraryLoads`、Android は `usesCleartextTraffic="true"` で平文の HTTP を許しているので、
+`http://chat.example.com` と入力すると、パスワードやトークンがインターネット上を暗号化されずに流れる。
+
+- 分類（apps/shared/server-url-security.json。3 つのクライアントの試験が同じケースを読む）：各クライアントのいままでの
+  正規化（スキームがなければ `https://` を補う、ユーザー情報付きは拒む）の後の URL を
+  - `secure`：https
+  - `local`：インターネットに出ない宛先への http。`localhost` と `*.localhost`、IPv4 の 127.0.0.0/8・10.0.0.0/8・
+    172.16.0.0/12・192.168.0.0/16・169.254.0.0/16・100.64.0.0/10（キャリアグレード NAT・Tailscale）、IPv6 の ::1・
+    fc00::/7・fe80::/10（角かっこ・ゾーン付きも。IPv4 射影アドレス `::ffff:a.b.c.d` は IPv4 のほうで判定）、
+    `.local`・`.lan`・`.home.arpa`・`.internal` で終わる名前、ドットのない 1 ラベルの名前（`http://taylis:8000`）。
+    大文字小文字は区別せず、名前の末尾の `.` は無視する。最後のラベルが数字のホストは URL パーサーや inet_aton と同じく
+    IPv4 として読む（`2130706433` は 127.0.0.1、`10.1` は 10.0.0.1。1 ラベルの名前とはみなさない）
+  - `insecure`：それ以外の http（公開アドレス、通常のドメイン名、読めないもの）
+- `insecure` のときだけ、サーバに初めて接続する前（ログイン、ワークスペースの追加・再ログイン、「Google でログイン」の開始、
+  招待リンクの確認）に「暗号化されていない接続です」を出す。「https で接続」（既定：同じ URL を https にして続け、欄の URL も
+  書き換える）、「このまま接続」（破壊的な操作の見た目：http のまま続ける）、「キャンセル」。選んだ結果は覚えず、ログインの
+  たびに聞く（まれなので）。同じログインの 2 要素認証のコードの段階では聞き直さない
+- 登録済みのワークスペースへの再接続・トークンの更新・実行中のセッションには関わらない。Web 版はページと同じオリジンにだけ
+  接続するので聞かない。入力中の URL への GET /server・GET /auth/methods（アイコンと Google のボタン）は秘密を送らない
+  ので、これまでどおり確認なしで行う
+- 拒否ではなく確認にした理由：研究室の LAN では内部 DNS の通常のドメイン名（`chat.lab.example.ac.jp` など）で http の
+  サーバを動かすことがあり、URL だけでは LAN かインターネットかを判別できない。この場合も「このまま接続」で続けられる。
+  ATS・`usesCleartextTraffic` も同じ理由で変えない
+
 ## 7. 秘密情報
 
 - 在室状況の送信 Webhook の署名の鍵（M140、docs/PRESENCE.md §5.3）は `ATTENDANCE_WEBHOOK_SECRETS_DIR`（既定
