@@ -29,6 +29,8 @@ struct LoginView: View {
     @State private var prepared = false
     @State private var adding = false
     @State private var forgetting = false
+    /// M190: plain HTTP to a server on the internet is confirmed first.
+    @State private var insecure = InsecureServerPrompt()
 
     private var relogin: Workspace? {
         if case .relogin(let workspace) = mode { return workspace }
@@ -92,7 +94,7 @@ struct LoginView: View {
                 }
                 Section {
                     Button {
-                        Task { await submit() }
+                        submit()
                     } label: {
                         if busy { ProgressView() } else { Text(needsCode ? "コードを確認してログイン" : "ログイン") }
                     }
@@ -132,6 +134,7 @@ struct LoginView: View {
             .onAppear(perform: prepare)
             .task(id: methodsServer) { await loadMethods() }
             .sheet(isPresented: $adding) { LoginView(controller: controller, mode: .add) { adding = false } }
+            .insecureServerAlert(insecure)
             .alert("このワークスペースを一覧から外しますか？", isPresented: $forgetting) {
                 Button("一覧から外す", role: .destructive) {
                     if let workspace = relogin { Task { await controller.signOutWorkspace(workspace.serverUrl) } }
@@ -154,7 +157,7 @@ struct LoginView: View {
             }
             .accessibilityHidden(true)
             Button {
-                Task { await signInWithGoogle() }
+                signInWithGoogle()
             } label: {
                 HStack(spacing: 10) {
                     if googleBusy {
@@ -199,10 +202,15 @@ struct LoginView: View {
         googleByServer.updateValue(offered, forKey: target) // a nil answer is kept too (asked, none offered)
     }
 
-    private func signInWithGoogle() async {
+    private func signInWithGoogle() {
+        insecure.check(methodsServer) { target in Task { await signInWithGoogle(target) } }
+    }
+
+    private func signInWithGoogle(_ target: String) async {
+        show(target)
         googleBusy = true
         defer { googleBusy = false }
-        let outcome = await controller.signInWithGoogle(server: methodsServer, adding: isAdding)
+        let outcome = await controller.signInWithGoogle(server: target, adding: isAdding)
         switch outcome {
         case nil:
             break // the sheet was closed: nothing to say
@@ -230,11 +238,27 @@ struct LoginView: View {
         }
     }
 
-    private func submit() async {
+    private func submit() {
+        let typed = relogin?.serverUrl ?? server
+        // M190: the code step of the same sign-in (the password went already) is not asked again.
+        if needsCode {
+            Task { await submit(typed) }
+        } else {
+            insecure.check(typed) { target in Task { await submit(target) } }
+        }
+    }
+
+    /// 「https で接続」: the field shows the address signed in to.
+    private func show(_ target: String) {
+        if relogin == nil, target != server, target != methodsServer { server = target }
+    }
+
+    private func submit(_ target: String) async {
+        show(target)
         busy = true
         defer { busy = false }
         let code = needsCode ? totpCode : nil
-        let outcome = await controller.signIn(server: relogin?.serverUrl ?? server, username: username.trimmingCharacters(in: .whitespaces),
+        let outcome = await controller.signIn(server: target, username: username.trimmingCharacters(in: .whitespaces),
                                               password: password, totpCode: code, adding: isAdding)
         switch outcome {
         case .signedIn, .switched:

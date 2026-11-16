@@ -12,6 +12,8 @@ struct InviteView: View {
     @State private var repeatPassword = ""
     @State private var error: String?
     @State private var busy = false
+    /// M190: a link to a server on the internet over plain HTTP is confirmed before the server is first asked.
+    @State private var insecure = InsecureServerPrompt()
 
     private var minLength: Int { preview?.passwordMinLength ?? 8 }
     private var mismatch: Bool { !repeatPassword.isEmpty && password != repeatPassword }
@@ -61,7 +63,7 @@ struct InviteView: View {
                 if let error { Section { Text(error).foregroundStyle(.red) } }
                 Section {
                     Button {
-                        Task { await check() }
+                        check()
                     } label: {
                         if busy { ProgressView() } else { Text("リンクを確認") }
                     }
@@ -71,13 +73,28 @@ struct InviteView: View {
         }
         .navigationTitle("招待リンクで参加")
         .navigationBarTitleDisplayMode(.inline)
+        .insecureServerAlert(insecure)
     }
 
-    private func check() async {
+    private func check() {
         guard let parsed = Invite.parse(link) else {
             error = tr("招待リンクの形式が正しくありません（https://サーバ/invite/… の形です）")
             return
         }
+        error = nil
+        let typed = parsed.server.absoluteString
+        insecure.check(typed) { server in
+            guard server != typed, let secure = URL(string: server) else {
+                Task { await lookUp((parsed.server, parsed.token)) }
+                return
+            }
+            // 「https で接続」: the link in the field says https too.
+            link = link.trimmingCharacters(in: .whitespacesAndNewlines).replacingOccurrences(of: "^http:", with: "https:", options: [.regularExpression, .caseInsensitive])
+            Task { await lookUp((secure, parsed.token)) }
+        }
+    }
+
+    private func lookUp(_ parsed: (server: URL, token: String)) async {
         busy = true
         error = nil
         do {

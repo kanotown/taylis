@@ -466,6 +466,22 @@
         }
       }
     },
+    "https で接続" : {
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Connect with https"
+          }
+        },
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "使用 https 连接"
+          }
+        }
+      }
+    },
     "linkCards.directMessage" : {
       "localizations" : {
         "en" : {
@@ -694,6 +710,38 @@
           "stringUnit" : {
             "state" : "translated",
             "value" : "你是教师，无需许可标记。"
+          }
+        }
+      }
+    },
+    "この URL は http です。パスワードやメッセージが暗号化されずに送られ、途中で読まれたり書き換えられたりするおそれがあります。サーバが https に対応していれば https で接続してください。" : {
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "This URL uses http. Your password and messages would be sent unencrypted and could be read or changed on the way. If the server supports https, connect with https."
+          }
+        },
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "此 URL 使用 http。密码和消息将以未加密方式发送，可能在传输途中被读取或篡改。如果服务器支持 https，请使用 https 连接。"
+          }
+        }
+      }
+    },
+    "このまま接続" : {
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Connect anyway"
+          }
+        },
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "仍然连接"
           }
         }
       }
@@ -3510,6 +3558,22 @@
           "stringUnit" : {
             "state" : "translated",
             "value" : "包含时间"
+          }
+        }
+      }
+    },
+    "暗号化されていない接続です" : {
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "This connection is not encrypted"
+          }
+        },
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "连接未加密"
           }
         }
       }
