@@ -541,7 +541,7 @@ final class EmojiImageCacheTests: XCTestCase {
         _ = await EmojiImageCache.forServer(b).image(id: "e1", version: "1", variant: "inline", decode: decode, fetch: { try await requests.fetch(red) })
         XCTAssertEqual(requests.total, 2) // the same id on another server is another picture
         let directoryA = EmojiImageCache.directory(server: a)
-        XCTAssertTrue(FileManager.default.fileExists(atPath: directoryA.appendingPathComponent("e1").path))
+        XCTAssertTrue(FileManager.default.fileExists(atPath: directoryA.appendingPathComponent(SafePaths.idComponent("e1")).path))
 
         let before = EmojiImageCache.forServer(a)
         EmojiImageCache.remove(server: a)
@@ -609,11 +609,11 @@ final class EmojiImageCacheTests: XCTestCase {
             _ = await cache.image(id: "e\(index)", version: nil, variant: "inline", decode: decode, fetch: { picture })
             // Older uses, oldest first (e0 the least recently used).
             try FileManager.default.setAttributes([.modificationDate: Date(timeIntervalSinceNow: Double(index - 10) * 60)],
-                                                  ofItemAtPath: directory.appendingPathComponent("e\(index)").path)
+                                                  ofItemAtPath: directory.appendingPathComponent(SafePaths.idComponent("e\(index)")).path)
         }
         _ = await cache.image(id: "e4", version: nil, variant: "inline", decode: decode, fetch: { picture })
         let kept = Set((try FileManager.default.contentsOfDirectory(atPath: directory.path)))
-        XCTAssertEqual(kept, ["e2", "e3", "e4"]) // down to three quarters of the cap, newest first
+        XCTAssertEqual(kept, Set(["e2", "e3", "e4"].map(SafePaths.idComponent))) // down to three quarters of the cap, newest first
     }
 
     /// The emoji and packs last known come back with the store (a launch draws them before the bootstrap), and a new
