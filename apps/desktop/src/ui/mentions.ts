@@ -16,21 +16,31 @@ export interface MentionCandidate {
 }
 
 // After anything but an ASCII handle character, @ or <: 「まとめます。@kano」 is a mention, a@b.jp and <@uuid> are not.
-const HANDLE = /(^|[^A-Za-z0-9._@<-])@([A-Za-z0-9._-]+)/g;
+// M189: also after the `_` that opens italic (「_@kano 確認_」; not after a letter or digit, as italic: 「確認_@kano」 is not).
+const HANDLE = /(^|[^A-Za-z0-9._@<-])(_*)@([A-Za-z0-9._-]+)/g;
+const WORD = /^[\p{L}\p{N}]$/u;
 const USER_TOKEN = /<@([0-9a-f-]{36})>/g;
 const ALL_TOKEN = /<!(channel|here)>/g;
 const GROUP_TOKEN = /<@group:([0-9a-f-]{36})>/g;
 const QUERY = /(^|[^A-Za-z0-9._@<-])@([\p{L}\p{M}\p{N}._-]*)$/u;
 
+/**
+ * `@name` as the stored token (apps/shared/mention-encode.json). M189: the longest known name wins, so a `.`, `_` or `-`
+ * that ends the handle but is no one's (「@kano.」 ending a sentence, 「_確認 @kano_」 closing italic) stays after the token.
+ */
 export function encodeMentions(text: string, users: Iterable<UserPublic>, groups: Iterable<GroupOut> = []): string {
   const byName = new Map<string, string>();
   for (const user of users) byName.set(user.username.toLowerCase(), `<@${user.id}>`);
   for (const group of groups) byName.set(group.name.toLowerCase(), `<@group:${group.id}>`); // names never collide (server)
-  return text.replace(HANDLE, (whole: string, lead: string, name: string) => {
-    const lower = name.toLowerCase();
-    if (lower === "channel" || lower === "here") return `${lead}<!${lower}>`;
-    const token = byName.get(lower);
-    return token ? `${lead}${token}` : whole;
+  const token = (lower: string) => (lower === "channel" || lower === "here" ? `<!${lower}>` : byName.get(lower));
+  return text.replace(HANDLE, (whole: string, lead: string, opens: string, name: string) => {
+    if (opens && WORD.test(lead)) return whole;
+    for (let end = name.length; end > 0; end--) {
+      const found = token(name.slice(0, end).toLowerCase());
+      if (found) return `${lead}${opens}${found}${name.slice(end)}`;
+      if (!"._-".includes(name[end - 1]!)) break;
+    }
+    return whole;
   });
 }
 

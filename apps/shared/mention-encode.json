@@ -1,0 +1,31 @@
+{
+  "_comment": "DATA_MODEL.md 「本文の形式」 (M189, 2026-11-16): how an input's `@name` becomes the stored token when a message is sent or saved after editing and when a canvas is saved, the same on every client (mentions.ts encodeMentions, Mentions.swift Mentions.encode, Mentions.kt Mentions.encode). A handle is `@` and ASCII letters, digits, `.`, `_`, `-`, at the start or after anything but those, `@` or `<` (an e-mail address and a stored `<@id>` stay as they are), also with the `_` that opens italic in between (`_@name_`; not after a letter or digit, where `_` opens no italic). Names compare without case; `@channel` / `@here` are `<!channel>` / `<!here>`. The longest known name wins: when the whole handle is no one's, a `.`, `_` or `-` at its end is left out one at a time and stays after the token (`@name.` ending a sentence, `_確認 @name_` closing italic; editing such a message turned its mention into text before M189), a letter or digit never is. An unknown handle stays text. users / groups: [id, name].",
+  "users": [
+    ["01a0f811-c836-755b-925c-0d71f4c5cd22", "yamada"],
+    ["0190aaaa-bbbb-7ccc-8ddd-eeeeffff0000", "bob.k"],
+    ["0190cccc-dddd-7eee-8fff-000011112222", "sato_"]
+  ],
+  "groups": [
+    ["0190bbbb-cccc-7ddd-8eee-ffff00001111", "design"]
+  ],
+  "cases": [
+    {"name": "after a space", "text": "確認 @yamada さん", "stored": "確認 <@01a0f811-c836-755b-925c-0d71f4c5cd22> さん"},
+    {"name": "after Japanese", "text": "まとめます。@bob.k", "stored": "まとめます。<@0190aaaa-bbbb-7ccc-8ddd-eeeeffff0000>"},
+    {"name": "without case", "text": "@Yamada", "stored": "<@01a0f811-c836-755b-925c-0d71f4c5cd22>"},
+    {"name": "a group, channel and here", "text": "@design と @channel と @Here", "stored": "<@group:0190bbbb-cccc-7ddd-8eee-ffff00001111> と <!channel> と <!here>"},
+    {"name": "e-mail addresses stay", "text": "yamada@example.jp と a@b.jp", "stored": "yamada@example.jp と a@b.jp"},
+    {"name": "unknown handles stay", "text": "@nobody と @山田", "stored": "@nobody と @山田"},
+    {"name": "a stored token stays", "text": "<@01a0f811-c836-755b-925c-0d71f4c5cd22>", "stored": "<@01a0f811-c836-755b-925c-0d71f4c5cd22>"},
+    {"name": "bold and strike around", "text": "**@yamada** ~~@bob.k~~", "stored": "**<@01a0f811-c836-755b-925c-0d71f4c5cd22>** ~~<@0190aaaa-bbbb-7ccc-8ddd-eeeeffff0000>~~"},
+    {"name": "italic closing after a mention", "text": "_確認 @yamada_", "stored": "_確認 <@01a0f811-c836-755b-925c-0d71f4c5cd22>_"},
+    {"name": "italic opening before a mention", "text": "_@yamada 確認_", "stored": "_<@01a0f811-c836-755b-925c-0d71f4c5cd22> 確認_"},
+    {"name": "italic around a mention", "text": "「_@yamada_」", "stored": "「_<@01a0f811-c836-755b-925c-0d71f4c5cd22>_」"},
+    {"name": "italic around here and a group", "text": "_全員 @here_ _@design_", "stored": "_全員 <!here>_ _<@group:0190bbbb-cccc-7ddd-8eee-ffff00001111>_"},
+    {"name": "double underscores", "text": "__@yamada__", "stored": "__<@01a0f811-c836-755b-925c-0d71f4c5cd22>__"},
+    {"name": "ending a sentence", "text": "@yamada, @bob.k. ありがとう @yamada-", "stored": "<@01a0f811-c836-755b-925c-0d71f4c5cd22>, <@0190aaaa-bbbb-7ccc-8ddd-eeeeffff0000>. ありがとう <@01a0f811-c836-755b-925c-0d71f4c5cd22>-"},
+    {"name": "a name ending with _ is the whole handle first", "text": "@sato_ さん _確認 @sato__", "stored": "<@0190cccc-dddd-7eee-8fff-000011112222> さん _確認 <@0190cccc-dddd-7eee-8fff-000011112222>_"},
+    {"name": "a letter or digit is never left out", "text": "@yamadak @bob.k2 @yamada_san", "stored": "@yamadak @bob.k2 @yamada_san"},
+    {"name": "no italic after a letter or digit", "text": "snake_@yamada 確認_@yamada 1_@yamada", "stored": "snake_@yamada 確認_@yamada 1_@yamada"},
+    {"name": "handles of marks only", "text": "@_ @. @-", "stored": "@_ @. @-"}
+  ]
+}
