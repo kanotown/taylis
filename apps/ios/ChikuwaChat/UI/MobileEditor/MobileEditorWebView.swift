@@ -35,12 +35,19 @@ enum MobileEditorBundle {
         }
     }
 
-    /// An image's media type by its first bytes (the attachment API answers with the bytes only).
-    static func imageContentType(_ data: Data) -> String {
+    /// A raster image's media type by its first bytes (the attachment API answers with the bytes only): PNG, JPEG, GIF,
+    /// WebP or HEIC; nil for anything else. A page's picture and an emoji are served only as one of these (2026-11-16:
+    /// the server's bytes went to the WebView whatever they were, as application/octet-stream).
+    static func imageContentType(_ data: Data) -> String? {
         if let kind = ImageUpload.kind(of: data) { return kind.mime }
         let head = [UInt8](data.prefix(12))
         if head.count >= 12, head[0..<4] == [0x52, 0x49, 0x46, 0x46], head[8..<12] == [0x57, 0x45, 0x42, 0x50] { return "image/webp" }
-        return "application/octet-stream"
+        // ISO BMFF: a size, "ftyp", then the major brand.
+        if head.count >= 12, head[4..<8] == [0x66, 0x74, 0x79, 0x70],
+           ["heic", "heix", "hevc", "hevx", "heim", "heis", "mif1", "msf1"].contains(String(decoding: head[8..<12], as: UTF8.self)) {
+            return "image/heic"
+        }
+        return nil
     }
 }
 
@@ -85,10 +92,15 @@ final class EditorSchemeHandler: NSObject, WKURLSchemeHandler {
         let parts = url.pathComponents.filter { $0 != "/" }
         if parts.count == 2, parts[0] == "attachment" {
             let attachmentId = parts[1]
+            // An attachment id is a UUID: anything else is not asked for (it goes into an API path with the session).
+            guard SafePaths.isUUIDShaped(attachmentId) else {
+                finish(task, status: 404, type: "text/plain", data: Data())
+                return
+            }
             fetch(task, key: "attachment:" + attachmentId) { [weak self] in
                 guard let assets = self?.assets else { throw EditorAssetError.noSession }
                 return try await assets.attachmentData(attachmentId)
-            } type: { MobileEditorBundle.imageContentType($0) }
+            }
             return
         }
         if parts.count == 2, parts[0] == "emoji" {
@@ -96,15 +108,18 @@ final class EditorSchemeHandler: NSObject, WKURLSchemeHandler {
             fetch(task, key: "emoji:" + name) { [weak self] in
                 guard let assets = self?.assets else { throw EditorAssetError.noSession }
                 return try await assets.emojiData(name)
-            } type: { MobileEditorBundle.imageContentType($0) }
+            }
             return
         }
-        // A bundle file: index.html, editor.js, editor.css, fonts/<name>. Never outside the folder.
-        guard let directory, !parts.isEmpty, !parts.contains(".."), !parts.contains(where: { $0.hasPrefix(".") }) else {
+        // A bundle file: index.html, editor.js, editor.css, fonts/<name>. Never outside the folder: pathComponents
+        // decodes each part, so `fonts%2F..%2F..%2Fx` is one part holding separators (2026-11-16); and the standardized
+        // path must stay under dist/.
+        guard let directory, !parts.isEmpty,
+              !parts.contains(where: { $0.hasPrefix(".") || $0.contains("/") || $0.contains("\\") }),
+              let file = SafePaths.file(under: directory, parts) else {
             finish(task, status: 404, type: "text/plain", data: Data())
             return
         }
-        let file = parts.reduce(directory) { $0.appendingPathComponent($1) }
         guard let data = try? Data(contentsOf: file) else {
             finish(task, status: 404, type: "text/plain", data: Data())
             return
@@ -112,28 +127,35 @@ final class EditorSchemeHandler: NSObject, WKURLSchemeHandler {
         finish(task, status: 200, type: MobileEditorBundle.contentType(forExtension: file.pathExtension), data: data)
     }
 
-    private func fetch(_ task: WKURLSchemeTask, key: String, _ load: @escaping @MainActor () async throws -> Data, type: @escaping (Data) -> String) {
-        if let kept = cache.object(forKey: key as NSString) {
-            finish(task, status: 200, type: type(kept as Data), data: kept as Data)
+    /// A picture from the app's session: served only when its bytes are a raster image (that type, nosniff); anything
+    /// else the server answered is a 404 and not kept.
+    private func fetch(_ task: WKURLSchemeTask, key: String, _ load: @escaping @MainActor () async throws -> Data) {
+        if let kept = cache.object(forKey: key as NSString), let type = MobileEditorBundle.imageContentType(kept as Data) {
+            finish(task, status: 200, type: type, data: kept as Data, picture: true)
             return
         }
         Task { @MainActor [weak self] in
             guard let self else { return }
             do {
                 let data = try await load()
+                guard let type = MobileEditorBundle.imageContentType(data) else {
+                    self.finish(task, status: 404, type: "text/plain", data: Data())
+                    return
+                }
                 self.cache.setObject(data as NSData, forKey: key as NSString, cost: data.count)
-                self.finish(task, status: 200, type: type(data), data: data)
+                self.finish(task, status: 200, type: type, data: data, picture: true)
             } catch {
                 self.finish(task, status: 404, type: "text/plain", data: Data())
             }
         }
     }
 
-    private func finish(_ task: WKURLSchemeTask, status: Int, type: String, data: Data) {
+    private func finish(_ task: WKURLSchemeTask, status: Int, type: String, data: Data, picture: Bool = false) {
         let id = ObjectIdentifier(task)
         guard active.contains(id), let url = task.request.url else { return }
         active.remove(id)
-        let headers = ["Content-Type": type, "Content-Length": String(data.count), "Cache-Control": "no-store"]
+        var headers = ["Content-Type": type, "Content-Length": String(data.count), "Cache-Control": "no-store"]
+        if picture { headers["X-Content-Type-Options"] = "nosniff" } // the server's bytes: only as the image they are
         guard let response = HTTPURLResponse(url: url, statusCode: status, httpVersion: "HTTP/1.1", headerFields: headers) else { return }
         task.didReceive(response)
         if !data.isEmpty { task.didReceive(data) }

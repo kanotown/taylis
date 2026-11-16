@@ -215,7 +215,11 @@ final class MobileEditorBridgeTests: XCTestCase {
         for url in ["taylis-editor://app/missing.js", "taylis-editor://app/../outside-\(dir.lastPathComponent).txt",
                     "taylis-editor://app/fonts/../../outside-\(dir.lastPathComponent).txt", "taylis-editor://app/.hidden",
                     "taylis-editor://other/index.html", "taylis-editor://app/", "taylis-editor://app/attachment/",
-                    "taylis-editor://app/attachment/x/y"] {
+                    "taylis-editor://app/attachment/x/y",
+                    // 2026-11-16: a separator inside one part (pathComponents decodes it), and escaped dots.
+                    "taylis-editor://app/fonts%2F..%2F..%2Foutside-\(dir.lastPathComponent).txt",
+                    "taylis-editor://app/%2E%2E/outside-\(dir.lastPathComponent).txt",
+                    "taylis-editor://app/fonts%5C..%5C..%5Coutside-\(dir.lastPathComponent).txt"] {
             let task = await serve(handler, url)
             XCTAssertEqual(task.response?.statusCode, 404, url)
             XCTAssertTrue(task.finished, url)
@@ -223,36 +227,66 @@ final class MobileEditorBridgeTests: XCTestCase {
         }
     }
 
+    private static let a1 = "0190a8c2-7d3e-7b1a-9c4e-000000000a01"
+
     @MainActor
     func testSchemeHandlerFetchesPicturesThroughTheAppAndCachesThem() async throws {
         let handler = EditorSchemeHandler(directory: try bundleDirectory())
         let assets = FakeAssets()
-        assets.attachments["a1"] = Self.png
+        assets.attachments[Self.a1] = Self.png
         assets.emoji["研究室"] = Self.png
         handler.assets = assets
-        let picture = await serve(handler, "taylis-editor://app/attachment/a1")
+        let picture = await serve(handler, "taylis-editor://app/attachment/\(Self.a1)")
         XCTAssertEqual(picture.response?.statusCode, 200)
         XCTAssertEqual(picture.response?.value(forHTTPHeaderField: "Content-Type"), "image/png")
+        XCTAssertEqual(picture.response?.value(forHTTPHeaderField: "X-Content-Type-Options"), "nosniff")
         XCTAssertEqual(picture.data, Self.png)
-        let again = await serve(handler, "taylis-editor://app/attachment/a1")
+        let again = await serve(handler, "taylis-editor://app/attachment/\(Self.a1)")
         XCTAssertEqual(again.data, Self.png)
-        XCTAssertEqual(assets.attachmentCalls, ["a1"], "the second request is answered from the cache")
+        XCTAssertEqual(assets.attachmentCalls, [Self.a1], "the second request is answered from the cache")
         let emoji = await serve(handler, EditorBridge.emojiURL("研究室"))
         XCTAssertEqual(emoji.response?.statusCode, 200)
         XCTAssertEqual(assets.emojiCalls, ["研究室"])
-        let unknown = await serve(handler, "taylis-editor://app/attachment/nope")
+        let missing = "0190a8c2-7d3e-7b1a-9c4e-00000000dead"
+        let unknown = await serve(handler, "taylis-editor://app/attachment/\(missing)")
         XCTAssertEqual(unknown.response?.statusCode, 404)
-        XCTAssertEqual(assets.attachmentCalls, ["a1", "nope"])
+        XCTAssertEqual(assets.attachmentCalls, [Self.a1, missing])
+    }
+
+    /// 2026-11-16: the server's bytes reach the page only as the raster image they are; an id that is no UUID is not
+    /// asked for (it goes into an API path with the session).
+    @MainActor
+    func testSchemeHandlerServesOnlyRasterImages() async throws {
+        let handler = EditorSchemeHandler(directory: try bundleDirectory())
+        let assets = FakeAssets()
+        let html = "0190a8c2-7d3e-7b1a-9c4e-000000000b01", svg = "0190a8c2-7d3e-7b1a-9c4e-000000000b02"
+        assets.attachments[html] = Data("<html><script>alert(1)</script></html>".utf8)
+        assets.attachments[svg] = Data(#"<svg xmlns="http://www.w3.org/2000/svg"><script>alert(1)</script></svg>"#.utf8)
+        assets.emoji["page"] = Data("<html></html>".utf8)
+        handler.assets = assets
+        for url in ["taylis-editor://app/attachment/\(html)", "taylis-editor://app/attachment/\(svg)", EditorBridge.emojiURL("page")] {
+            let task = await serve(handler, url)
+            XCTAssertEqual(task.response?.statusCode, 404, url)
+            XCTAssertEqual(task.data.count, 0, url)
+        }
+        let again = await serve(handler, "taylis-editor://app/attachment/\(html)")
+        XCTAssertEqual(again.response?.statusCode, 404, "not kept either")
+        for id in ["..%2F..%2Fusers%2Fme", "a1", "%2E%2E"] {
+            let task = await serve(handler, "taylis-editor://app/attachment/\(id)")
+            XCTAssertEqual(task.response?.statusCode, 404, id)
+        }
+        XCTAssertEqual(assets.attachmentCalls, [html, svg, html], "only UUIDs were asked for")
     }
 
     @MainActor
     func testSchemeHandlerSaysNothingToAStoppedTask() async throws {
         let handler = EditorSchemeHandler(directory: try bundleDirectory())
         let assets = FakeAssets()
-        assets.attachments["slow"] = Self.png
+        let slow = "0190a8c2-7d3e-7b1a-9c4e-000000000c01"
+        assets.attachments[slow] = Self.png
         handler.assets = assets
         let web = WKWebView(frame: .zero)
-        let task = FakeSchemeTask("taylis-editor://app/attachment/slow")
+        let task = FakeSchemeTask("taylis-editor://app/attachment/\(slow)")
         handler.webView(web, start: task)
         handler.webView(web, stop: task)
         for _ in 0..<100 { await Task.yield() }
@@ -267,7 +301,11 @@ final class MobileEditorBridgeTests: XCTestCase {
         XCTAssertEqual(MobileEditorBundle.imageContentType(Self.png), "image/png")
         XCTAssertEqual(MobileEditorBundle.imageContentType(Data([0xFF, 0xD8, 0xFF, 0xE0])), "image/jpeg")
         XCTAssertEqual(MobileEditorBundle.imageContentType(Data("RIFF\u{0}\u{0}\u{0}\u{0}WEBPVP8 ".utf8)), "image/webp")
-        XCTAssertEqual(MobileEditorBundle.imageContentType(Data("hello".utf8)), "application/octet-stream")
+        XCTAssertEqual(MobileEditorBundle.imageContentType(Data([0x47, 0x49, 0x46, 0x38, 0x39, 0x61])), "image/gif")
+        XCTAssertEqual(MobileEditorBundle.imageContentType(Data([0, 0, 0, 0x18] + Array("ftypheic".utf8) + [0, 0, 0, 0])), "image/heic")
+        XCTAssertNil(MobileEditorBundle.imageContentType(Data("hello".utf8)))
+        XCTAssertNil(MobileEditorBundle.imageContentType(Data("<svg xmlns=\"http://www.w3.org/2000/svg\"/>".utf8)))
+        XCTAssertNil(MobileEditorBundle.imageContentType(Data([0, 0, 0, 0x18] + Array("ftypisom".utf8))), "a video is no picture")
     }
 
     // MARK: the controller's message handling
