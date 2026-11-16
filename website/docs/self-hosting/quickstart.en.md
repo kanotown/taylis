@@ -76,12 +76,13 @@ docker compose -f docker-compose.yml -f docker-compose.prod.yml exec app \
   python -m app.cli create-admin --username admin
 ```
 
-A temporary password is printed **once**.
+You are asked for the administrator's password twice: type the password you choose (at least `PASSWORD_MIN_LENGTH`
+characters from `.env`, 8 by default; nothing is shown while you type). Unlike `create-user` for members, there is no
+temporary password and no forced change at the first login.
 
 ## 6. Log in
 
-- Open `https://chat.example.com/` in a browser and log in as `admin` with the temporary password; you will be asked
-  to choose a new one.
+- Open `https://chat.example.com/` in a browser and log in as `admin` with the password you just chose.
 - In the desktop and mobile apps, enter `https://chat.example.com` as the server URL on the login screen.
 
 Then create accounts or send invitation links from Settings → 管理 (Admin) in the desktop or browser client.

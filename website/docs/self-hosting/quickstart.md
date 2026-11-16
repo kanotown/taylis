@@ -76,11 +76,12 @@ docker compose -f docker-compose.yml -f docker-compose.prod.yml exec app \
   python -m app.cli create-admin --username admin
 ```
 
-仮のパスワードが **一度だけ** 表示されます。
+管理者のパスワードを 2 回聞かれるので、決めたパスワードを入力します（`.env` の `PASSWORD_MIN_LENGTH` 文字以上、既定は 8。
+入力は画面に出ません）。メンバーを作る `create-user` と違い、仮のパスワードは使わず、最初のログインで変更も求められません。
 
 ## 6. ログインする
 
-- ブラウザで `https://chat.example.com/` を開き、`admin` と仮のパスワードでログインします。新しいパスワードを決めます。
+- ブラウザで `https://chat.example.com/` を開き、`admin` と、いま決めたパスワードでログインします。
 - デスクトップ版やスマートフォンのアプリでは、ログイン画面の「サーバ URL」に `https://chat.example.com` を入れます。
 
 ここからは [管理者](../admin/index.md) のページに沿って、メンバーを作るか招待リンクを送ってください。

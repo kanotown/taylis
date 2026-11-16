@@ -96,7 +96,7 @@ CHIKUWA_PROD=1 ./restore.sh /srv/backups/20260926T033000Z
 
 | コマンド | 用途 |
 | --- | --- |
-| `create-admin` / `create-user` | アカウントの作成（仮のパスワードは一度だけ表示） |
+| `create-admin` / `create-user` | アカウントの作成（`create-admin` はその場でパスワードを決める。`create-user` は仮のパスワードを一度だけ表示） |
 | `push-test --user <名前>` | プッシュ通知の疎通の確認 |
 | `verify-attachments` | 添付ファイルの実物の欠けを報告 |
 | `anonymize-user --username <名前>` | 退会：名前・メール・ログイン情報・端末を消し、履歴は「退会したユーザー」で残す |
