@@ -1,8 +1,8 @@
 # デモサーバを本番と同じサーバに置く
 
 本番の Taylis（`/srv/chikuwachat`、ホストの nginx の後ろで Caddy が `127.0.0.1:18080`）が動いているサーバに、
-2 つ目の Taylis としてデモ（架空のデータ、[README.md](README.md)）を置く手順です。例は Taylis の公開デモ・審査用サーバ
-`https://demo.kano-lab.com`（本番は `taylis.kano-lab.com`）で、別のドメインならコマンドの中のドメインを置き換えます。
+2 つ目の Taylis としてデモ（架空のデータ、[README.md](README.md)）を置く手順です。例のドメインはデモが
+`demo.example.com`、本番が `chat.example.com` です。コマンドの中のドメインを自分のものに置き換えます。
 
 ```
 利用者 ──https──▶ nginx ──┬─▶ 127.0.0.1:18080 Caddy ─▶ 本番（compose プロジェクト chikuwachat、/srv/chikuwachat）
@@ -21,11 +21,11 @@
 
 ## 1. DNS
 
-`demo.kano-lab.com` の **A レコード**をこのサーバの IP アドレスに向けます（`*.kano-lab.com` のワイルドカードは別の
-サーバを指しているので、個別のレコードが要ります）。反映を確かめます。
+`demo.example.com` の **A レコード**をこのサーバの IP アドレスに向けます（ドメインのワイルドカードのレコードが別の
+サーバを指しているときも、個別のレコードが要ります）。反映を確かめます。
 
 ```sh
-dig +short demo.kano-lab.com
+dig +short demo.example.com
 ```
 
 ## 2. 取得と設定
@@ -38,7 +38,7 @@ cd /srv/taylis-demo/infra
 install -m 600 demo/demo.env.example .env
 install -d -m 700 secrets
 for key in SECRET_KEY POSTGRES_PASSWORD S3_SECRET_KEY; do sed -i "s|^$key=\$|$key=$(python3 -c 'import secrets; print(secrets.token_urlsafe(48))')|" .env; done
-sed -i 's/demo\.example\.com/demo.kano-lab.com/g' .env
+sed -i 's/demo\.example\.com/demo.example.com/g' .env
 grep -E '^(WORKSPACE_NAME|CHAT_DOMAIN|BEHIND_PROXY_PORT|PUBLIC_BASE_URL)=' .env
 ```
 
@@ -71,23 +71,23 @@ cat secrets/demo_review_password
 
 ```sh
 cd /srv/taylis-demo/infra
-sed -e 's/chat\.example\.com/demo.kano-lab.com/g' -e 's/18080/18081/g' -e 's/chikuwachat_connection/taylis_demo_connection/g' nginx-site.conf.example > /etc/nginx/sites-available/taylis-demo
+sed -e 's/chat\.example\.com/demo.example.com/g' -e 's/18080/18081/g' -e 's/chikuwachat_connection/taylis_demo_connection/g' nginx-site.conf.example > /etc/nginx/sites-available/taylis-demo
 ln -s /etc/nginx/sites-available/taylis-demo /etc/nginx/sites-enabled/taylis-demo
 nginx -t && systemctl reload nginx
 ```
 
-このサーバには certbot のアカウントが 2 つあるので、本番（taylis）の証明書と同じアカウントを `--account` で指定します。
+certbot のアカウントが 2 つ以上あるサーバでは、本番の証明書と同じアカウントを `--account` で指定します。
 まずそのアカウントの ID を調べます（本番の証明書の更新設定に書いてあります。`certbot show_account` でも確かめられます）。
 
 ```sh
 ls /etc/letsencrypt/renewal/
-grep -h '^account' /etc/letsencrypt/renewal/taylis.kano-lab.com.conf
+grep -h '^account' /etc/letsencrypt/renewal/chat.example.com.conf
 ```
 
 表示された `account = <ID>` の `<ID>` を使って証明書を取ります（`--redirect` で http は https に転送）。
 
 ```sh
-certbot --nginx -d demo.kano-lab.com --redirect --account <ID>
+certbot --nginx -d demo.example.com --redirect --account <ID>
 nginx -t && systemctl reload nginx
 ```
 
@@ -105,18 +105,18 @@ cat /srv/taylis-demo/infra/secrets/demo-accounts.txt
 ## 6. 確かめる
 
 ```sh
-curl -s https://demo.kano-lab.com/healthz
-curl -s https://demo.kano-lab.com/api/v1/server
+curl -s https://demo.example.com/healthz
+curl -s https://demo.example.com/api/v1/server
 docker exec taylis-demo-app-1 python -c "import urllib.request; print(urllib.request.urlopen('http://127.0.0.1:8000/readyz').read().decode())"
 /srv/taylis-demo/infra/demo/demo-vps.sh status
 ```
 
 - `/healthz` は `{"status":"ok"}`、`/api/v1/server` の `name` は `Taylis デモ研究室`、`/readyz` は `"status":"ok"`
   （`/readyz` は Caddy が外に出さないので、コンテナの中から見ます）。
-- ブラウザで `https://demo.kano-lab.com/` を開き、`review` でログインします。アプリでは「サーバ URL」に
-  `https://demo.kano-lab.com` を入れます。
+- ブラウザで `https://demo.example.com/` を開き、`review` でログインします。アプリでは「サーバ URL」に
+  `https://demo.example.com` を入れます。
 - 本番が変わっていないことも確かめます：`docker ps --format '{{.Names}}'` に `chikuwachat-*` と `taylis-demo-*` が
-  並び、`curl -s https://taylis.kano-lab.com/healthz` が `ok`。
+  並び、`curl -s https://chat.example.com/healthz` が `ok`。
 
 ## 7. 毎晩のリセット（任意）
 
@@ -175,6 +175,6 @@ cd /srv/taylis-demo/infra
 CHIKUWA_SERVER_IMAGE=unused CHIKUWA_WEB_IMAGE=unused docker compose -p taylis-demo -f docker-compose.yml -f docker-compose.prod.yml -f docker-compose.release.yml -f docker-compose.behind-proxy.yml --profile proxy down -v
 rm -f /etc/cron.d/taylis-demo /etc/nginx/sites-enabled/taylis-demo /etc/nginx/sites-available/taylis-demo
 nginx -t && systemctl reload nginx
-certbot delete --cert-name demo.kano-lab.com
+certbot delete --cert-name demo.example.com
 rm -rf /srv/taylis-demo
 ```

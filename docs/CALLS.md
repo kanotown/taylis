@@ -392,7 +392,7 @@ simulcast・帯域の調整・再接続）は自分で書くものではない�
   試さない）。
 - **TURN/TLS を 443 にできない問題**：共用の VPS では nginx が 443 を持つ（D22）。443 で TURN/TLS も受けるには nginx の
   `stream` モジュールの SNI の振り分け（`ssl_preread`）で、今の全サイトの `listen 443` を内側のポートに移す必要がある。
-  20 ほどのほかのサイトに手を入れるので **v1 ではやらない**。5349/tcp に置く。
+  多くのほかのサイトに手を入れるので **v1 ではやらない**。5349/tcp に置く。
   - 大学の網は 443 以外の外向きを閉じていることがある。そのときは ICE/UDP・ICE/TCP 7881・TURN 3478・5349 のどれも通らず、
     通話はつながらない（チャットは 443 なので使える）。**M131 で研究室の網・学内の Wi-Fi・携帯の回線から実測する**。
   - 通らなかったときの選択肢（どれも利用者の判断）：（1）VPS に 2 つ目の IP アドレスを足し、その 443 を LiveKit の TURN/TLS に
@@ -447,8 +447,8 @@ logging:
 | 環境 | 推奨 |
 | --- | --- |
 | **（a）本番（共用の研究室の VPS、nginx が 80/443、D22）** | compose に `docker-compose.livekit.yml`（新規）を `EXTRA_COMPOSE_FILES` で足す：ブリッジ網、`127.0.0.1:7880`、`7881/tcp`・`7882/udp`・`3478/udp`・`5349/tcp`。nginx に `livekit.<domain>` のサイト（`infra/nginx-livekit.conf.example`、WebSocket の Upgrade と長い timeout、certbot で 443）。DNS の A レコード。ファイアウォールに 4 つ。**どれも共用のサーバの変更なので利用者の了承の後**。メモリに余裕の少ないサーバだが、LiveKit は数百 MB（§8.5） |
-| **（b）taylis の VPS（12 GB、nginx が 80/443）** | （a）と同じ構成。**最初にここで試す**（M131）：本番より余裕があり、CI の runner と同じ所で試せる |
-| **（c）デモ（taylis の VPS の 2 つ目の compose）** | v1 では **通話はオフ**（LiveKit を置かない。`in_app_calls.enabled = false` で 🎧 が出ない）。ストアの審査で通話を見せる必要が出たら、デモ用の LiveKit を別のポート（7891/tcp・7892/udp・3479/udp・5350/tcp）と別の名前（`livekit-demo.<domain>`）で足す（ポートは同じホストの 2 つの LiveKit で共有できない） |
+| **（b）研究室の 2 台目の VPS（nginx が 80/443）** | （a）と同じ構成。**最初にここで試す**（M131）：本番より余裕がある |
+| **（c）デモ（2 台目の VPS の 2 つ目の compose）** | v1 では **通話はオフ**（LiveKit を置かない。`in_app_calls.enabled = false` で 🎧 が出ない）。ストアの審査で通話を見せる必要が出たら、デモ用の LiveKit を別のポート（7891/tcp・7892/udp・3479/udp・5350/tcp）と別の名前（`livekit-demo.<domain>`）で足す（ポートは同じホストの 2 つの LiveKit で共有できない） |
 | **（d）手元の開発** | `docker compose --profile calls up`：`livekit/livekit-server --dev`（キー `devkey` / シークレット `secret`、手元専用）、`7880`・`7881`・`7882/udp` を出す。**dev モードの LiveKit は 127.0.0.1 でしか待たない**ので `--bind 0.0.0.0` を付ける（付けないとアプリのコンテナから RoomService に届かない。M130 で確認）。`LIVEKIT_NODE_IP` は既定 `127.0.0.1`、実機（同じ Wi-Fi）で試すときは Mac の LAN の IP。TURN なし。`LIVEKIT_URL=ws://<その IP>:7880`（iOS は `NSAllowsLocalNetworking` が既にある。Android の開発ビルドは平文の手元の通信を許しているかを確かめる）。Web は `localhost` なら `getUserMedia` が使える |
 
 ### 8.4 帯域（目安。**M131 で実測して直す**）
@@ -480,15 +480,15 @@ LiveKit は SFU で、映像を変換しない。各人は自分の 1 本（simu
   で測る**）。組み込み TURN を通る人が多いと CPU が増える（TLS の暗号化）。
 - compose で `mem_limit: 1g`・`cpus: 2` を付け、ほかのサイトを巻き込まない。
 
-### 8.6 利用者がすること（本番・taylis の VPS ごと）
+### 8.6 運用者がすること（LiveKit を置くサーバごと）
 
-M131（taylis の VPS、162.43.29.120）で行う。DNS（1）は済んでいる（`livekit.kano-lab.com` → 162.43.29.120、利用者 2026-10-07）。
-ほかの手順は M131 の作業者が利用者と一緒に行う（共用のサーバの変更は利用者の了承済み、§12）。`<domain>` は `kano-lab.com`、
-`/srv/taylis` は infra の置き場所に読み替える（taylis の VPS では `/srv/chikuwachat`）。
+M131 で研究室のサーバに置いたときの手順（DNS は運用者が先に用意した）。ほかの手順は作業者が運用者と一緒に行う（共用の
+サーバの変更は運用者の了承済み、§12）。`livekit.example.com` は通話のホスト名、`203.0.113.10` はそのサーバの IP アドレス、
+`/srv/taylis` は infra の置き場所に読み替える（研究室の固有の値はリポジトリの外の運用メモに置く）。
 
 0. **配布の仕組み**（M131 で足した）：リリースは `docker-compose.livekit.yml` と `livekit.yaml` も送る。受け取る側の `/usr/local/bin/chikuwa-deploy`（`infra/deploy-ssh.sh`）は、この 2 つを「あれば受け取る」ので、M131 より前の版のままのサーバ（本番）はそのままでよい。LiveKit を置くサーバでは `sudo install -m 755 infra/deploy-ssh.sh /usr/local/bin/chikuwa-deploy` で入れ替える。
 
-1. **DNS**：`dig +short livekit.kano-lab.com` が `162.43.29.120` を返すこと。
+1. **DNS**：`dig +short livekit.example.com` がサーバの IP アドレス（例 `203.0.113.10`）を返すこと。
 2. **ポートが空いているか**：`sudo ss -lntupH | grep -E ':(7880|7881|7882|3478|5349)\b'` が何も出さないこと（出たら、その
    ポートを使っているほかのサイトを利用者と確かめる）。
 3. **ファイアウォール**：VPS の管理画面のパケットフィルタ（あれば）と OS の両方で `7881/tcp`・`7882/udp`・`3478/udp`・
@@ -497,15 +497,15 @@ M131（taylis の VPS、162.43.29.120）で行う。DNS（1）は済んでいる
 4. **UDP の受信バッファ**：LiveKit は起動の時に「UDP receive buffer is too small for a production set-up（425984、勧めは
    5000000）」と警告する（M130 で確認）。`echo 'net.core.rmem_max=5000000' | sudo tee /etc/sysctl.d/90-livekit.conf && sudo sysctl --system`
    （`net.core.wmem_max` も同じ値にしてよい）。ほかのサイトへの害は無い（上限を上げるだけ）。
-5. **nginx と証明書**：`infra/nginx-livekit.conf.example` の `livekit.example.com` を `livekit.kano-lab.com` にして
+5. **nginx と証明書**：`infra/nginx-livekit.conf.example` の `livekit.example.com` を通話のホスト名にして
    `/etc/nginx/sites-available/taylis-livekit` に置き、`ln -s` → `sudo nginx -t && sudo systemctl reload nginx` →
-   `sudo certbot --nginx -d livekit.kano-lab.com --redirect`。
-6. **証明書の更新の後に LiveKit を再起動**：`/etc/letsencrypt/renewal/livekit.kano-lab.com.conf` の `[renewalparams]` に
+   `sudo certbot --nginx -d livekit.example.com --redirect`。
+6. **証明書の更新の後に LiveKit を再起動**：`/etc/letsencrypt/renewal/livekit.example.com.conf` の `[renewalparams]` に
    `renew_hook = cd /srv/taylis/infra && docker compose -f docker-compose.yml -f docker-compose.prod.yml -f docker-compose.release.yml -f docker-compose.behind-proxy.yml -f docker-compose.livekit.yml --profile proxy restart livekit`
-   を 1 行足す（この証明書だけ。ほかのサイトの更新では動かない）。`sudo certbot renew --dry-run --cert-name livekit.kano-lab.com` で確かめる。
+   を 1 行足す（この証明書だけ。ほかのサイトの更新では動かない）。`sudo certbot renew --dry-run --cert-name livekit.example.com` で確かめる。
 7. **シークレットと設定**：`openssl rand -base64 48 | tr -d '\n' > /srv/taylis/infra/secrets/livekit_api_secret && chmod 644 /srv/taylis/infra/secrets/livekit_api_secret`。
-   `infra/.env` に `LIVEKIT_URL=wss://livekit.kano-lab.com`・`LIVEKIT_API_KEY=taylis`・`LIVEKIT_NODE_IP=162.43.29.120`・
-   `LIVEKIT_DOMAIN=livekit.kano-lab.com`、`deploy.conf` の `EXTRA_COMPOSE_FILES` に `docker-compose.livekit.yml` を足す。
+   `infra/.env` に `LIVEKIT_URL=wss://livekit.example.com`・`LIVEKIT_API_KEY=taylis`・`LIVEKIT_NODE_IP=203.0.113.10`・
+   `LIVEKIT_DOMAIN=livekit.example.com`、`deploy.conf` の `EXTRA_COMPOSE_FILES` に `docker-compose.livekit.yml` を足す。
    次のデプロイで deploy.sh が `secrets/livekit.env` を作り、LiveKit が起動する。
 8. **回線と転送量**（§8.4・§8.7）：VPS の契約の管理画面で、回線の速さ（共有か・上限）と月の転送量の上限の有無を見る。
 9. **つながるかを試す**：M131 の手順（研究室の有線・学内 Wi-Fi・携帯の回線・自宅、§8.7）。
@@ -559,7 +559,7 @@ M131（taylis の VPS、162.43.29.120）で行う。DNS（1）は済んでいる
 | # | 名前 | 完了条件 |
 | --- | --- | --- |
 | M130 | サーバと手元の infra・M117 の廃止（**済み 2026-10-07**、§13） | `calls`・`call_participants`・`messages.call_id`・`in_app_calls_enabled` の移行。`LiveKitGateway`、トークン、webhook、突き合わせ、§5 の API とイベント、通話のメッセージとプッシュ。M117 の廃止（§11）。`docker-compose.yml` の `calls` プロファイル、`docker-compose.livekit.yml`、`livekit.yaml.template`、`nginx-livekit.conf.example`、infra/README.md。pytest・mypy・ruff が通り、手元の LiveKit と `lk` で、参加・退出・終わりが API とイベントに出る。M117 の古い 3 端末（Desktop 0.1.39・Android 1.0.2・iOS build 105）を手元のサーバにつなぎ、📞 が消えて落ちないこと |
-| M131 | taylis の VPS での試し・網の実測 | 利用者の了承の後に（b）を設定（§8.6）。`lk` でトークンを作り、LiveKit の公開の試験ページ（LiveKit Meet の「カスタム」）から研究室・学内 Wi-Fi・携帯の回線でつながる経路を記録。`lk load-test` で 30 人の CPU・メモリ・帯域を記録して §8.4・§8.5 を直す。443 以外が閉じた網があれば §8.1 の選択肢を利用者に示す |
+| M131 | 2 台目の VPS での試し・網の実測 | 利用者の了承の後に（b）を設定（§8.6）。`lk` でトークンを作り、LiveKit の公開の試験ページ（LiveKit Meet の「カスタム」）から研究室・学内 Wi-Fi・携帯の回線でつながる経路を記録。`lk load-test` で 30 人の CPU・メモリ・帯域を記録して §8.4・§8.5 を直す。443 以外が閉じた網があれば §8.1 の選択肢を利用者に示す |
 | M132 | Desktop / Web の音声 | Tauri（macOS・Windows）とブラウザで `getUserMedia` を確かめる（§4.2）。🎧・通話のバー・ペイン・入出力の選択・話している表示・「通話中（n）」・カード・DM のバナー・`/call/<id>` のページ・管理の設定（「アプリ内通話」のスイッチ。会議サービスの欄を消す）。Mac・Windows・ブラウザの 3 人で 10 分話せ、表示が合う。tsc・Vitest・`tauri build` |
 | M133 | Desktop / Web のビデオと画面共有 | カメラ（simulcast・adaptiveStream・dynacast）、画面共有（macOS の画面収録の許可・Windows）、タイルの並べ方。3 人がカメラ・1 人が画面共有で 10 分 |
 | M134 | iOS の音声とビデオ | LiveKit Swift SDK、全画面の通話・畳んだバー、音の出口、`audio` のバックグラウンド、権限の文（3 言語）、`PrivacyInfo` の見直し。実機で Desktop と 1:1・3 人、画面を消して音が続く。xcodebuild |
@@ -604,8 +604,8 @@ M130 で M117 を止めると、M132 まで通話が無い期間ができる。�
 
 設計の時点の「未決の点」に利用者が答えた。
 
-1. **ホスト名**：`livekit.kano-lab.com`。A レコード → 162.43.29.120（taylis の VPS）を利用者が作った（済み）。本番のホスト名は M136 で決める。
-2. **どのサーバに置くか**：まず taylis の VPS（M131）。本番（共用の VPS）は後で（M136）。デモのサーバは通話をオフ（LiveKit を置かない）。
+1. **ホスト名**：`livekit.<研究室のドメイン>`。A レコードを LiveKit を置くサーバに向ける（利用者が作った。済み）。本番のホスト名は M136 で決める。
+2. **どのサーバに置くか**：まず 2 台目の VPS（M131）。本番（共用の VPS）は後で（M136）。デモのサーバは通話をオフ（LiveKit を置かない）。
 3. **共用の VPS の変更**：ポートを開ける・nginx にサイトを 1 つ・certbot の `renew_hook` を 1 つ足すことを了承。作業は M131（§8.6）。
 4. **大学の網（443 以外が閉じている場合）**：この文書の勧め（§8.1 の（3）、LiveKit 専用の小さな VPS）。M131 の実測で必要になったとき。
 5. **帯域**：できるだけ多くの場面に対応する（simulcast・adaptiveStream・dynacast・音声だけへの切り替え・TURN/TLS。§8.7）。
