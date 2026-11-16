@@ -207,3 +207,63 @@ export function replaceThroughBrowser(el: HTMLTextAreaElement, next: string): bo
 
 const isHighSurrogate = (code: number) => code >= 0xd800 && code <= 0xdbff;
 const isLowSurrogate = (code: number) => code >= 0xdc00 && code <= 0xdfff;
+
+/**
+ * `apply` and `edit` on a Markdown text area (the composer's and the inline edit box's): `apply` puts `next` in it
+ * through the browser's own editing (replaceThroughBrowser), so ⌘Z / Ctrl+Z takes back a format, an emoji, a completion
+ * or a template one step at a time between what was typed, and ⌘⇧Z / Ctrl+Y redoes it (tester, 2026-09-30); setting the
+ * text from React (`setText`) would drop the text area's undo history, and stays the way only where the browser does
+ * not take the edit. Focus and selection come back afterwards, again on the next frame: a closing popover or menu
+ * hands focus back to its button meanwhile. `edit` runs a transform on the current text and selection (false when there
+ * is no text area or the transform has nothing to do). `onApplied` hears of every applied state (the composer's caret).
+ */
+export function textAreaEdits(area: { readonly current: HTMLTextAreaElement | null }, setText: (text: string) => void, onApplied?: (next: EditState) => void) {
+  const apply = (next: EditState) => {
+    const el = area.current;
+    if (el && replaceThroughBrowser(el, next.text)) el.setSelectionRange(next.start, next.end);
+    else setText(next.text);
+    onApplied?.(next);
+    const restore = () => {
+      area.current?.focus();
+      area.current?.setSelectionRange(next.start, next.end);
+    };
+    if (typeof requestAnimationFrame === "function") requestAnimationFrame(restore);
+    else setTimeout(restore, 0);
+  };
+  const edit = (transform: (state: EditState) => EditState | null): boolean => {
+    const el = area.current;
+    if (!el) return false;
+    const value = el.value;
+    const next = transform({ text: value, start: el.selectionStart ?? value.length, end: el.selectionEnd ?? value.length });
+    if (!next) return false;
+    apply(next);
+    return true;
+  };
+  return { apply, edit };
+}
+
+/** The 「@」 button's text after `before` (what precedes the caret): a space first when a word ends there. */
+export function mentionMark(before: string): string {
+  return before.length > 0 && !/\s/.test(before[before.length - 1]!) ? " @" : "@";
+}
+
+/** 「@」 in a text area: the mark at the caret (replacing a selection), the caret after it, which opens the member list. */
+export function insertMentionMark(state: EditState): EditState {
+  const at = mentionMark(state.text.slice(0, state.start));
+  const caret = state.start + at.length;
+  return { text: state.text.slice(0, state.start) + at + state.text.slice(state.end), start: caret, end: caret };
+}
+
+/**
+ * The format a Markdown text area's shortcut applies (with ⌘ / Ctrl, without Alt): B bold, I italic, Shift+X strike,
+ * Shift+C code, Shift+U a link; null for any other key. The composer and the inline edit box.
+ */
+export function markdownShortcut(key: string, shift: boolean): ((state: EditState) => EditState) | null {
+  const pressed = key.toLowerCase();
+  if (pressed === "b" && !shift) return (s) => toggleWrap(s, "**");
+  if (pressed === "i" && !shift) return (s) => toggleWrap(s, "_");
+  if (pressed === "x" && shift) return (s) => toggleWrap(s, "~~");
+  if (pressed === "c" && shift) return (s) => toggleWrap(s, "`");
+  if (pressed === "u" && shift) return (s) => insertLink(s);
+  return null;
+}

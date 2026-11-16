@@ -1,4 +1,4 @@
-import { ArrowDown, AtSign, Bookmark, BookmarkCheck, Hash, Lock, MessageSquare, MessagesSquare, MoreHorizontal, Pencil, Pin, SmilePlus } from "lucide-react";
+import { ArrowDown, AtSign, Bookmark, BookmarkCheck, CaseSensitive, Hash, Lock, MessageSquare, MessagesSquare, MoreHorizontal, Pencil, Pin, Smile, SmilePlus } from "lucide-react";
 import { Fragment, memo, type KeyboardEvent as ReactKeyboardEvent, type PointerEvent as ReactPointerEvent, type RefObject, Suspense, useEffect, useLayoutEffect, useMemo, useRef, useState } from "react";
 
 import type { ApiClient } from "../api/client";
@@ -14,7 +14,11 @@ import { AttachmentList } from "./Attachments";
 import { messageRowKey } from "./messageKeyboard";
 import { Avatar } from "./Avatar";
 import { SenderAvatar } from "./SenderAvatar";
-import { insideFence, linkFromPaste, replaceThroughBrowser } from "./composerEdit";
+import { insertMentionMark, insideFence, linkFromPaste, markdownShortcut, mentionMark, replaceThroughBrowser, textAreaEdits } from "./composerEdit";
+import { completeAt, emojiInsert, mentionInsert, takenAfter, type Typed } from "./completion";
+import { CompletionList, type CompletionPicks, FloatingCompletions, useCompletions } from "./CompletionList";
+import { type FormatTool, formatTools } from "./formatTools";
+import type { EmojiEntry } from "./emoji";
 import { decidePaste, MAX_BODY, plainPasteRequested, tableInsertion } from "./tablePaste";
 import { keepLineInView, settle, textAreaCaretLine } from "./composerScroll";
 import { EDIT_MIN, editBoxHeight, editCap, editMax, type EditRoom, handleKeyHeight, readEditHeight, revealDelta, writeEditHeight } from "./editBox";
@@ -46,10 +50,10 @@ import { EmojiText, StatusEmoji, UserPopover } from "./UserPopover";
 import { channelTitle, myDisplayName } from "./MainScreen";
 import { isSelfNotes, selfNotesIntro } from "./channels";
 import { intlLocale, t } from "../i18n";
-import { EmojiPicker, useRecentEmoji } from "./EmojiPicker";
+import { EmojiPicker, rememberEmoji, useRecentEmoji } from "./EmojiPicker";
 import { LinkCards } from "./MessageLinkCard";
 import { LONG_PRESS_MS, MessageActionsSheet, QuickReactionGlyph, quickReactions } from "./MessageActionsSheet";
-import { CustomEmojiImage, customEmojiName } from "./customEmoji";
+import { AddEmojiDialog, CustomEmojiImage, customEmojiName } from "./customEmoji";
 import { reminderPresets, scheduleLabel, toLocalInput } from "./schedule";
 import { BOTTOM_SLACK_PX, jumpToLatestShown, ListAnchor, stillAtBottom, unseenBelow as countUnseen } from "./scrollAnchor";
 import { conversationScrollKey, restoreDecision, scrollMemoryFor } from "./scrollMemory";
@@ -1383,6 +1387,14 @@ const MessageRowView = memo(function MessageRowView({ controller, message, compa
  * M186 (docs/CHANNEL_FILES.md §7.6): the message's files under the text, each with × (外す), and 「ファイルを追加」 /
  * paste / drop for new ones (EditFiles.tsx). The save names the files only when they changed; with files left the
  * body may be empty.
+ *
+ * M187 (docs/MOBILE_UI.md §30): the composer's text help. `@na` and `:ta` before the caret offer the composer's
+ * candidates (CompletionList.tsx; people ranked for the message's channel, its thread for a reply) in a layer above
+ * the box, none while a range is selected; a pick completes in place and keeps the text after the caret (a space there
+ * is taken as the pick's own: no second space). While a list is open ↑ / ↓ / Enter / Tab / Esc are the list's (Enter
+ * never saves, Esc never cancels). The bar has the composer's emoji picker (the workspace's emoji and packs), 「@」 and
+ * 「書式」 (formatTools.tsx), each at the caret or on the selection; the Markdown text area takes the composer's format
+ * shortcuts too. No templates, `/` commands, workflows, priority or scheduling: those are for a new post.
  */
 function MessageEditor({ controller, message }: { controller: AppController; message: MessageState }) {
   const store = controller.store;
@@ -1395,6 +1407,16 @@ function MessageEditor({ controller, message }: { controller: AppController; mes
   const composedAt = useRef(0);
   const latest = useRef(draft);
   latest.current = draft;
+  // The text area's selection (it opens with the caret at the end) and the rich editor's line up to its caret.
+  const [selection, setSelection] = useState(() => ({ start: draft.length, end: draft.length }));
+  const [richContext, setRichContext] = useState<Typed | null>(null);
+  const [emojiOpen, setEmojiOpen] = useState(false);
+  const [addEmojiOpen, setAddEmojiOpen] = useState(false);
+  /** The rich editor once it has loaded (the text area stands in until then). */
+  const editor = () => (rich ? richApi.current : null);
+  const caret = Math.min(selection.start, draft.length);
+  const typed: Typed | null = rich && richApi.current ? richContext : selection.start === selection.end ? { text: draft, caret, after: draft.slice(caret) } : null;
+  const completion = useCompletions(controller, message.channel_id, message.parent_id ?? null, typed);
   const [saving, setSaving] = useState(false);
   const block = useRef<HTMLDivElement>(null);
   const boxWrap = useRef<HTMLDivElement>(null);
@@ -1516,6 +1538,59 @@ function MessageEditor({ controller, message }: { controller: AppController; mes
     choose(height);
   };
   const max = editMax(room);
+
+  // Markdown edits through the text area's own undo history, as in the composer (composerEdit.textAreaEdits).
+  const { apply, edit } = textAreaEdits(area, setDraft, (next) => setSelection({ start: next.start, end: next.end }));
+  const syncSelection = (el: HTMLTextAreaElement) => setSelection((was) => (was.start === el.selectionStart && was.end === el.selectionEnd ? was : { start: el.selectionStart, end: el.selectionEnd }));
+  /** A pick from the list: `insert` in place of what was typed from `start`, the text after the caret kept. */
+  const complete = (start: number, insert: string) => {
+    if (!typed) return;
+    completion.select(0);
+    const api = editor();
+    if (api) return api.replaceBeforeCaret(typed.caret - start, insert, takenAfter(insert, typed.after ?? "", true));
+    const next = completeAt(typed.text, start, typed.caret, insert, true);
+    apply({ text: next.text, start: next.caret, end: next.caret });
+  };
+  const picks: CompletionPicks<never> = {
+    mention: (candidate) => {
+      if (completion.mention) complete(completion.mention.start, mentionInsert(candidate.username));
+    },
+    emoji: (entry) => {
+      if (!completion.emoji) return;
+      rememberEmoji(entry.glyph);
+      complete(completion.emoji.start, emojiInsert(entry.glyph));
+    },
+  };
+  // A pick from the picker or 「書式」 puts the caret back itself; closed without one, focus returns to the button.
+  const picked = useRef(false);
+  const keepFocusAfterPick = (event: Event) => {
+    if (picked.current) event.preventDefault();
+    picked.current = false;
+  };
+  /** The picker's emoji at the caret (replacing a selection). */
+  const insertEmoji = (entry: EmojiEntry) => {
+    rememberEmoji(entry.glyph);
+    picked.current = true;
+    setEmojiOpen(false);
+    const api = editor();
+    if (api) return api.insertText(entry.glyph);
+    edit((s) => ({ text: s.text.slice(0, s.start) + entry.glyph + s.text.slice(s.end), start: s.start + entry.glyph.length, end: s.start + entry.glyph.length }));
+  };
+  /** 「@」: an @ at the caret (after a space when a word ends there), which opens the member list. */
+  const startMention = () => {
+    const api = editor();
+    if (api) return api.insertText(mentionMark(richContext ? richContext.text.slice(0, richContext.caret) : ""));
+    edit(insertMentionMark);
+  };
+  /** A format from 「書式」 on the selection (the rich editor's link is left out: it would need the composer's URL row). */
+  const runFormat = (tool: FormatTool) => {
+    picked.current = true;
+    const api = editor();
+    if (api && tool.name !== "link") api.run(tool.name);
+    else edit(tool.markdown);
+  };
+  const formats = formatTools().filter((tool) => !(rich && tool.name === "link"));
+
   const textArea = (
       <Textarea
         ref={area}
@@ -1524,7 +1599,11 @@ function MessageEditor({ controller, message }: { controller: AppController; mes
         autoFocus
         aria-label={t("timeline.editMessage")}
         onFocus={(e) => e.currentTarget.setSelectionRange(e.currentTarget.value.length, e.currentTarget.value.length)}
-        onChange={(e) => setDraft(e.target.value)}
+        onChange={(e) => {
+          setDraft(e.target.value);
+          syncSelection(e.target);
+        }}
+        onSelect={(e) => syncSelection(e.currentTarget)}
         onScroll={(e) => settle(e.currentTarget)}
         onPaste={(e) => {
           const el = e.currentTarget;
@@ -1559,8 +1638,24 @@ function MessageEditor({ controller, message }: { controller: AppController; mes
         }}
         onCompositionEnd={() => {
           composing.current = false;
+          composedAt.current = Date.now();
         }}
         onKeyDown={(e) => {
+          // An open candidate list takes ↑ / ↓ / Enter / Tab / Esc first (never the key that confirms a conversion).
+          if (!isImeKey({ isComposing: e.nativeEvent.isComposing, keyCode: e.keyCode }, composing.current, composedAt.current) && completion.navigate(e.key, picks)) {
+            e.preventDefault();
+            if (e.key === "Escape") e.stopPropagation();
+            return;
+          }
+          const mod = e.metaKey || e.ctrlKey;
+          if (mod && !e.altKey && !e.nativeEvent.isComposing && !composing.current) {
+            // The composer's format shortcuts (⌘B, ⌘I, ⌘⇧X, ⌘⇧C, ⌘⇧U).
+            const shortcut = markdownShortcut(e.key, e.shiftKey);
+            if (shortcut && edit(shortcut)) {
+              e.preventDefault();
+              return;
+            }
+          }
           if (e.key === "Escape") {
             e.preventDefault();
             finish();
@@ -1571,10 +1666,14 @@ function MessageEditor({ controller, message }: { controller: AppController; mes
         }}
       />
   );
-  /** The rich editor's keys (never during an IME composition): Esc, the save key, Shift+Enter as its newline. */
+  /** The rich editor's keys (never during an IME composition): an open list's, Esc, the save key, Shift+Enter as its newline. */
   const onRichKeyDown = (event: KeyboardEvent): boolean => {
     const api = richApi.current;
     if (!api || isImeKey(event, api.composing(), composedAt.current)) return false;
+    if (completion.navigate(event.key, picks)) {
+      if (event.key === "Escape") event.stopPropagation();
+      return true;
+    }
     if (event.key === "Escape") {
       finish();
       return true;
@@ -1590,6 +1689,7 @@ function MessageEditor({ controller, message }: { controller: AppController; mes
   };
   return (
     <div ref={block} className="relative mt-1" data-edit-box="" {...drop.handlers}>
+      {addEmojiOpen && <AddEmojiDialog controller={controller} onClose={() => setAddEmojiOpen(false)} />}
       <EditDropOverlay active={drop.active} />
       <div ref={boxWrap} className="relative">
         {rich ? (
@@ -1607,6 +1707,7 @@ function MessageEditor({ controller, message }: { controller: AppController; mes
                 setDraft(markdown);
               }}
               onKeyDown={onRichKeyDown}
+              onContext={setRichContext}
               onFiles={(pasted) => void files.add(pasted)}
               onNotice={(notice) => controller.setNotice(notice)}
               onCompositionEnd={() => {
@@ -1617,6 +1718,9 @@ function MessageEditor({ controller, message }: { controller: AppController; mes
         ) : (
           textArea
         )}
+        <FloatingCompletions anchor={boxWrap} open={completion.length > 0}>
+          <CompletionList controller={controller} completion={completion} pick={picks} />
+        </FloatingCompletions>
         {/* The bottom edge drags (row-resize), as the sidebar's edge does; ↑ / ↓ when focused, double-click resets. */}
         <div
           role="separator"
@@ -1638,13 +1742,48 @@ function MessageEditor({ controller, message }: { controller: AppController; mes
         </div>
       </div>
       <EditFileTiles controller={controller} state={files} />
-      {/* The actions sit at the bottom right with 保存 last, as in Slack (the user, 2026-10-07); 「ファイルを追加」 and the
-          keys' hint on the left (left out where the bar is narrow: a thread pane, a phone). Sticky: a box taller than the
-          list's view keeps them on screen. */}
+      {/* The actions sit at the bottom right with 保存 last, as in Slack (the user, 2026-10-07); 「ファイルを追加」, the
+          emoji picker, 「@」 and 「書式」 (M187) and the keys' hint on the left (where the bar is narrow, a thread pane or a
+          phone, the hint is left out and 「ファイルを追加」 is its clip alone). Sticky: a box taller than the list's view
+          keeps them on screen. */}
       <div className="@container sticky bottom-0 z-[1] -mx-2 mt-1 flex items-center gap-2 rounded-b-lg bg-panel px-2 py-1.5">
-        <EditAddFilesButton controller={controller} state={files} />
+        <span className="flex shrink-0 items-center gap-0.5">
+          <EditAddFilesButton controller={controller} state={files} />
+          {/* M187: the composer's picker, inserting at the caret. */}
+          <PopoverRoot open={emojiOpen} onOpenChange={setEmojiOpen}>
+            <PopoverTrigger asChild>
+              <IconButton label={t("composer.emoji")} aria-haspopup="dialog" className="h-7 w-7 shrink-0 text-muted hover:text-ink" disabled={saving}>
+                <Smile size={15} />
+              </IconButton>
+            </PopoverTrigger>
+            <PopoverContent align="start" side="top" className="w-auto p-3" onCloseAutoFocus={keepFocusAfterPick} onAnchorHidden={() => setEmojiOpen(false)}>
+              <EmojiPicker custom={[...store.customEmoji.values()]} controller={controller} onAddCustom={() => { setEmojiOpen(false); setAddEmojiOpen(true); }} onPick={insertEmoji} />
+            </PopoverContent>
+          </PopoverRoot>
+          <IconButton label={t("composer.addMention")} className="h-7 w-7 shrink-0 text-muted hover:text-ink" disabled={saving} onMouseDown={(event) => event.preventDefault()} onClick={startMention}>
+            <AtSign size={15} />
+          </IconButton>
+          <Menu modal={false}>
+            <MenuTrigger asChild>
+              <IconButton label={t("composer.formatting")} className="h-7 w-7 shrink-0 text-muted hover:text-ink" disabled={saving} onMouseDown={(event) => event.preventDefault()}>
+                <CaseSensitive size={18} />
+              </IconButton>
+            </MenuTrigger>
+            <MenuContent align="start" side="top" className="min-w-44" onCloseAutoFocus={keepFocusAfterPick}>
+              {formats.map((tool, index) => (
+                <Fragment key={tool.name}>
+                  {tool.group && index > 0 && <MenuSeparator />}
+                  <MenuItem className="[&_svg]:shrink-0 [&_svg]:text-muted" onSelect={() => runFormat(tool)}>
+                    {tool.icon}
+                    <span className="min-w-0 flex-1 truncate">{tool.label}</span>
+                  </MenuItem>
+                </Fragment>
+              ))}
+            </MenuContent>
+          </Menu>
+        </span>
         <span className="flex min-w-0 flex-1">
-          <span className="hidden min-w-0 items-center gap-1 text-[11px] text-muted @[32rem]:flex">
+          <span className="hidden min-w-0 items-center gap-1 text-[11px] text-muted @[36rem]:flex">
             <Kbd>{sendKeyLabel(controller.sendKey ?? "mod-enter").send}</Kbd> {t("common.save")} <Kbd>Esc</Kbd> {t("timeline.escCancel")}
           </span>
         </span>

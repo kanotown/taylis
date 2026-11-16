@@ -15,8 +15,11 @@ export interface RichEditorApi {
   focus(at?: "start" | "end" | "keep"): void;
   /** Replaces the document (a template, a slash command) and puts the caret at its end; returns the Markdown kept. */
   setMarkdown(markdown: string): string;
-  /** Replaces the `length` characters before the caret (a mention or emoji being completed) with `text`. */
-  replaceBeforeCaret(length: number, text: string): void;
+  /**
+   * Replaces the `length` characters before the caret (a mention or emoji being completed), and the `after` ones after
+   * it (the edit box's completion takes a space there as its own), with `text`.
+   */
+  replaceBeforeCaret(length: number, text: string, after?: number): void;
   insertText(text: string): void;
   run(format: RichFormat): void;
   /** The link at the caret, null when there is none. */

@@ -178,7 +178,10 @@ function RemoveButton({ name, onClick }: { name: string; onClick: () => void }) 
   );
 }
 
-/** 「ファイルを追加」: the composer's file picker (any file; photos too). */
+/**
+ * 「ファイルを追加」: the composer's file picker (any file; photos too). Where the edit box's bar is narrow (a phone, a
+ * thread pane) it is the clip alone (M187: the bar has the emoji, 「@」 and 「書式」 buttons beside it).
+ */
 export function EditAddFilesButton({ controller, state }: { controller: AppController; state: EditFiles }) {
   const input = useRef<HTMLInputElement>(null);
   return (
@@ -186,14 +189,16 @@ export function EditAddFilesButton({ controller, state }: { controller: AppContr
       <Button
         size="sm"
         variant="ghost"
-        className="shrink-0 gap-1 text-muted hover:text-ink"
+        aria-label={t("timeline.editAddFiles")}
+        title={t("timeline.editAddFiles")}
+        className="shrink-0 gap-1 px-1.5 text-muted hover:text-ink @[25rem]:px-2.5"
         onClick={() => {
           // The files picked on it last are still being read: a new pick would replace them.
           if (isPickBusy(input.current)) { controller.setError(t("composer.stillReading")); return; }
           input.current?.click();
         }}
       >
-        <Paperclip size={14} /> {t("timeline.editAddFiles")}
+        <Paperclip size={14} /> <span className="hidden @[25rem]:inline">{t("timeline.editAddFiles")}</span>
       </Button>
       <input
         ref={input}

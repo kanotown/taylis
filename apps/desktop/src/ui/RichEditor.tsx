@@ -185,8 +185,11 @@ export interface RichEditorProps {
   apiRef: RefObject<RichEditorApi | null>;
   /** A key before the editor handles it (never during an IME composition); true when the owner took it. */
   onKeyDown?: (event: KeyboardEvent) => boolean;
-  /** The current line up to the caret (mentions, emoji), null with a selection or inside code. */
-  onContext?: (context: { text: string; caret: number } | null) => void;
+  /**
+   * The current line up to the caret (mentions, emoji) and what follows the caret on it (`after`, one character at most:
+   * the edit box's completion takes a space there as its own), null with a selection or inside code.
+   */
+  onContext?: (context: { text: string; caret: number; after: string } | null) => void;
   onFormat?: (state: RichFormatState) => void;
   /** Files pasted (images, documents): the attachments take them. */
   onFiles?: (files: File[]) => void;
@@ -346,7 +349,8 @@ export default function RichEditor({ value, onChange, placeholder = "", ariaLabe
       if (!selection.empty || $from.parent.type.spec.code || editor.isActive("code")) context(null);
       else {
         const text = $from.parent.textBetween(0, $from.parentOffset, "\n", "\n");
-        context({ text, caret: text.length });
+        const after = $from.parent.textBetween($from.parentOffset, Math.min($from.parentOffset + 1, $from.parent.content.size), "\n", "\n");
+        context({ text, caret: text.length, after });
       }
     }
   }
@@ -415,10 +419,10 @@ function apiFor(editor: Editor, remember: (markdown: string) => void): RichEdito
       editor.chain().setContent(markdownToDoc(markdown) as JSONContent, { emitUpdate: false }).focus("end").run();
       return markdown;
     },
-    replaceBeforeCaret: (length, text) => {
+    replaceBeforeCaret: (length, text, after = 0) => {
       const { from } = editor.state.selection;
       editor.chain().focus().command(({ tr }) => {
-        tr.insertText(text, Math.max(from - length, 0), from);
+        tr.insertText(text, Math.max(from - length, 0), Math.min(from + after, tr.doc.content.size));
         return true;
       }).run();
     },

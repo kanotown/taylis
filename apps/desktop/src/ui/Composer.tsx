@@ -1,5 +1,5 @@
 import { ATTACHMENT_MAX_BYTES, ATTACHMENT_MAX_COUNT, forEachPicked, formatMegabytes, isPickBusy, refusePicked, takePicked } from "../platform/pickedFiles";
-import { AtSign, Bold, CalendarDays, CaseSensitive, Check, CheckCheck, ChevronDown, Code, Ellipsis, Eye, EyeOff, Flag, HardDrive, Heading, Image, Info, Italic, LayoutTemplate, Link as LinkIcon, List, ListOrdered, Loader2, Paperclip, Plus, SendHorizontal, Smile, SquareCode, Strikethrough, TextQuote, Vote, X, Zap } from "lucide-react";
+import { AtSign, CalendarDays, CaseSensitive, Check, CheckCheck, ChevronDown, Ellipsis, Eye, EyeOff, Flag, HardDrive, Image, Info, LayoutTemplate, Link as LinkIcon, Loader2, Paperclip, Plus, SendHorizontal, Smile, Vote, X, Zap } from "lucide-react";
 import { type KeyboardEvent, type ReactNode, type RefObject, Suspense, useCallback, useEffect, useLayoutEffect, useRef, useState } from "react";
 
 import type { AttachmentOut, Priority, TemplateOut, WorkflowOut } from "../api/types";
@@ -13,14 +13,15 @@ import { DriveLinkWarning, DrivePickerDialog } from "./DriveConversation";
 import { driveLink } from "./permalink";
 import { withoutDriveLink } from "../drive/conversation";
 import { holdUntilFrame, keepLineInView, settle, textAreaCaretLine } from "./composerScroll";
-import { continueStructure, type EditState, indentListLine, insertLink, insideFence, linkFromPaste, replaceThroughBrowser, toggleFence, toggleLinePrefix, toggleWrap } from "./composerEdit";
+import { continueStructure, indentListLine, insertMentionMark, insideFence, linkFromPaste, markdownShortcut, mentionMark, textAreaEdits } from "./composerEdit";
 import { commandCandidates, parseSlashCommand, type SlashCommand } from "./commands";
-import { AiBadge } from "./ai";
-import { requestChannelMembers } from "../sync/channelMembers";
-import { aiBotIds, conversationContext, encodeMentions, type MentionCandidate, mentionCandidates, mentionQuery } from "./mentions";
-import { AddEmojiDialog, CustomEmojiImage } from "./customEmoji";
+import { encodeMentions, type MentionCandidate } from "./mentions";
+import { AddEmojiDialog } from "./customEmoji";
+import { completeAt, emojiInsert, mentionInsert } from "./completion";
+import { CompletionList, useCompletions } from "./CompletionList";
+import { formatTools } from "./formatTools";
 import { canPostTopLevel } from "./channels";
-import { completeEmoji, customEmojiCandidates, emojiCandidates, emojiQuery, type EmojiEntry } from "./emoji";
+import type { EmojiEntry } from "./emoji";
 import { EmojiPicker, rememberEmoji } from "./EmojiPicker";
 import { MessageBody } from "./MessageBody";
 import { isSendKey, readFormatBar, sendKeyLabel, writeFormatBar } from "./prefs";
@@ -82,7 +83,6 @@ export function Composer({
     return options;
   };
   const [caret, setCaret] = useState(0);
-  const [selected, setSelected] = useState(0);
   const [preview, setPreview] = useState(false);
 
   // 「リッチ」 / 「Markdown」 (users.composer_mode, rich when never chosen); both keep the draft as Markdown. A controller
@@ -140,22 +140,9 @@ export function Composer({
   const [richFormat, setRichFormat] = useState<RichFormatState>(NO_FORMAT);
   /** The rich editor once it has loaded (the text area stands in until then). */
   const editor = () => (rich ? richApi.current : null);
-  const typed = rich && richApi.current ? richContext ?? { text: "", caret: 0 } : { text, caret };
-  const query = rich && richApi.current && !richContext ? null : mentionQuery(typed.text, typed.caret);
-  // `:tada` completes to an emoji (M11f) when no mention is being typed.
-  const emojiAt = query || (rich && richApi.current && !richContext) ? null : emojiQuery(typed.text, typed.caret);
-  // Esc closes the candidate list for what is typed now (and goes no further: the screen's Esc would close the thread
-  // or read the conversation); typing on shows it again.
-  const listKey = query ? `@${query.start}:${query.query}` : emojiAt ? `:${emojiAt.start}:${emojiAt.query}` : `/${text}`;
-  const [dismissed, setDismissed] = useState<string | null>(null);
-  const listShown = dismissed !== listKey;
-  // MOBILE_UI.md §23: the channel's members for the list, read when it first opens here (it re-ranks when they come).
-  const mentionOpen = !!query && listShown;
-  useEffect(() => {
-    if (mentionOpen) requestChannelMembers(store, controller.api, channel.id);
-  }, [mentionOpen, channel.id, store.membersRevision(channel.id)]); // eslint-disable-line react-hooks/exhaustive-deps
-  const candidates = query && listShown ? mentionCandidates(query.query, [...store.users.values()], [...store.groups.values()], 8, aiBotIds(store), conversationContext(store, channel.id, parentId)) : [];
-  const emojiHits = emojiAt && listShown ? [...customEmojiCandidates(emojiAt.query, store.customEmoji), ...emojiCandidates(emojiAt.query)].slice(0, 8) : [];
+  // What the candidate lists read (CompletionList.tsx): the rich editor's line up to the caret (none with a selection
+  // or in code), else the text area's text up to its caret.
+  const typed = rich && richApi.current ? richContext : { text, caret };
   const [addEmojiOpen, setAddEmojiOpen] = useState(false);
   // M30: the templates in the order they are offered here (a times channel puts `suggest_in = times` first).
   const templates = orderTemplates(store.templates.values(), !!channel.times_owner_id);
@@ -164,14 +151,22 @@ export function Composer({
   const workflows = useChannelWorkflows(controller, !parentId && isChannel ? channel.id : null) ?? [];
   const [workflowRun, setWorkflowRun] = useState<WorkflowOut | null>(null);
   const [workflowMenu, setWorkflowMenu] = useState(false);
-  // `/st` at the very start offers the slash commands (M13b), then the templates whose name fits (M30).
-  const slashHits: SlashHit[] = query || emojiAt || !listShown ? [] : [
-    ...commandCandidates(text).map((command) => ({ kind: "command" as const, command })),
-    ...templateCandidates(text, templates).map((template) => ({ kind: "template" as const, template })),
-    ...workflowCandidates(text, workflows).map((workflow) => ({ kind: "workflow" as const, workflow })),
-  ];
-  const listLength = candidates.length > 0 ? candidates.length : emojiHits.length > 0 ? emojiHits.length : slashHits.length;
-  const active = Math.min(selected, Math.max(listLength - 1, 0));
+  // `@bo` offers people (MOBILE_UI.md §23: the channel's members read when the list first opens), else `:tada` an
+  // emoji (M11f); with neither, `/st` at the very start offers the slash commands (M13b), then the templates whose name
+  // fits (M30) and the workflows (M94). Esc closes the list for what is typed now (and goes no further: the screen's Esc
+  // would close the thread or read the conversation); typing on shows it again.
+  const completion = useCompletions<SlashHit>(controller, channel.id, parentId, typed, {
+    key: `/${text}`,
+    hits: () => [
+      ...commandCandidates(text).map((command) => ({ kind: "command" as const, command })),
+      ...templateCandidates(text, templates).map((template) => ({ kind: "template" as const, template })),
+      ...workflowCandidates(text, workflows).map((workflow) => ({ kind: "workflow" as const, workflow })),
+    ],
+  });
+  const query = completion.mention;
+  const emojiAt = completion.emoji;
+  const slashHits = completion.others;
+  const active = completion.active;
   const [emojiOpen, setEmojiOpen] = useState(false);
 
   // The poll form, and the scheduling poll's form with what it starts with (M53: `/日程 …` fills it in).
@@ -346,22 +341,21 @@ export function Composer({
   };
 
   const pick = (candidate: MentionCandidate) => {
-    if (!query) return;
+    if (!query || !typed) return;
     const rich = editor();
     if (rich) {
-      setSelected(0);
-      rich.replaceBeforeCaret(typed.caret - query.start, "@" + candidate.username + " ");
+      completion.select(0);
+      rich.replaceBeforeCaret(typed.caret - query.start, mentionInsert(candidate.username));
       return;
     }
-    const next = text.slice(0, query.start) + "@" + candidate.username + " " + text.slice(caret);
-    const position = query.start + candidate.username.length + 2;
-    setSelected(0);
-    apply({ text: next, start: position, end: position });
+    const next = completeAt(text, query.start, caret, mentionInsert(candidate.username));
+    completion.select(0);
+    apply({ text: next.text, start: next.caret, end: next.caret });
   };
 
   /** Replaces the input and puts the caret at its end (a template inserted, M30). */
   const putText = (next: string) => {
-    setSelected(0);
+    completion.select(0);
     const rich = editor();
     if (rich) {
       setText(rich.setMarkdown(next));
@@ -389,15 +383,15 @@ export function Composer({
   };
 
   const pickEmoji = (entry: EmojiEntry) => {
-    if (!emojiAt) return;
-    const next = completeEmoji(typed.text, emojiAt.start, typed.caret, entry.glyph);
+    if (!emojiAt || !typed) return;
     rememberEmoji(entry.glyph);
-    setSelected(0);
+    completion.select(0);
     const rich = editor();
     if (rich) {
-      rich.replaceBeforeCaret(typed.caret - emojiAt.start, next.text.slice(emojiAt.start, next.caret));
+      rich.replaceBeforeCaret(typed.caret - emojiAt.start, emojiInsert(entry.glyph));
       return;
     }
+    const next = completeAt(typed.text, emojiAt.start, typed.caret, emojiInsert(entry.glyph));
     apply({ text: next.text, start: next.caret, end: next.caret });
   };
 
@@ -476,48 +470,16 @@ export function Composer({
 
   const syncCaret = (element: HTMLTextAreaElement) => setCaret(element.selectionStart ?? element.value.length);
 
-  /**
-   * Puts `next` in the text area through the browser's own editing (replaceThroughBrowser), so ⌘Z / Ctrl+Z takes back
-   * a format, an emoji, a completion, a template or a continued list one step at a time between what was typed, and
-   * ⌘⇧Z / Ctrl+Y redoes it (tester, 2026-09-30). Setting the draft from React would drop the text area's undo history;
-   * that stays the way only where the browser does not take the edit. Focus and selection come back afterwards.
-   */
-  const apply = (next: EditState) => {
-    const el = area.current;
-    if (el && replaceThroughBrowser(el, next.text)) el.setSelectionRange(next.start, next.end);
-    else setText(next.text);
-    setCaret(next.start);
-    // Again on the next frame: a closing popover hands focus back to its button meanwhile.
-    const restore = () => {
-      area.current?.focus();
-      area.current?.setSelectionRange(next.start, next.end);
-    };
-    if (typeof requestAnimationFrame === "function") requestAnimationFrame(restore);
-    else setTimeout(restore, 0);
-  };
-
-  /** Run a markdown edit on the current selection. */
-  const edit = (transform: (state: EditState) => EditState | null): boolean => {
-    const el = area.current;
-    if (!el) return false;
-    const value = el.value;
-    const next = transform({ text: value, start: el.selectionStart ?? value.length, end: el.selectionEnd ?? value.length });
-    if (!next) return false;
-    apply(next);
-    return true;
-  };
+  // Markdown edits through the text area's own undo history (composerEdit.textAreaEdits): `apply` puts a state in it,
+  // `edit` runs a transform on the current selection.
+  const { apply, edit } = textAreaEdits(area, setText, (next) => setCaret(next.start));
 
   /** 「@」: an @ at the caret (after a space when a word ends there), which opens the member list. */
   const startMention = () => {
     const rich = editor();
-    if (rich) return rich.insertText(richContext && richContext.caret > 0 && !/\s/.test(richContext.text[richContext.caret - 1]!) ? " @" : "@");
-    startMentionInText();
+    if (rich) return rich.insertText(mentionMark(richContext ? richContext.text.slice(0, richContext.caret) : ""));
+    edit(insertMentionMark);
   };
-  const startMentionInText = () => edit((s) => {
-    const at = s.start > 0 && !/\s/.test(s.text[s.start - 1]!) ? " @" : "@";
-    const caret = s.start + at.length;
-    return { text: s.text.slice(0, s.start) + at + s.text.slice(s.end), start: caret, end: caret };
-  });
 
   // The formatting bar above the text (Slack), shown or hidden with 「Aa」, per device.
   const [formatBar, setFormatBar] = useState(readFormatBar);
@@ -531,18 +493,14 @@ export function Composer({
     if (rich) rich.run(name);
     else markdown();
   };
-  const tools: Array<{ icon: ReactNode; label: string; run: () => void; group?: true; active?: boolean }> = [
-    { icon: <Bold size={15} />, label: t("composer.format.boldKey", { key: `${modKey()}+B` }), run: format("bold", () => edit((s) => toggleWrap(s, "**"))), active: richFormat.bold },
-    { icon: <Italic size={15} />, label: t("composer.format.italicKey", { key: `${modKey()}+I` }), run: format("italic", () => edit((s) => toggleWrap(s, "_"))), active: richFormat.italic },
-    { icon: <Strikethrough size={15} />, label: t("composer.format.strikeKey", { key: `${modKey()}+Shift+X` }), run: format("strike", () => edit((s) => toggleWrap(s, "~~"))), active: richFormat.strike },
-    { icon: <Code size={15} />, label: t("composer.format.codeKey", { key: `${modKey()}+Shift+C` }), run: format("code", () => edit((s) => toggleWrap(s, "`"))), group: true, active: richFormat.code },
-    { icon: <SquareCode size={15} />, label: t("composer.format.codeBlock"), run: format("codeBlock", () => edit(toggleFence)), active: richFormat.codeBlock },
-    { icon: <Heading size={15} />, label: t("composer.format.heading"), run: format("heading", () => edit((s) => toggleLinePrefix(s, "## "))), group: true, active: richFormat.heading },
-    { icon: <TextQuote size={15} />, label: t("composer.format.quote"), run: format("quote", () => edit((s) => toggleLinePrefix(s, "> "))), active: richFormat.quote },
-    { icon: <List size={15} />, label: t("composer.format.bullets"), run: format("bullets", () => edit((s) => toggleLinePrefix(s, "- "))), active: richFormat.bullets },
-    { icon: <ListOrdered size={15} />, label: t("composer.format.numbered"), run: format("numbered", () => edit((s) => toggleLinePrefix(s, (i) => `${i + 1}. `))), active: richFormat.numbered },
-    { icon: <LinkIcon size={15} />, label: t("composer.format.linkKey", { key: `${modKey()}+Shift+U` }), run: () => (editor() ? openLinkEditor() : edit((s) => insertLink(s))), group: true, active: richFormat.link },
-  ];
+  // The formats (formatTools.tsx); the rich editor's link asks for its URL in a row above the text.
+  const tools: Array<{ icon: ReactNode; label: string; run: () => void; group?: true; active?: boolean }> = formatTools().map((tool) => ({
+    icon: tool.icon,
+    label: tool.label,
+    run: tool.name === "link" ? () => (editor() ? openLinkEditor() : edit(tool.markdown)) : format(tool.name, () => edit(tool.markdown)),
+    group: tool.group,
+    active: richFormat[tool.name],
+  }));
 
   // The rich editor's link: a URL row above the text (the selection, or the link at the caret, gets it).
   const [linkEdit, setLinkEdit] = useState<{ href: string; error: boolean } | null>(null);
@@ -593,19 +551,8 @@ export function Composer({
   const priorityAnchor = useShownAnchor(priorityButton, moreButton);
 
   /** ↑ / ↓ / Enter / Tab / Esc in an open candidate list; true when taken. */
-  const navigateList = (key: string): boolean => {
-    if (listLength === 0) return false;
-    if (key === "Escape") setDismissed(listKey);
-    else if (key === "ArrowDown") setSelected((active + 1) % listLength);
-    else if (key === "ArrowUp") setSelected((active - 1 + listLength) % listLength);
-    else if (key === "Enter" || key === "Tab") {
-      const candidate = candidates[active];
-      if (candidate) pick(candidate);
-      else if (emojiHits[active]) pickEmoji(emojiHits[active]!);
-      else if (slashHits[active]) pickSlash(slashHits[active]!);
-    } else return false;
-    return true;
-  };
+  const picks = { mention: pick, emoji: pickEmoji, other: pickSlash };
+  const navigateList = (key: string): boolean => completion.navigate(key, picks);
 
   /** ↑ in an empty composer edits my newest message here; Shift+↑ replies to the newest in a thread. */
   const arrowUpWhenEmpty = (shift: boolean): boolean => {
@@ -630,12 +577,9 @@ export function Composer({
     const mod = event.metaKey || event.ctrlKey;
     if (mod && !event.altKey && !event.nativeEvent.isComposing && !composing.current) {
       const key = event.key.toLowerCase();
+      const shortcut = markdownShortcut(key, event.shiftKey);
       let handled = false;
-      if (key === "b" && !event.shiftKey) handled = edit((s) => toggleWrap(s, "**"));
-      else if (key === "i" && !event.shiftKey) handled = edit((s) => toggleWrap(s, "_"));
-      else if (key === "x" && event.shiftKey) handled = edit((s) => toggleWrap(s, "~~"));
-      else if (key === "c" && event.shiftKey) handled = edit((s) => toggleWrap(s, "`"));
-      else if (key === "u" && event.shiftKey) handled = edit((s) => insertLink(s));
+      if (shortcut) handled = edit(shortcut);
       else if (key === "u") {
         openPicker(fileInput.current);
         handled = true;
@@ -645,7 +589,7 @@ export function Composer({
         return;
       }
     }
-    if (event.key === "Tab" && !imeEnter && listLength === 0) {
+    if (event.key === "Tab" && !imeEnter && completion.length === 0) {
       // Tab changes the nesting of a list line; elsewhere it keeps moving focus.
       if (edit((s) => indentListLine(s, event.shiftKey))) event.preventDefault();
       return;
@@ -763,44 +707,7 @@ export function Composer({
       {workflowRun && <WorkflowRunDialog key={workflowRun.id} controller={controller} workflow={workflowRun} here={channel.id} onClose={() => setWorkflowRun(null)} />}
       {workflowMenu && <ChannelWorkflowsDialog controller={controller} channel={channel} onClose={() => setWorkflowMenu(false)} />}
       {scheduleForm && <ScheduleDialog controller={controller} channelId={channel.id} parentId={parentId} initial={scheduleForm} onClose={() => setScheduleForm(null)} />}
-      {emojiHits.length > 0 && (
-        <ul className="absolute bottom-full left-4 z-20 mb-1 w-72 rounded-xl border border-line bg-canvas p-1 shadow-xl" aria-label={t("composer.emojiSuggestions")}>
-          {emojiHits.map((entry, index) => (
-            <li
-              key={entry.shortcode}
-              className={cn("flex items-center gap-2 rounded-lg px-2.5 py-1.5 text-sm", index === active ? "bg-accent-soft" : "hover:bg-panel")}
-              onMouseDown={(event) => {
-                event.preventDefault();
-                pickEmoji(entry);
-              }}
-            >
-              {entry.category === "custom" && store.customEmoji.get(entry.shortcode) ? (
-                <CustomEmojiImage controller={controller} emoji={store.customEmoji.get(entry.shortcode)!} size={20} />
-              ) : (
-                <span className="text-lg leading-none">{entry.glyph}</span>
-              )}{" "}
-              <span className="truncate text-muted">:{entry.shortcode}:</span>
-              {entry.category === "custom" && store.customEmoji.get(entry.shortcode)?.label && <span className="ml-auto shrink-0 truncate text-xs text-muted">{store.customEmoji.get(entry.shortcode)!.label}</span>}
-            </li>
-          ))}
-        </ul>
-      )}
-      {candidates.length > 0 && (
-        <ul className="absolute bottom-full left-4 z-20 mb-1 w-72 rounded-xl border border-line bg-canvas p-1 shadow-xl">
-          {candidates.map((candidate, index) => (
-            <li
-              key={candidate.username}
-              className={cn("flex items-center gap-2 rounded-lg px-2.5 py-1.5 text-sm", index === active ? "bg-accent-soft" : "hover:bg-panel")}
-              onMouseDown={(event) => {
-                event.preventDefault();
-                pick(candidate);
-              }}
-            >
-              <strong>@{candidate.username}</strong> <span className="text-muted">{candidate.label}</span>{candidate.kind === "group" && <span className="ml-auto rounded bg-accent-soft px-1.5 text-[10px] text-accent">{t("composer.group")}</span>}{candidate.ai && <AiBadge className="ml-auto" />}
-            </li>
-          ))}
-        </ul>
-      )}
+      <CompletionList controller={controller} completion={completion} pick={picks} className="absolute bottom-full left-4 z-20 mb-1" />
       {slashHits.length > 0 && (
         <ul className="absolute bottom-full left-4 z-20 mb-1 max-h-80 w-96 max-w-[calc(100%-2rem)] overflow-y-auto rounded-xl border border-line bg-canvas p-1 shadow-xl" aria-label={t("composer.commandSuggestions")}>
           {slashHits.map((hit, index) => (
