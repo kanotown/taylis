@@ -3,8 +3,9 @@
 //
 // Run against a LOCAL throwaway server that holds only the demo workspace (never a real one):
 //   1. an empty database + `python -m app.cli seed-demo` (infra/demo/README.md), then
-//      `node scripts/docs-shots-setup.mjs` for the Docs pages, the attendance board, the action buttons and the
-//      workflows (run it again right before the shots: it refreshes everyone's attendance state);
+//      `node scripts/docs-shots-setup.mjs` for the Docs pages, the attendance board, the action buttons, the
+//      workflows, the drive's files, a photo album, the equipment ledger, a message link and a post to edit (run it
+//      again right before the shots: it refreshes everyone's attendance state);
 //   2. `CHIKUWA_API=http://127.0.0.1:<port> npx vite --port 1422 --strictPort` in apps/desktop;
 //   3. APP_PASS=<review's password> [ADMIN_PASS=<tanaka's password>] [README_PASS=<yamamoto's password>]
 //      node scripts/docs-shots.mjs [outDir]
@@ -12,8 +13,9 @@
 //   APP_URL   the Vite dev server (default http://localhost:1422/)
 //   APP_USER  the account the shots are taken as (default review, the demo's ordinary member)
 //   ADMIN_USER / ADMIN_PASS  optional: also the admin screens, as that account (default user tanaka)
-//   README_USER / README_PASS  optional: also docs/images/desktop.png (the attendance board) and docs/images/chat.png
-//              (a channel and its thread), 1600×1000 PNGs with the light sidebar, as that account (default yamamoto)
+//   README_USER / README_PASS  optional: also docs/images/chat.png (a channel and its thread, the README's first picture)
+//              and docs/images/desktop.png (the attendance board), 1600×1000 PNGs in the app's default look (the Taylis
+//              theme's brown sidebar, light content), as that account (default yamamoto)
 //   CDP_PORT  headless Chrome's DevTools port (default 9444)
 //   ONLY      comma-separated shot names to take (default: all)
 //
@@ -22,6 +24,9 @@
 // web-presence wants all three kinds of dot in the thread of #研究ミーティング: tanaka and takahashi connected, watanabe in
 // 取り込み中 (as watanabe, PUT /users/me/presence {"status": "dnd", "duration": "4h"}) and yamamoto offline (so take the
 // app's shots before README_USER, yamamoto, logs in; the script does).
+// The demo members' おやすみ時間 is on (22:00〜7:00 by default): taken in those hours, every name shows the paused bell.
+// Take the shots in the daytime, or switch it off for the members other than review (PATCH /users/me
+// {"quiet_hours": null} as each; review's stays for the phones' おやすみ時間 shot).
 //
 // The page is shown at 120 % (a 1080×680 CSS-pixel window, like 1296×816 at the app's 120 % text size) with 2.4 device
 // pixels per CSS pixel, light theme unless the shot says dark, so the text stays readable when the image is shown at
@@ -240,6 +245,37 @@ async function openDoc(title) {
 async function openChannel(name) {
   await settle();
   await click(name, { within: SIDEBAR, wait: 1500 });
+}
+
+/**
+ * A tab of the open conversation's header (キャンバス, タスク…): the strip's own button, or 「その他 ▾」 and its menu
+ * when the strip has no room for it (2026-10-28).
+ */
+async function channelTab(label, wait = 1800) {
+  const strip = "main [data-tab-strip]";
+  const shown = await run(`[...document.querySelectorAll(${JSON.stringify(`${strip} [role=tab]`)})].some((b) => b.textContent.trim() === ${JSON.stringify(label)})`);
+  if (shown) return click(label, { within: strip, wait });
+  await click("その他", { within: strip, wait: 600 });
+  await click(label, { within: "[role=menu]", wait });
+}
+
+/** The message (article) in the open conversation whose text includes `text`, hovered so its toolbar shows. */
+async function hover(text) {
+  const row = await message(text);
+  if (!row) throw new Error(`no message "${text}"`);
+  await mouse(row.x + 420, row.y + 20, false);
+  await sleep(500);
+}
+
+/** The middle of the button labelled `label` (or starting with it) in the message whose text includes `text`. */
+async function rowButton(text, label) {
+  return run(`(() => {
+    const a = [...document.querySelectorAll("main article")].reverse().find((a) => a.textContent.includes(${JSON.stringify(text)}));
+    const b = a && [...a.querySelectorAll("button")].filter((b) => (b.getAttribute("aria-label") ?? "").startsWith(${JSON.stringify(label)})).pop();
+    if (!b) return null;
+    const r = b.getBoundingClientRect();
+    return { x: r.left + r.width / 2, y: r.top + r.height / 2 };
+  })()`);
 }
 
 async function openThread(channel, replies) {
@@ -483,6 +519,70 @@ def("web-table", async () => {
   await shot("web-table", { x: again.x, y: again.y - 8, width: again.width, height: again.height + 16 });
 });
 
+/** A link to another message, drawn as its card (M185; the post comes from docs-shots-setup.mjs). */
+def("web-message-link", async () => {
+  await viewport(NORMAL);
+  await openChannel("論文紹介");
+  await click("最新のメッセージへ", { within: "main", wait: 1200 }).catch(() => {});
+  if (!(await message("来週の論文紹介の前に"))) throw new Error("no message link post (run docs-shots-setup.mjs)");
+  await mouse(1, 400, false);
+  await sleep(1500);
+  const again = await message("来週の論文紹介の前に");
+  await shot("web-message-link", { x: again.x, y: again.y - 8, width: again.width, height: again.height + 16 });
+});
+
+/**
+ * Editing a sent message (M186, M187): its photos with ×, 「ファイルを追加」, the emoji / @ / 書式 buttons, and the `:`
+ * emoji candidates while a name is typed at the end (the post comes from docs-shots-setup.mjs).
+ */
+def("web-edit-message", async () => {
+  // Tall enough that the candidates above the edit box stay inside the conversation.
+  await viewport({ ...TALL, height: 1100 });
+  await openChannel("雑談");
+  await click("最新のメッセージへ", { within: "main", wait: 1200 }).catch(() => {});
+  await hover("合宿の宿の下見");
+  const pen = await rowButton("合宿の宿の下見", "編集");
+  if (!pen) throw new Error("no edit button (the post is the screenshot account's own)");
+  await mouse(pen.x, pen.y);
+  await sleep(1500);
+  // The caret at the end of the text, then a custom emoji's name.
+  await run(`(() => {
+    const el = document.querySelector("main [aria-label='メッセージを編集']");
+    el.focus();
+    if (el.isContentEditable) {
+      const range = document.createRange();
+      range.selectNodeContents(el);
+      range.collapse(false);
+      getSelection().removeAllRanges();
+      getSelection().addRange(range);
+    } else el.setSelectionRange(el.value.length, el.value.length);
+    return true;
+  })()`);
+  await sleep(300);
+  await send("Input.insertText", { text: " :ありがと" });
+  await sleep(1200);
+  await mouse(1, 1, false);
+  await sleep(300);
+  const box = await run(`(() => {
+    const edit = document.querySelector("main [aria-label='メッセージを編集']").closest("article");
+    const list = document.querySelector("[data-edit-completions]");
+    const rs = [edit, list].filter(Boolean).map((e) => e.getBoundingClientRect());
+    let top = Math.max(0, Math.min(...rs.map((r) => r.top)) - 10);
+    const bottom = Math.min(innerHeight, Math.max(...rs.map((r) => r.bottom)) + 10);
+    // Not through a line of text (a name, the day's pill) behind the candidates: from the top of what the edge crosses.
+    for (let i = 0; i < 4; i++) {
+      const crossed = [...document.querySelectorAll("main *")].filter((e) => !e.children.length && e.textContent.trim()).map((e) => e.getBoundingClientRect()).filter((r) => r.height && r.height < 80 && r.top < top && r.bottom > top);
+      if (!crossed.length) break;
+      top = Math.max(0, Math.min(...crossed.map((r) => r.top)) - 8);
+    }
+    const main = document.querySelector("main").getBoundingClientRect();
+    return { x: main.left, y: top, width: main.width, height: bottom - top };
+  })()`);
+  await shot("web-edit-message", box);
+  await key("Escape");
+  await key("Escape");
+});
+
 def("web-thread", async () => {
   await viewport(NORMAL);
   await openThread("研究ミーティング", "5 件の返信");
@@ -563,19 +663,19 @@ def("web-docs-database", async () => {
 def("web-canvas", async () => {
   await viewport(NORMAL);
   await openChannel("学会準備");
-  await click("キャンバス", { within: "main", wait: 2000 });
+  await channelTab("キャンバス", 2000);
   await mouse(5, 5, false);
   await shot("web-canvas", await rectOf("main"));
-  await click("メッセージ", { within: "main", wait: 600 });
+  await channelTab("メッセージ", 600);
 });
 
 def("web-tasks", async () => {
   await viewport(NORMAL);
   await openChannel("研究ミーティング");
-  await click("タスク", { within: "main", wait: 1800 });
+  await channelTab("タスク");
   await mouse(5, 5, false);
   await shot("web-tasks", await rectOf("main"));
-  await click("メッセージ", { within: "main", wait: 600 });
+  await channelTab("メッセージ", 600);
 });
 
 /** 「タスク」 in the rail: my tasks across channels. */
@@ -615,6 +715,54 @@ def("web-reservations", async () => {
   await place("予約");
   const main = await rectOf("main");
   await shot("web-reservations", { ...main, height: 470 });
+});
+
+// ---- the drive, albums, lending -----------------------------------------------------------------------------------
+
+/**
+ * The 研究室ドライブ as a list with three files picked by their check boxes (the first, then Shift on the third: a run),
+ * so the header box shows 「−」 and the selection bar its actions (docs-shots-setup.mjs puts the files there).
+ */
+def("web-drive", async () => {
+  await viewport(WIDE);
+  await place("ドライブ");
+  await click("研究室ドライブ", { within: "main", wait: 1500 });
+  await click("リスト", { within: "main", wait: 600 }).catch(() => {});
+  // The files' boxes (not the folders'), read again after the first click: the selection bar moves the rows down.
+  const fileBoxes = () => run(`[...document.querySelectorAll("main [data-drive-check]")].filter((b) => !/^(論文|発表資料|実験データ|事務・手続き|アルバム) を選ぶ$/.test(b.getAttribute("aria-label"))).map((b) => { const r = b.getBoundingClientRect(); return { x: r.left + r.width / 2, y: r.top + r.height / 2 }; })`);
+  const first = (await fileBoxes())[0];
+  if (!first) throw new Error("no files in the 研究室ドライブ (run docs-shots-setup.mjs)");
+  await mouse(first.x, first.y);
+  await sleep(600);
+  const third = (await fileBoxes())[2];
+  await send("Input.dispatchMouseEvent", { type: "mouseMoved", x: third.x, y: third.y, modifiers: 8 });
+  for (const type of ["mousePressed", "mouseReleased"]) await send("Input.dispatchMouseEvent", { type, x: third.x, y: third.y, button: "left", clickCount: 1, modifiers: 8 });
+  await sleep(600);
+  await mouse(1, 400, false);
+  await sleep(300);
+  await shot("web-drive", await rectOf("main"));
+  await key("Escape");
+});
+
+/** A photo album (the grid by the day taken), from the drive's 「アルバム」. */
+def("web-album", async () => {
+  await viewport(WIDE);
+  await place("ドライブ");
+  await click("アルバム", { within: "main", wait: 1500 });
+  await click("ゼミ合宿 2026（長野）", { within: "main", wait: 3000 });
+  await mouse(1, 400, false);
+  await sleep(1500);
+  await shot("web-album", await rectOf("main"));
+});
+
+/** The equipment ledger (備品, off by default: docs-shots-setup.mjs switches it on), a camera on loan opened beside it. */
+def("web-lending", async () => {
+  await viewport(WIDE);
+  await place("備品");
+  await click("デジタル一眼カメラ A", { within: "main", wait: 1500 });
+  await mouse(1, 400, false);
+  await sleep(800);
+  await shot("web-lending", await rectOf("main"));
 });
 
 // ---- workflows ----------------------------------------------------------------------------------------------------
@@ -768,41 +916,44 @@ def(
 
 // ---- the README's pictures --------------------------------------------------------------------------------------
 
-/** The README's pictures have the light sidebar (「サイドバー」→ 明るい色), whatever the documentation's shots use. */
-async function lightSidebar() {
-  if (await run(`document.documentElement.dataset.sidebar === "light"`)) return;
-  await run(`(localStorage.setItem("chikuwa.prefs.sidebar", "light"), true)`);
+/**
+ * The README's pictures look like the app out of the box (2026-11-16): the Taylis theme with its brown sidebar and the
+ * light content area, so a light sidebar (「サイドバー」→ 明るい色) left by an earlier run is undone.
+ */
+async function defaultTheme() {
+  if ((await run(`document.documentElement.dataset.sidebar ?? ""`)) !== "light") return;
+  await run(`(localStorage.removeItem("chikuwa.prefs.sidebar"), true)`);
   await send("Page.reload");
   await waitFor(`document.querySelector(${JSON.stringify(SIDEBAR)}) !== null`, 30000);
   await sleep(2000);
 }
 
 def(
-  "readme-desktop",
-  async () => {
-    // What a lab sees first, not a channel: the attendance board.
-    await viewport(README);
-    await lightSidebar();
-    await place("在室状況");
-    await run(`(document.querySelectorAll(${JSON.stringify(SIDEBAR)} + " *").forEach((e) => { if (e.scrollTop) e.scrollTop = 0; }), true)`);
-    await mouse(5, 5, false);
-    await sleep(600);
-    await shot("readme-desktop", null, { png: README_IMAGE });
-  },
-  "readme",
-);
-
-def(
   "readme-chat",
   async () => {
-    // The chat section's picture: a channel with a thread open.
+    // The README's first picture (2026-11-16): a lively channel with its thread open (the graph, reactions, five replies).
     await viewport(README);
-    await lightSidebar();
+    await defaultTheme();
     await openThread("研究ミーティング", "5 件の返信");
     await run(`(document.querySelectorAll(${JSON.stringify(SIDEBAR)} + " *").forEach((e) => { if (e.scrollTop) e.scrollTop = 0; }), true)`);
     await mouse(5, 5, false);
     await sleep(600);
     await shot("readme-chat", null, { png: README_CHAT_IMAGE });
+  },
+  "readme",
+);
+
+def(
+  "readme-desktop",
+  async () => {
+    // The research-lab section's picture: the attendance board.
+    await viewport(README);
+    await defaultTheme();
+    await place("在室状況");
+    await run(`(document.querySelectorAll(${JSON.stringify(SIDEBAR)} + " *").forEach((e) => { if (e.scrollTop) e.scrollTop = 0; }), true)`);
+    await mouse(5, 5, false);
+    await sleep(600);
+    await shot("readme-desktop", null, { png: README_IMAGE });
   },
   "readme",
 );
