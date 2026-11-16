@@ -21,8 +21,10 @@ export class SqlitePersistence implements Persistence {
   private constructor(private readonly db: SqlDatabase) {}
 
   static async open(profile: string): Promise<SqlitePersistence> {
-    const { default: Database } = await import("@tauri-apps/plugin-sql");
-    const db = (await Database.load(`sqlite:chikuwa-${profile}.db`)) as unknown as SqlDatabase;
+    const [{ default: Database }, { invoke }] = await Promise.all([import("@tauri-apps/plugin-sql"), import("@tauri-apps/api/core")]);
+    // 2026-11-16: opened by our own command (src-tauri/src/local_store.rs), which takes only the profile's hex name
+    // and refuses ATTACH of a file; the plugin's `load` (any path) is not in the capability any more.
+    const db = Database.get(await invoke<string>("local_store_open", { profile })) as unknown as SqlDatabase;
     // Deleted rows are overwritten in the file, not only unlinked: a message deleted here, or the whole store at
     // sign-out (§11), must not stay readable in the .db.
     await db.execute("PRAGMA secure_delete = ON");

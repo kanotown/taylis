@@ -15,6 +15,10 @@ tauri-build = { version = "2", features = [] }
 # tray-icon: Windows keeps Taylis in the notification area when its window is closed (src/background.rs).
 tauri = { version = "2", features = ["tray-icon"] }
 tauri-plugin-sql = { version = "2", features = ["sqlite"] }
+# The local store is opened by our own command (src/local_store.rs), not the plugin's `load`: the same sqlx and
+# libsqlite3-sys the plugin builds (Cargo.lock), for the pool and SQLite's authorizer. Keep them in step with it.
+sqlx = { version = "0.8", default-features = false, features = ["sqlite", "runtime-tokio"] }
+libsqlite3-sys = { version = "0.30", default-features = false }
 tauri-plugin-notification = "2"
 tauri-plugin-dialog = "2"
 tauri-plugin-fs = "2"

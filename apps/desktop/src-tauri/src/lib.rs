@@ -18,6 +18,7 @@ use tauri_plugin_deep_link::DeepLinkExt;
 
 mod background;
 mod downloads;
+mod local_store;
 #[cfg(target_os = "macos")]
 mod mac_notify;
 #[cfg(any(target_os = "macos", windows))]
@@ -218,6 +219,7 @@ pub fn run() {
             native_notification_clear,
             computer_name,
             downloads::download_mark,
+            local_store::local_store_open,
             background::background_get,
             background::background_set,
             background::shell_labels_set

@@ -1,7 +1,7 @@
 {
   "$schema": "../gen/schemas/desktop-schema.json",
   "identifier": "default",
-  "description": "Main window: dragging the window by its top bar (macOS overlay title bar; on Windows our top bar is the whole title bar, with its own minimise / maximise / close buttons),local SQLite store, OS notifications, the unread badge, external links in the system browser, the text size (webview zoom), saving a download into the Downloads folder under a free name (or where the user picked in the save dialog), the drive (M161): a large download written chunk by chunk into a file there (removed when it fails), and the files and folders picked in the open dialog read in parts for an upload (the dialog adds them to the scope; persisted-scope keeps them after a restart so the upload resumes), showing a saved download in Finder / Explorer and opening one saved in Downloads in its app (only the kinds allowlisted here and in platform/download.ts OPENABLE_EXTENSIONS: documents, pictures, sound, video, plain text and archives, in any case; anything else is only revealed), the credential-store commands, the `chikuwachat://` link that launched the app (Google sign-in), and in-app updates (check, download and install, then relaunch), and the window full screen for an album's slideshow (AL2).",
+  "description": "Main window: dragging the window by its top bar (macOS overlay title bar; on Windows our top bar is the whole title bar, with its own minimise / maximise / close buttons),local SQLite store (opened by our local_store_open command, never the plugin's load: only execute and select on stores it opened), OS notifications, the unread badge, external links in the system browser, the text size (webview zoom), saving a download into the Downloads folder under a free name (or where the user picked in the save dialog), the drive (M161): a large download written chunk by chunk into a file there (removed when it fails), and the files and folders picked in the open dialog read in parts for an upload (the dialog adds them to the scope; persisted-scope keeps them after a restart so the upload resumes), showing a saved download in Finder / Explorer and opening one saved in Downloads in its app (only the kinds allowlisted here and in platform/download.ts OPENABLE_EXTENSIONS: documents, pictures, sound, video, plain text and archives, in any case; anything else is only revealed), the credential-store commands, the `chikuwachat://` link that launched the app (Google sign-in), and in-app updates (check, download and install, then relaunch), and the window full screen for an album's slideshow (AL2).",
   "windows": [
     "main"
   ],
@@ -15,8 +15,6 @@
     "core:window:allow-is-fullscreen",
     "core:window:allow-set-badge-count",
     "core:webview:allow-set-webview-zoom",
-    "sql:default",
-    "sql:allow-load",
     "sql:allow-execute",
     "sql:allow-select",
     "notification:default",
