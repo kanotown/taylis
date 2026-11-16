@@ -87,7 +87,6 @@ import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.ImageBitmap
 import androidx.compose.ui.graphics.asImageBitmap
 import androidx.compose.ui.layout.ContentScale
-import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.platform.LocalDensity
 import androidx.compose.ui.semantics.contentDescription
 import androidx.compose.ui.semantics.semantics
@@ -265,7 +264,6 @@ internal fun PdfPreviewViewer(
     /** 「ダウンロード」 where the pages cannot be shown (a drive file: the drive's download). */
     onDownload: (() -> Unit)? = null,
 ) {
-    val context = LocalContext.current
     var pages by remember(attachment.id) { mutableStateOf<PdfPages?>(null) }
     var error by remember(attachment.id) { mutableStateOf<String?>(null) }
     var attempt by remember(attachment.id) { mutableIntStateOf(0) }
@@ -274,15 +272,17 @@ internal fun PdfPreviewViewer(
         error = null
         if (hold != null) return@LaunchedEffect
         try {
+            // 2026-11-16 (FileCaches): in the workspace's own folder of the cache, which goes with its sign-out.
             val opened = if (load != null) {
-                val file = File(File(context.cacheDir, "previews"), DownloadCache.path(attachment.id, "original.pdf"))
+                val file = File(controller.previewsDir(), DownloadCache.path(attachment.id, "original.pdf"))
                 withContext(Dispatchers.IO) { file.parentFile?.mkdirs() }
                 load(file)
                 withContext(Dispatchers.IO) { PdfPages(file) }
             } else {
                 val bytes = controller.fetchBytes("/api/v1/attachments/${attachment.id}/preview/pdf")
+                val previews = controller.previewsDir()
                 withContext(Dispatchers.IO) {
-                    val file = File(File(context.cacheDir, "previews"), DocumentCards.cachePath(attachment.id))
+                    val file = File(previews, DocumentCards.cachePath(attachment.id))
                     file.parentFile?.mkdirs()
                     file.writeBytes(bytes)
                     PdfPages(file)

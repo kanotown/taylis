@@ -22,15 +22,18 @@ import jp.chikuwachat.android.ui.DownloadCache
 object DriveFiles {
     private const val BLOCK = 64 * 1024
 
-    /** The drive's corner of the download cache (the FileProvider's `downloads/`): one file at a time is kept. */
-    fun cacheDir(context: Context): File = File(File(context.cacheDir, "downloads"), "drive")
+    /**
+     * The drive's corner of a workspace's download cache (the FileProvider's `downloads/`, [FileCaches]): one file at a
+     * time is kept.
+     */
+    fun cacheDir(context: Context, serverUrl: String): File = File(FileCaches.downloads(context.cacheDir, serverUrl), "drive")
 
     /** Where a version's file sits: its id is a folder, so two files of the same name stay apart (DownloadCache). */
-    fun cacheFile(context: Context, key: String, name: String): File = File(cacheDir(context), DownloadCache.path(key, name))
+    fun cacheFile(context: Context, serverUrl: String, key: String, name: String): File = File(cacheDir(context, serverUrl), DownloadCache.path(key, name))
 
     /** Every drive file in the cache but `keep` (the next one replaces the last: the cache does not grow with each download). */
-    fun prune(context: Context, keep: File?) {
-        val root = cacheDir(context)
+    fun prune(context: Context, serverUrl: String, keep: File?) {
+        val root = cacheDir(context, serverUrl)
         val kept = keep?.parentFile
         root.listFiles()?.forEach { dir -> if (dir != kept) dir.deleteRecursively() }
     }

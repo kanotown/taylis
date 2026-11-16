@@ -78,6 +78,7 @@ import kotlinx.coroutines.sync.withLock
 import jp.chikuwachat.android.platform.KeyValueStore
 import jp.chikuwachat.android.platform.SharedPrefsStore
 import jp.chikuwachat.android.platform.WorkspaceIconCache
+import jp.chikuwachat.android.platform.FileCaches
 import jp.chikuwachat.android.platform.EmojiDiskCache
 import jp.chikuwachat.android.platform.EmojiImageKey
 import jp.chikuwachat.android.platform.EmojiImageLoader
@@ -714,6 +715,9 @@ class AppController(private val app: Application) {
             }
         }.join()
         ssoPending.purgeExpired()
+        // 2026-11-16 (FileCaches): downloads of the layout before workspace folders, and of workspaces no longer listed, go.
+        val listed = workspaces.map { it.serverUrl }
+        withContext(Dispatchers.IO) { FileCaches.prune(app.cacheDir, listed) }
         // DRIVE.md §6: drive uploads left unfinished (the app closed, the process killed, a force-stop) go on.
         withContext(Dispatchers.IO) { jp.chikuwachat.android.platform.DriveUploadCenter.resume(app) }
         deliverDriveLinks() // CF5: a large file finished while the app was closed
@@ -792,6 +796,7 @@ class AppController(private val app: Application) {
         taskForm = null
         workflowForm = null
         workflowLists.clear()
+        jp.chikuwachat.android.ui.WorkspaceImageCaches.clear() // 2026-11-16: another workspace's pictures never show here
         linkPreviews.clear()
         previewLoads.clear()
         previewsAsked.clear()
@@ -1117,8 +1122,11 @@ class AppController(private val app: Application) {
             previous.onTokens = null
             scope.launch { attempt { previous.logout() } }
         }
-        // One account per server: the account this replaces leaves nothing on this device.
-        if (known != null && known.username != username) forgetAccountData(account(serverUrl, known.username))
+        // One account per server: the account this replaces leaves nothing on this device (2026-11-16: its files neither).
+        if (known != null && known.username != username) {
+            forgetAccountData(account(serverUrl, known.username))
+            withContext(Dispatchers.IO) { FileCaches.forget(app.cacheDir, serverUrl) }
+        }
         // REVIEW-v0.1.62 #1: nor any share another account queued here (this account's own stay; they check their sign-in).
         dropAccountWork(serverUrl, keepUserId = me.id)
         clients[serverUrl] = client
@@ -1750,6 +1758,7 @@ class AppController(private val app: Application) {
         }
         notifier.clearWorkspace(serverUrl, everything = workspaces.size <= 1)
         withContext(Dispatchers.IO) { emojiPictures.clear(serverUrl) } // docs/EMOJI.md, image cache: its cached pictures go with it
+        withContext(Dispatchers.IO) { FileCaches.forget(app.cacheDir, serverUrl) } // 2026-11-16: its downloads and preview PDFs too
         val leave = leaving.remove(serverUrl)
         // REVIEW-v0.1.62 #1: the account's pending shares go with it (never sent as whoever signs in here next); a
         // session the server ended says so on each, a sign-out on purpose does not.
@@ -1784,6 +1793,7 @@ class AppController(private val app: Application) {
         push.detach(serverUrl)
         notifier.clearWorkspace(serverUrl, everything = workspaces.size <= 1)
         withContext(Dispatchers.IO) { emojiPictures.clear(serverUrl) } // docs/EMOJI.md, image cache: its cached pictures go with it
+        withContext(Dispatchers.IO) { FileCaches.forget(app.cacheDir, serverUrl) } // 2026-11-16: its downloads and preview PDFs too
         dropAccountWork(serverUrl)
         replaceWorkspaces(workspaces.filterNot { it.serverUrl == serverUrl })
         jp.chikuwachat.android.widget.AttendanceWidgetData.forget(app, serverUrl)
@@ -2977,15 +2987,23 @@ class AppController(private val app: Application) {
 
     /**
      * §27.3: a drive file's own bytes (`/drive/items/{id}/content` with the token) streamed into [target] (a PDF the
-     * viewer draws while it has no preview); a copy of the right size made before is used again.
+     * viewer draws while it has no preview); a copy this process made before is used again (2026-11-16, FileCaches: not
+     * a file of the right size alone).
      */
     suspend fun driveOriginalTo(item: jp.chikuwachat.android.api.DriveItemOut, target: java.io.File) {
         val api = api ?: throw Refusal(L10n.str(R.string.app_controller_you_need_to_sign_in))
         val expected = item.sizeBytes
-        if (expected != null && withContext(Dispatchers.IO) { target.isFile && target.length() == expected }) return
+        if (withContext(Dispatchers.IO) { FileCaches.reusable(target, expected) }) return
         api.streamGet("/api/v1/drive/items/${item.id}/content", auth = true) { input, _ ->
             jp.chikuwachat.android.platform.DriveFiles.streamToFile(input, target, expected, { false }) {}
         }
+        FileCaches.markComplete(target)
+    }
+
+    /** 2026-11-16 (FileCaches): the workspace on screen's folder for the PDFs the viewer draws. */
+    fun previewsDir(): java.io.File {
+        val api = api ?: throw Refusal(L10n.str(R.string.app_controller_you_need_to_sign_in))
+        return FileCaches.previews(app.cacheDir, api.baseUrl)
     }
 
     // --- drive uploads from the phone (2026-10-24, DRIVE.md §6; platform/DriveUploadWorker.kt) ------------------
@@ -3170,13 +3188,15 @@ class AppController(private val app: Application) {
                     return@launch
                 }
                 val key = if (zip) "zip-" + System.currentTimeMillis() else item.file?.versionId?.takeIf { it.isNotEmpty() } ?: item.id
-                val file = jp.chikuwachat.android.platform.DriveFiles.cacheFile(context, key, name)
-                withContext(Dispatchers.IO) { jp.chikuwachat.android.platform.DriveFiles.prune(context, file) }
-                val cached = !zip && expected != null && withContext(Dispatchers.IO) { file.isFile && file.length() == expected }
+                // 2026-11-16 (FileCaches): in this workspace's folder, and used again only when this process downloaded it.
+                val file = jp.chikuwachat.android.platform.DriveFiles.cacheFile(context, api.baseUrl, key, name)
+                withContext(Dispatchers.IO) { jp.chikuwachat.android.platform.DriveFiles.prune(context, api.baseUrl, file) }
+                val cached = !zip && withContext(Dispatchers.IO) { FileCaches.reusable(file, expected) }
                 if (!cached) {
                     api.streamGet(path0, auth = false) { input, _ ->
                         jp.chikuwachat.android.platform.DriveFiles.streamToFile(input, file, expected, { transfer.cancelled }) { transfer.received = it }
                     }
+                    FileCaches.markComplete(file)
                 } else transfer.received = expected ?: 0
                 if (transfer.cancelled) return@launch
                 when (action) {
@@ -3266,7 +3286,7 @@ class AppController(private val app: Application) {
                 } else {
                     // Streamed to the cache, at most the attachment's own size (2026-11-16: never the whole answer in memory).
                     val api = api ?: throw Refusal(L10n.str(R.string.app_controller_you_need_to_sign_in))
-                    val file = java.io.File(java.io.File(app.cacheDir, "downloads"), DownloadCache.path(attachment.id, attachment.filename))
+                    val file = java.io.File(FileCaches.downloads(app.cacheDir, api.baseUrl), DownloadCache.path(attachment.id, attachment.filename))
                     api.downloadTo("/api/v1/attachments/${attachment.id}/content", file, attachment.sizeBytes)
                     openCachedFile(app as Context, attachment, file)
                 }
@@ -3276,13 +3296,15 @@ class AppController(private val app: Application) {
 
     /**
      * M82: the clip of a video attachment as a file in the download cache, fetched (streamed) only the first time it is
-     * opened; the tile shows the server's poster and never downloads it. A cached file of the attachment's size is reused.
+     * opened; the tile shows the server's poster and never downloads it. 2026-11-16 (FileCaches): in the workspace's own
+     * folder, and reused only when this process downloaded it in full (not a file of the attachment's size alone).
      */
     suspend fun videoFile(attachment: AttachmentOut): java.io.File {
         val api = api ?: throw Refusal(L10n.str(R.string.app_controller_you_need_to_sign_in))
-        val file = java.io.File(java.io.File(app.cacheDir, "downloads"), DownloadCache.path(attachment.id, attachment.filename))
-        if (withContext(Dispatchers.IO) { file.isFile && file.length() == attachment.sizeBytes }) return file
+        val file = java.io.File(FileCaches.downloads(app.cacheDir, api.baseUrl), DownloadCache.path(attachment.id, attachment.filename))
+        if (withContext(Dispatchers.IO) { FileCaches.reusable(file, attachment.sizeBytes) }) return file
         api.downloadTo("/api/v1/attachments/${attachment.id}/content", file, attachment.sizeBytes)
+        FileCaches.markComplete(file)
         return file
     }
 

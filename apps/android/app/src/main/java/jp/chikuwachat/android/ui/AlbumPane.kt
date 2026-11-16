@@ -138,20 +138,26 @@ import java.util.UUID
  * drive's background uploads. Plain surfaces and thin outlines; no coloured side bars.
  */
 
-/** The grid's thumbnails (512 px, RGB_565), bounded by bytes so a long album scrolled through does not grow the heap. */
-private object AlbumThumbs {
+/**
+ * The grid's thumbnails (512 px, RGB_565), bounded by bytes so a long album scrolled through does not grow the heap. Kept
+ * by server and path, emptied when the workspace on screen changes or signs out (2026-11-16, [WorkspaceImageCaches]).
+ */
+internal object AlbumThumbs {
     private val held = object : LruCache<String, ImageBitmap>(40 * 1024 * 1024) {
         override fun sizeOf(key: String, value: ImageBitmap): Int = value.width * value.height * 2
     }
 
-    fun peek(path: String): ImageBitmap? = held.get(path)
+    fun peek(controller: AppController, path: String): ImageBitmap? = held.get(WorkspaceImageCaches.key(controller, path))
+
+    fun clear() = held.evictAll()
 
     suspend fun load(controller: AppController, path: String): ImageBitmap? {
-        peek(path)?.let { return it }
+        val key = WorkspaceImageCaches.key(controller, path)
+        held.get(key)?.let { return it }
         return try {
             val bytes = controller.fetchBytes(path)
             // Bounded (2026-11-16, BoundedImage): sampled to the grid's 512 px; an oversized one is no picture.
-            withContext(Dispatchers.Default) { BoundedImage.image(bytes, 512, config = Bitmap.Config.RGB_565) }?.also { held.put(path, it) }
+            withContext(Dispatchers.Default) { BoundedImage.image(bytes, 512, config = Bitmap.Config.RGB_565) }?.also { held.put(key, it) }
         } catch (e: CancellationException) {
             throw e
         } catch (e: Exception) {
@@ -164,7 +170,7 @@ private object AlbumThumbs {
 @Composable
 private fun AlbumThumb(controller: AppController, attachmentId: String?, modifier: Modifier, icon: androidx.compose.ui.graphics.vector.ImageVector = Icons.Outlined.Image) {
     val path = attachmentId?.let { AlbumRules.thumbnailPath(it) }
-    var image by remember(path) { mutableStateOf(path?.let { AlbumThumbs.peek(it) }) }
+    var image by remember(path) { mutableStateOf(path?.let { AlbumThumbs.peek(controller, it) }) }
     if (path != null && image == null) LaunchedEffect(path) { image = AlbumThumbs.load(controller, path) }
     Box(modifier.background(MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.6f)), contentAlignment = Alignment.Center) {
         val picture = image

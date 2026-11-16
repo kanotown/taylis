@@ -294,20 +294,26 @@ internal fun driveIcon(item: DriveItemOut): ImageVector = when (DriveNames.icon(
 /** A drive row's or card's picture is at most a card's width (about 200 dp). */
 private const val DRIVE_THUMB_MAX_SIDE = 1024
 
-/** The thumbnails read this session (a few dozen small JPEG / WebP), so scrolling back does not read them again. */
-private object DriveThumbs {
+/**
+ * The thumbnails read this session (a few dozen small JPEG / WebP), so scrolling back does not read them again. Kept by
+ * server and path, emptied when the workspace on screen changes or signs out (2026-11-16, [WorkspaceImageCaches]).
+ */
+internal object DriveThumbs {
     private val held = object : LinkedHashMap<String, ImageBitmap>(64, 0.75f, true) {
         override fun removeEldestEntry(eldest: MutableMap.MutableEntry<String, ImageBitmap>?): Boolean = size > 120
     }
 
-    fun peek(path: String): ImageBitmap? = synchronized(held) { held[path] }
+    fun peek(controller: AppController, path: String): ImageBitmap? = synchronized(held) { held[WorkspaceImageCaches.key(controller, path)] }
+
+    fun clear() = synchronized(held) { held.clear() }
 
     suspend fun load(controller: AppController, path: String): ImageBitmap? {
-        peek(path)?.let { return it }
+        val key = WorkspaceImageCaches.key(controller, path)
+        synchronized(held) { held[key] }?.let { return it }
         return try {
             val bytes = controller.fetchBytes(path)
             // Bounded (2026-11-16): a row's or a card's picture is small; an oversized one is no picture.
-            withContext(Dispatchers.Default) { BoundedImage.image(bytes, DRIVE_THUMB_MAX_SIDE) }?.also { synchronized(held) { held[path] = it } }
+            withContext(Dispatchers.Default) { BoundedImage.image(bytes, DRIVE_THUMB_MAX_SIDE) }?.also { synchronized(held) { held[key] = it } }
         } catch (e: CancellationException) {
             throw e
         } catch (e: Exception) {
@@ -320,7 +326,7 @@ private object DriveThumbs {
 @Composable
 internal fun DriveThumb(controller: AppController, item: DriveItemOut, size: Dp = 40.dp) {
     val path = DriveNames.thumbnailPath(item)
-    var image by remember(path) { mutableStateOf(path?.let { DriveThumbs.peek(it) }) }
+    var image by remember(path) { mutableStateOf(path?.let { DriveThumbs.peek(controller, it) }) }
     if (path != null && image == null) LaunchedEffect(path) { image = DriveThumbs.load(controller, path) }
     val picture = image
     if (picture != null) {

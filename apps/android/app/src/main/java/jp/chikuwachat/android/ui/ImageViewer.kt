@@ -144,21 +144,30 @@ data class ViewerPhoto(
     val key: String = attachment.id,
 )
 
-/** The bytes of display images read ahead of the viewer and the slideshow (the next two, §6.1), about 24 MB at most. */
+/**
+ * The bytes of display images read ahead of the viewer and the slideshow (the next two, §6.1), about 24 MB at most. Kept
+ * by server and path (2026-11-16: two workspaces' `/api/v1/…/<id>` are different pictures) and emptied when the workspace
+ * on screen changes or signs out ([WorkspaceImageCaches]).
+ */
 internal object DisplayBytes {
     private const val MAX = 24L * 1024 * 1024
     private var total = 0L
     private val held = object : LinkedHashMap<String, ByteArray>(16, 0.75f, true) {}
 
-    fun peek(path: String): ByteArray? = synchronized(held) { held[path] }
+    private fun peek(key: String): ByteArray? = synchronized(held) { held[key] }
 
-    private fun keep(path: String, bytes: ByteArray) = synchronized(held) {
-        held.put(path, bytes)?.let { total -= it.size }
+    fun clear() = synchronized(held) {
+        held.clear()
+        total = 0L
+    }
+
+    private fun keep(key: String, bytes: ByteArray) = synchronized(held) {
+        held.put(key, bytes)?.let { total -= it.size }
         total += bytes.size
         val each = held.entries.iterator()
         while (total > MAX && each.hasNext()) {
             val eldest = each.next()
-            if (eldest.key == path) continue
+            if (eldest.key == key) continue
             total -= eldest.value.size
             each.remove()
         }
@@ -166,13 +175,14 @@ internal object DisplayBytes {
 
     /** The bytes (from memory when read lately); a display image is kept, an original never (it can be tens of MB). */
     suspend fun load(controller: AppController, path: String, keepIt: Boolean = true): ByteArray {
-        peek(path)?.let { return it }
-        return controller.fetchBytes(path).also { if (keepIt && it.size < 8 * 1024 * 1024) keep(path, it) }
+        val key = WorkspaceImageCaches.key(controller, path)
+        peek(key)?.let { return it }
+        return controller.fetchBytes(path).also { if (keepIt && it.size < 8 * 1024 * 1024) keep(key, it) }
     }
 
     /** Reads ahead, quietly (a failure is read again when the page is shown). */
     suspend fun prefetch(controller: AppController, path: String) {
-        if (peek(path) != null) return
+        if (peek(WorkspaceImageCaches.key(controller, path)) != null) return
         try {
             load(controller, path)
         } catch (e: CancellationException) {
