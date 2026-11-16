@@ -40,6 +40,11 @@ describe("inline format (apps/shared/inline-format.json)", () => {
   it("an intraword underscore on one line does not stop italics on the next", () => {
     expect(simple(tokenize("my_var_ x\n_it_"))).toEqual([["text", "my_var_ x"], ["newline"], ["italic", "it"]]);
   });
+
+  it("a link's label holds no `[` (2026-11-16, linear time): the last `[` before `](` starts it", () => {
+    expect(simple(tokenizeInline("[a [b](https://example.com)"))).toEqual([["text", "[a "], ["link", "https://example.com", "b"]]);
+    expect(simple(tokenizeInline("[論文](https://example.com/p)"))).toEqual([["link", "https://example.com/p", "論文"]]);
+  });
 });
 
 /**

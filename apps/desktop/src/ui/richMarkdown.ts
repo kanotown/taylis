@@ -477,7 +477,8 @@ function emitPieces(pieces: readonly Piece[], canvas = false): Emitted[] {
           plain(piece.text);
           break;
         }
-        const label = piece.text.replace(/\]/g, "］").replace(/\n/g, " ");
+        // A label holds no `[` or `]` (markdown.ts INLINE, 2026-11-16 for `[`): the full-width ones stand in.
+        const label = piece.text.replace(/\[/g, "［").replace(/\]/g, "］").replace(/\n/g, " ");
         const bracketed = `[${label}](${href})`;
         if (piece.text === href) out.push({ expect: [{ kind: "link", text: href, href }], raw: bracketed, bare: href });
         // A URL written bare with its own parentheses (Wikipedia's `Foo_(bar)`): bare again when it reads back so.

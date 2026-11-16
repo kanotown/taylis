@@ -18,7 +18,8 @@ export type TopicToken =
   | { kind: "text" | "bold" | "italic" | "strike" | "code"; text: string }
   | { kind: "link"; url: string; label?: string };
 
-const MAILTO = /\[([^\]\n]+)\]\((mailto:[^\s()<>"]+@[^\s()<>"]+)\)/g;
+// The label holds no `[`, as a message's links (markdown.ts INLINE, 2026-11-16: linear time).
+const MAILTO = /\[([^[\]\n]+)\]\((mailto:[^\s()<>"]+@[^\s()<>"]+)\)/g;
 
 /** The topic's tokens (apps/desktop/tests/topicText.test.tsx): the message dialect's inline tokens, narrowed to these. */
 export function topicTokens(topic: string, nameOf: (userId: string) => string | null = () => null): TopicToken[] {

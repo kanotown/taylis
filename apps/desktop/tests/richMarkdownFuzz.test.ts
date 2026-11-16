@@ -37,8 +37,8 @@ function normal(doc: RichNode): string {
       const mark = node.marks?.[0];
       const bareLink = mark?.type === "link" && mark.attrs?.href === node.text;
       const kind = mark && !bareLink ? mark.type + (mark.type === "link" ? String(mark.attrs?.href) : "") : "";
-      // A `]` in a link's label is written as 「］」 (the dialect's label cannot hold it).
-      for (const ch of mark?.type === "link" ? (node.text ?? "").replace(/\]/g, "］") : node.text ?? "") out.push(`${path}|${kind && !(kind === "italic" && /\s/.test(ch)) ? kind : ""}|${ch}`);
+      // A `[` or `]` in a link's label is written as 「［」「］」 (the dialect's label cannot hold them; `[` since 2026-11-16).
+      for (const ch of mark?.type === "link" ? (node.text ?? "").replace(/\[/g, "［").replace(/\]/g, "］") : node.text ?? "") out.push(`${path}|${kind && !(kind === "italic" && /\s/.test(ch)) ? kind : ""}|${ch}`);
       return;
     }
     (node.content ?? []).forEach((child, i) => walk(child, child.type === "text" ? path : `${path}/${child.type}${i}`));
@@ -54,9 +54,9 @@ describe("rich composer serialisation (generated lines)", () => {
     for (let run = 0; run < 3000; run++) {
       const line = randomLine(rand);
       // A URL typed as text ends at a space: the renderer takes whatever follows it into the link.
-      // Out of reach of the dialect: a code span holding ``, a `[` in text before a link (the label would start there).
-      const plain = line.map((node) => (node.marks?.[0]?.type === "link" ? "\u0001" : node.text)).join("");
-      if (line.some((node) => node.marks?.[0]?.type === "code" && node.text!.includes("`")) || /\[[^\]]*\u0001/.test(plain)) continue;
+      // Out of reach of the dialect: a code span holding ``. (A `[` in text before a link is fine since 2026-11-16: a
+      // label holds no `[`, so it starts at the link's own.)
+      if (line.some((node) => node.marks?.[0]?.type === "code" && node.text!.includes("`"))) continue;
       // A formula holds TeX as typed: a `$` (or a final `\`) inside one, or blank, is not a formula the dialect can write.
       if (line.some((node) => node.marks?.[0]?.type === "math" && (/[$]|\\$/.test(node.text!) || node.text!.trim() !== node.text || node.text!.trim() === ""))) continue;
       // A `\` before a marker is the dialect's escape: text cannot keep that backslash (the renderer drops it).

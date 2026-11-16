@@ -210,6 +210,10 @@ describe("rich composer serialisation", () => {
     expect(docToMarkdown(doc(p(link("https://example.com", "https://example.com"))))).toBe("https://example.com");
     expect(docToMarkdown(doc(p(link("https://example.com", "https://example.com"), text("ja"))))).toBe("[https://example.com](https://example.com)ja");
     expect(docToMarkdown(doc(p(link("x", "javascript:alert(1)"))))).toBe("x");
+    // A label holds no `[` or `]` (2026-11-16 for `[`): the full-width ones stand in, and it reads back as one link.
+    const written = docToMarkdown(doc(p(link("[注] 資料 [1]", "https://example.com"))));
+    expect(written).toBe("[［注］ 資料 ［1］](https://example.com)");
+    expect(tokenizeInline(written)).toEqual([{ kind: "link", url: "https://example.com", label: "［注］ 資料 ［1］" }]);
   });
 
   it("writes lists, nesting and numbering", () => {

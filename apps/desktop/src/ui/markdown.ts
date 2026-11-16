@@ -128,8 +128,10 @@ export type TableAlign = "left" | "center" | "right" | null;
 // (`[\p{L}\p{N}]_?`, after a backslash too), and the alternatives never overlap, so a failed search does not try a
 // line two ways. The last group takes a word's underscores (`snake_case_`) as text: they never open emphasis (`scan`
 // would refuse them after the match), and without it each one made the engine search to the end of the line again.
+// A link's label holds no `[` either (2026-11-16, the same review): each `[` could start a label, so `[a ` repeated made
+// every one search to the end of the line (`[a [b](url)` is `[a ` and the link `b`).
 const INLINE =
-  /(\*\*((?:\\.|[^*\n\\])+?)\*\*)|(``(?!`)(?:[^`\n]|`(?!`))+?``(?!`)|`([^`\n]+)`)|(\*((?:\\.|[^*\n\\])+)\*)|(_(?![\s\u3000_])((?:\\[\p{L}\p{N}]_?|\\(?![\p{L}\p{N}]).|[\p{L}\p{N}]_?|[^\n\\_\p{L}\p{N}])*?(?:\\.|[^\s\u3000_\\]))_(?![\p{L}\p{N}_]))|(~~((?:\\.|[^~\n\\])+)~~)|(\[([^\]\n]+)\]\((https?:\/\/[^\s)]+)\))|(<@group:([0-9a-f-]{36})>)|(<@([0-9a-f-]{36})>)|(<!(channel|here)>)|(https?:\/\/[^\s<>　-〿＀-￯]+)|(\\([_*~`$]))|([A-Za-z0-9._%+-]{1,64}@[A-Za-z0-9-]{1,63}(?:\.[A-Za-z0-9-]{1,63}){1,8}|¯\\_\(ツ\)_\/¯)|(\$\$((?:\\.|[^$\n\\])+?)\$\$)|(\$(?![\s$])((?:\\.|[^$\n\\])*?(?:\\.|[^\s$\\]))\$(?![0-9A-Za-z]))|([\p{L}\p{N}]_+)/gu;
+  /(\*\*((?:\\.|[^*\n\\])+?)\*\*)|(``(?!`)(?:[^`\n]|`(?!`))+?``(?!`)|`([^`\n]+)`)|(\*((?:\\.|[^*\n\\])+)\*)|(_(?![\s\u3000_])((?:\\[\p{L}\p{N}]_?|\\(?![\p{L}\p{N}]).|[\p{L}\p{N}]_?|[^\n\\_\p{L}\p{N}])*?(?:\\.|[^\s\u3000_\\]))_(?![\p{L}\p{N}_]))|(~~((?:\\.|[^~\n\\])+)~~)|(\[([^\[\]\n]+)\]\((https?:\/\/[^\s)]+)\))|(<@group:([0-9a-f-]{36})>)|(<@([0-9a-f-]{36})>)|(<!(channel|here)>)|(https?:\/\/[^\s<>　-〿＀-￯]+)|(\\([_*~`$]))|([A-Za-z0-9._%+-]{1,64}@[A-Za-z0-9-]{1,63}(?:\.[A-Za-z0-9-]{1,63}){1,8}|¯\\_\(ツ\)_\/¯)|(\$\$((?:\\.|[^$\n\\])+?)\$\$)|(\$(?![\s$])((?:\\.|[^$\n\\])*?(?:\\.|[^\s$\\]))\$(?![0-9A-Za-z]))|([\p{L}\p{N}]_+)/gu;
 const WITH_BLOCKS = new RegExp(`(\`\`\`([\\s\\S]*?)\`\`\`)|${INLINE.source}|(\\n)`, "gu");
 /**
  * M121 (WIKI.md §2.3): the canvas dialect (canvases and Docs pages) also links `[label](page:<uuid>)` (a Docs page) and
