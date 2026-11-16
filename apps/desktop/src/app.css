@@ -320,6 +320,13 @@ body.workspace-dragging, body.workspace-dragging * { cursor: grabbing !important
 /* TeX math (ui/MathView.tsx): KaTeX's own spacing, not the body's pre-wrap; a formula KaTeX cannot read is its source,
    muted with a dotted underline (title: the reason); the source while KaTeX loads is code-like. */
 .body .katex { white-space: normal; overflow-wrap: normal; font-size: 1.1em; }
+/* 2026-11-16 (a hostile-server review): a formula draws inside its own box. KaTeX caps sizes (maxSize) but not
+   negative ones: \kern{-300em} or \raisebox{-300em}{…} put its text over other messages, the composer or a menu.
+   The inline wrapper is an inline-block (a long formula still breaks at its operators, within the line's width) and
+   both wrappers clip what leaves them, with a little room for glyphs that overhang their box (an italic f, ∫). The
+   messages, the page editor and the phones' editor (mobile-editor) share this. */
+.math-inline { display: inline-block; max-width: 100%; clip-path: inset(-0.3em -0.25em); }
+.math-display { clip-path: inset(0); }
 .body .math-display .katex-display { margin: 0; }
 .body .katex-error { font-family: var(--font-code); font-size: 0.86em; text-decoration: underline dotted; text-underline-offset: 3px; }
 .body code.math-source[data-math="error"] { color: var(--muted); text-decoration: underline dotted; text-underline-offset: 3px; }

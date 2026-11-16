@@ -49,7 +49,7 @@ import { CanvasTableDialog } from "./CanvasTableDialog";
 import { attachmentRefs, MAX_CANVAS_IMAGES } from "./canvasText";
 import { readSlashRecents, rememberSlashKey, type SlashKey, slashSections } from "./docEditor";
 import { emojiByShortcode } from "./emoji";
-import { loadKatex, MathView } from "./MathView";
+import { loadKatex, mathFits, MathView } from "./MathView";
 import { encodeMentions, type MentionCandidate, mentionCandidates, mentionQuery, mentionsToNames } from "./mentions";
 import { OverflowToolbar, type ToolbarTool } from "./OverflowToolbar";
 import type { EditorCommand, PageEditorEnv, PageEditorSink } from "./pageEditorEnv";
@@ -1338,6 +1338,7 @@ function InlineMathView({ tex }: { tex: string }) {
   if (katex && !failed) {
     try {
       html = katex.renderToString(tex, { displayMode: false, throwOnError: true, trust: false, strict: "ignore", maxSize: 20, maxExpand: 300, output: "htmlAndMathml" });
+      if (!mathFits(html)) throw new Error("too tall"); // a negative \raisebox (MathView.tsx mathFits)
     } catch {
       failed = true;
     }

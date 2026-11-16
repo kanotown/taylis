@@ -26,10 +26,26 @@ export function loadKatex(): Promise<Katex> {
 const cache = new Map<string, string | null>();
 const CACHE_LIMIT = 500;
 
+/** The tallest a drawn formula may be, in em (a 40-row matrix is about 50). */
+export const MATH_MAX_HEIGHT_EM = 60;
+
+/**
+ * 2026-11-16 (a hostile-server review): KaTeX caps positive sizes (`maxSize`) but not negative ones, so
+ * \raisebox{-300em}{…} made a row thousands of pixels tall. Each of KaTeX's lines carries a strut as tall as the line
+ * (height and depth); a formula with one taller than MATH_MAX_HEIGHT_EM is not drawn (its source shows instead).
+ * What a formula moves sideways or out of its box is clipped by its wrapper (app.css .math-inline / .math-display).
+ */
+export function mathFits(html: string): boolean {
+  for (const match of html.matchAll(/class="katex-strut" style="height:(-?[\d.]+)em/g)) {
+    if (Math.abs(Number(match[1])) > MATH_MAX_HEIGHT_EM) return false;
+  }
+  return true;
+}
+
 /**
  * A formula's HTML, or null when KaTeX cannot draw it. Untrusted input: `trust: false` (no \href, \url, \includegraphics
  * …), sizes capped (`maxSize`, in em) and macro expansion bounded (`maxExpand`), so a formula cannot draw a huge box or
- * loop; the length itself is capped by the tokenizer (MATH_MAX_LENGTH).
+ * loop; the length itself is capped by the tokenizer (MATH_MAX_LENGTH), and the height by `mathFits`.
  */
 export function renderMath(katex: Katex, tex: string, display: boolean): string | null {
   const key = (display ? "D" : "I") + tex;
@@ -47,6 +63,7 @@ export function renderMath(katex: Katex, tex: string, display: boolean): string 
       maxExpand: 300,
       output: "htmlAndMathml",
     });
+    if (!mathFits(html)) html = null;
   } catch {
     html = null; // something other than a parse error (those come back as the source in errorColor)
   }
