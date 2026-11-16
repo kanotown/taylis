@@ -1,6 +1,7 @@
 """One-line push text (PUSH_NOTIFICATIONS.md): markdown flattened like the clients' previews."""
 
 import json
+import time
 import uuid
 from pathlib import Path
 
@@ -29,6 +30,16 @@ def test_inline_markup_matches_the_shared_vectors() -> None:  # M107
     assert len(cases) > 20
     for case in cases:
         assert notification_text(case["line"], {}) == case["plain"], case["name"]
+
+
+def test_inline_markup_runs_in_linear_time() -> None:
+    """Bodies made of many emphasis openers (apps/shared/inline-format.json `timing`) are read
+    in linear time: `_a ` repeated took seconds per notification before 2026-11-16."""
+    for case in json.loads(VECTORS.read_text(encoding="utf-8"))["timing"]:
+        body = case["unit"] * case["repeat"]
+        started = time.perf_counter()
+        notification_text(body, {})
+        assert (time.perf_counter() - started) * 1000 < case["max_ms"], case["name"]
 
 
 def test_names_from_mentions_are_not_read_as_emphasis() -> None:  # M107

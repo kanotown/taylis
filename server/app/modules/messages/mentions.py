@@ -50,7 +50,10 @@ _INLINE = re.compile(
     r"(\*\*((?:\\.|[^*\n\\])+?)\*\*)"
     r"|(``(?!`)(?:[^`\n]|`(?!`))+?``(?!`)|`([^`\n]+)`)"
     r"|(\*((?:\\.|[^*\n\\])+)\*)"
-    r"|((?<!\w)_(?![\s\u3000_])((?:\\.|[^\n\\])*?(?:\\.|[^\s\u3000_\\]))_(?!\w))"
+    # Inside `_\u2026_` a `_` counts only after a letter or digit (snake_case): one after anything
+    # else could open emphasis itself, so the search for a closer stops there and the rule runs
+    # in linear time (2026-11-16: `_a ` \u00d7 7,000 took 1.9 s; apps/shared/inline-format.json).
+    r"|((?<!\w)_(?![\s\u3000_])((?:\\.|[^\n\\_]|(?<=[^\W_])_)*?(?:\\.|[^\s\u3000_\\]))_(?!\w))"
     r"|(~~((?:\\.|[^~\n\\])+)~~)"
     r"|(\[([^\]\n]+)\]\((https?://[^\s)]+)\))"
     r"|(https?://[^\s<>]+)"
