@@ -81,7 +81,6 @@ import jp.chikuwachat.android.platform.WorkspaceIconCache
 import jp.chikuwachat.android.platform.EmojiDiskCache
 import jp.chikuwachat.android.platform.EmojiImageKey
 import jp.chikuwachat.android.platform.EmojiImageLoader
-import jp.chikuwachat.android.ui.openDownloaded
 import jp.chikuwachat.android.ui.openCachedFile
 import jp.chikuwachat.android.ui.DownloadCache
 import jp.chikuwachat.android.api.ApiException
@@ -635,7 +634,7 @@ class AppController(private val app: Application) {
     /** The client of the workspace on screen: its avatars load through it (M14a). */
     private fun activate(client: ApiClient) {
         api = client
-        AvatarCache.fetcher = { path -> client.fetchBytes(path) }
+        AvatarCache.fetcher = { path -> client.fetchBytes(path, client.limits.small) }
         AvatarCache.scope = scope
     }
 
@@ -885,8 +884,8 @@ class AppController(private val app: Application) {
     fun refreshSummaries() {
         for (entry in workspaces.filter { !it.signedOut && it.serverUrl != activeKey }) {
             scope.launch {
-                val client = clientFor(entry) ?: return@launch
                 try {
+                    val client = clientFor(entry) ?: return@launch
                     val summary = client.syncSummary()
                     if (entry.serverUrl != activeKey) {
                         updateWorkspace(entry.serverUrl) { it.copy(badge = summary.badge, hasUnread = summary.hasUnread) }
@@ -894,8 +893,9 @@ class AppController(private val app: Application) {
                     }
                 } catch (e: CancellationException) {
                     throw e
-                } catch (_: Exception) {
-                    // offline: the last known marks stay (a refused session ends through clientSignedOut)
+                } catch (_: Throwable) {
+                    // offline: the last known marks stay (a refused session ends through clientSignedOut). 2026-11-16: also
+                    // an Error from one workspace's answer (out of memory): it never ends the app, nor the others' marks.
                 }
             }
         }
@@ -1435,7 +1435,7 @@ class AppController(private val app: Application) {
             // One at a time, so a quick second message never lands before the first.
             val server = entry?.serverUrl
             val client = if (server != null && server == activeKey) api else server?.let { clients[it] }
-            val fetch: (suspend (String) -> ByteArray)? = client?.let { c -> { path: String -> c.fetchBytes(path) } }
+            val fetch: (suspend (String) -> ByteArray)? = client?.let { c -> { path: String -> c.fetchBytes(path, c.limits.small) } }
             scope.launch {
                 conversationPosts.withLock {
                     val avatar = notifier.avatars.bitmap(server, conversation, fetch)
@@ -2149,7 +2149,7 @@ class AppController(private val app: Application) {
         EmojiImageLoader(
             EmojiDiskCache(java.io.File(app.cacheDir, "emoji")),
             scope,
-            fetch = { key -> (clients[key.serverUrl] ?: throw IllegalStateException("signed out")).fetchBytes(key.path) },
+            fetch = { key -> (clients[key.serverUrl] ?: throw IllegalStateException("signed out")).let { it.fetchBytes(key.path, it.limits.small) } },
             decode = { bytes -> jp.chikuwachat.android.ui.DecodedEmoji.decode(bytes, maxHeight) },
             sizeOf = { it.byteCount },
             memoryBytes = Runtime.getRuntime().maxMemory() / 16,
@@ -3264,8 +3264,11 @@ class AppController(private val app: Application) {
                     // A video the player fetched already is handed over as it is (and one opened here streams to disk).
                     openCachedFile(app as Context, attachment, videoFile(attachment))
                 } else {
-                    val bytes = fetchBytes("/api/v1/attachments/${attachment.id}/content")
-                    openDownloaded(app as Context, attachment, bytes)
+                    // Streamed to the cache, at most the attachment's own size (2026-11-16: never the whole answer in memory).
+                    val api = api ?: throw Refusal(L10n.str(R.string.app_controller_you_need_to_sign_in))
+                    val file = java.io.File(java.io.File(app.cacheDir, "downloads"), DownloadCache.path(attachment.id, attachment.filename))
+                    api.downloadTo("/api/v1/attachments/${attachment.id}/content", file, attachment.sizeBytes)
+                    openCachedFile(app as Context, attachment, file)
                 }
             }.onFailure { error = describe(it) }
         }
@@ -3279,7 +3282,7 @@ class AppController(private val app: Application) {
         val api = api ?: throw Refusal(L10n.str(R.string.app_controller_you_need_to_sign_in))
         val file = java.io.File(java.io.File(app.cacheDir, "downloads"), DownloadCache.path(attachment.id, attachment.filename))
         if (withContext(Dispatchers.IO) { file.isFile && file.length() == attachment.sizeBytes }) return file
-        api.downloadTo("/api/v1/attachments/${attachment.id}/content", file)
+        api.downloadTo("/api/v1/attachments/${attachment.id}/content", file, attachment.sizeBytes)
         return file
     }
 

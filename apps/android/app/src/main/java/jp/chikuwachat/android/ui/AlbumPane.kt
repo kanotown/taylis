@@ -1,7 +1,6 @@
 package jp.chikuwachat.android.ui
 
 import android.graphics.Bitmap
-import android.graphics.BitmapFactory
 import android.net.Uri
 import android.util.LruCache
 import androidx.activity.compose.rememberLauncherForActivityResult
@@ -95,7 +94,7 @@ import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.ImageBitmap
-import androidx.compose.ui.graphics.asImageBitmap
+import jp.chikuwachat.android.platform.BoundedImage
 import androidx.compose.ui.layout.ContentScale
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.res.stringResource
@@ -151,10 +150,8 @@ private object AlbumThumbs {
         peek(path)?.let { return it }
         return try {
             val bytes = controller.fetchBytes(path)
-            withContext(Dispatchers.Default) {
-                val options = BitmapFactory.Options().apply { inPreferredConfig = Bitmap.Config.RGB_565 }
-                BitmapFactory.decodeByteArray(bytes, 0, bytes.size, options)?.asImageBitmap()
-            }?.also { held.put(path, it) }
+            // Bounded (2026-11-16, BoundedImage): sampled to the grid's 512 px; an oversized one is no picture.
+            withContext(Dispatchers.Default) { BoundedImage.image(bytes, 512, config = Bitmap.Config.RGB_565) }?.also { held.put(path, it) }
         } catch (e: CancellationException) {
             throw e
         } catch (e: Exception) {

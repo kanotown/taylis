@@ -13,6 +13,7 @@ import androidx.compose.ui.draw.clip
 import androidx.compose.ui.graphics.ImageBitmap
 import androidx.compose.ui.graphics.asImageBitmap
 import androidx.compose.ui.layout.ContentScale
+import jp.chikuwachat.android.platform.BoundedImage
 import jp.chikuwachat.android.sync.DbGroupWords
 import jp.chikuwachat.android.sync.DbViewWords
 import jp.chikuwachat.android.sync.WikiDbViews
@@ -466,11 +467,12 @@ private fun BoxScope.CoverImage(controller: AppController, attachmentId: String,
         bitmap = try {
             val bytes = controller.fetchBytes(path)
             withContext(Dispatchers.Default) {
-                val bounds = BitmapFactory.Options().apply { inJustDecodeBounds = true }
-                BitmapFactory.decodeByteArray(bytes, 0, bytes.size, bounds)
+                // Bounded (2026-11-16, BoundedImage): an oversized picture is none, and an OutOfMemoryError is no picture.
+                val (width, height) = BoundedImage.bounds(bytes)?.takeIf { (w, h) -> BoundedImage.allowed(w, h, BoundedImage.MAX_PIXELS) }
+                    ?: return@withContext null
                 var sample = 1
-                while (bounds.outWidth / (sample * 2) >= COVER_PIXELS && bounds.outHeight / (sample * 2) >= COVER_PIXELS) sample *= 2
-                BitmapFactory.decodeByteArray(bytes, 0, bytes.size, BitmapFactory.Options().apply { inSampleSize = sample })?.asImageBitmap()
+                while (width / (sample * 2) >= COVER_PIXELS && height / (sample * 2) >= COVER_PIXELS) sample *= 2
+                runCatching { BitmapFactory.decodeByteArray(bytes, 0, bytes.size, BitmapFactory.Options().apply { inSampleSize = sample })?.asImageBitmap() }.getOrNull()
             }
         } catch (e: CancellationException) {
             throw e

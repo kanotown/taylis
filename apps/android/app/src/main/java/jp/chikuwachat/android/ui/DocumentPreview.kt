@@ -1,7 +1,7 @@
 package jp.chikuwachat.android.ui
 
 import android.graphics.Bitmap
-import android.graphics.BitmapFactory
+import jp.chikuwachat.android.platform.BoundedImage
 import android.graphics.Color as AndroidColor
 import android.graphics.pdf.PdfRenderer
 import android.os.ParcelFileDescriptor
@@ -186,7 +186,7 @@ internal fun DocumentCard(attachment: AttachmentOut, controller: AppController) 
 
 private suspend fun fetchPreviewThumbnail(controller: AppController, attachmentId: String): ImageBitmap? = try {
     val bytes = controller.fetchBytes("/api/v1/attachments/$attachmentId/preview/thumbnail")
-    withContext(Dispatchers.Default) { BitmapFactory.decodeByteArray(bytes, 0, bytes.size)?.asImageBitmap() }
+    withContext(Dispatchers.Default) { BoundedImage.image(bytes, THUMBNAIL_MAX_SIDE) } // 2026-11-16: never an OutOfMemoryError
 } catch (e: CancellationException) {
     throw e
 } catch (e: Exception) {

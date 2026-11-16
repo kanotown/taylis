@@ -1,9 +1,7 @@
 package jp.chikuwachat.android.platform
 
-import android.graphics.BitmapFactory
 import androidx.compose.runtime.mutableStateMapOf
 import androidx.compose.ui.graphics.ImageBitmap
-import androidx.compose.ui.graphics.asImageBitmap
 import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
@@ -21,8 +19,14 @@ object WorkspaceIconCache {
     private val failed = HashSet<String>()
     var fetcher: (suspend (serverUrl: String, version: String) -> ByteArray)? = null
     var scope: CoroutineScope? = null
-    /** Turns the PNG into a picture (tests swap it: no Android graphics on the JVM). */
-    var decode: (ByteArray) -> ImageBitmap? = { bytes -> BitmapFactory.decodeByteArray(bytes, 0, bytes.size)?.asImageBitmap() }
+    /**
+     * Turns the PNG into a picture (tests swap it: no Android graphics on the JVM), bounded (2026-11-16: a 5100 × 5100
+     * icon ran out of memory in the title at every start; [BoundedImage]).
+     */
+    var decode: (ByteArray) -> ImageBitmap? = { bytes -> BoundedImage.image(bytes, MAX_SIDE, BoundedImage.SMALL_MAX_PIXELS) }
+
+    /** A tile is at most 48 dp; 256 px covers it on any screen. */
+    private const val MAX_SIDE = 256
 
     fun key(serverUrl: String, version: String): String = "$serverUrl|$version"
 
@@ -51,8 +55,8 @@ object WorkspaceIconCache {
                 } else failed.add(key)
             } catch (e: CancellationException) {
                 throw e
-            } catch (_: Exception) {
-                failed.add(key) // the letter stays
+            } catch (_: Throwable) {
+                failed.add(key) // the letter stays (also after an OutOfMemoryError: never a crash at every start)
             } finally { loading.remove(key) }
         }
         return null

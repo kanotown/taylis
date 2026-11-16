@@ -1,9 +1,7 @@
 package jp.chikuwachat.android.platform
 
-import android.graphics.BitmapFactory
 import androidx.compose.runtime.mutableStateMapOf
 import androidx.compose.ui.graphics.ImageBitmap
-import androidx.compose.ui.graphics.asImageBitmap
 import jp.chikuwachat.android.api.UserPublic
 import java.net.URLEncoder
 import kotlinx.coroutines.CoroutineScope
@@ -21,6 +19,9 @@ object AvatarCache {
     private val loading = HashSet<String>()
     var fetcher: (suspend (String) -> ByteArray)? = null
     var scope: CoroutineScope? = null
+
+    /** The largest avatar shown (the profile's, about 120 dp) at any density; the server keeps 256 px ones. */
+    private const val MAX_SIDE = 512
 
     fun note(user: UserPublic) {
         val version = user.avatarUpdatedAt
@@ -45,9 +46,12 @@ object AvatarCache {
         scope.launch {
             try {
                 val bytes = fetch("/api/v1/users/$id/avatar?v=" + URLEncoder.encode(version, "UTF-8"))
-                val bitmap = withContext(Dispatchers.Default) { BitmapFactory.decodeByteArray(bytes, 0, bytes.size)?.asImageBitmap() }
+                // Bounded (2026-11-16, BoundedImage): a server's oversized picture is no picture, never an OutOfMemoryError.
+                val bitmap = withContext(Dispatchers.Default) { BoundedImage.image(bytes, MAX_SIDE, BoundedImage.SMALL_MAX_PIXELS) }
                 if (bitmap != null) images[key] = bitmap
-            } catch (_: Exception) {
+            } catch (e: kotlinx.coroutines.CancellationException) {
+                throw e
+            } catch (_: Throwable) {
                 // the initials stay; a later render retries
             } finally { loading.remove(key) }
         }

@@ -1,6 +1,5 @@
 package jp.chikuwachat.android.ui
 
-import android.graphics.BitmapFactory
 import androidx.compose.foundation.Image
 import androidx.compose.foundation.background
 import androidx.compose.foundation.clickable
@@ -40,7 +39,7 @@ import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.graphics.ImageBitmap
-import androidx.compose.ui.graphics.asImageBitmap
+import jp.chikuwachat.android.platform.BoundedImage
 import androidx.compose.ui.layout.ContentScale
 import androidx.compose.ui.semantics.contentDescription
 import androidx.compose.ui.semantics.semantics
@@ -160,7 +159,8 @@ fun CanvasImage(attachmentId: String, alt: String, controller: AppController) {
         val path = if (meta.hasThumbnail) "/api/v1/attachments/$attachmentId/thumbnail" else "/api/v1/attachments/$attachmentId/content?inline=1"
         bitmap = runCatching {
             val bytes = controller.fetchBytes(path)
-            withContext(Dispatchers.Default) { BitmapFactory.decodeByteArray(bytes, 0, bytes.size)?.asImageBitmap() }
+            // Bounded (2026-11-16): the full image when there is no thumbnail, sampled down to what the column shows.
+            withContext(Dispatchers.Default) { BoundedImage.image(bytes, THUMBNAIL_MAX_SIDE) }
         }.getOrNull()
         if (bitmap == null) failed = true
     }

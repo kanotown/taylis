@@ -1,6 +1,5 @@
 package jp.chikuwachat.android.ui
 
-import android.graphics.BitmapFactory
 import android.os.Build
 import androidx.activity.compose.rememberLauncherForActivityResult
 import androidx.annotation.StringRes
@@ -92,7 +91,7 @@ import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.ImageBitmap
-import androidx.compose.ui.graphics.asImageBitmap
+import jp.chikuwachat.android.platform.BoundedImage
 import androidx.compose.ui.graphics.vector.ImageVector
 import androidx.compose.ui.layout.ContentScale
 import androidx.compose.ui.res.stringResource
@@ -292,6 +291,9 @@ internal fun driveIcon(item: DriveItemOut): ImageVector = when (DriveNames.icon(
     DriveNames.Icon.FILE -> Icons.AutoMirrored.Outlined.InsertDriveFile
 }
 
+/** A drive row's or card's picture is at most a card's width (about 200 dp). */
+private const val DRIVE_THUMB_MAX_SIDE = 1024
+
 /** The thumbnails read this session (a few dozen small JPEG / WebP), so scrolling back does not read them again. */
 private object DriveThumbs {
     private val held = object : LinkedHashMap<String, ImageBitmap>(64, 0.75f, true) {
@@ -304,7 +306,8 @@ private object DriveThumbs {
         peek(path)?.let { return it }
         return try {
             val bytes = controller.fetchBytes(path)
-            withContext(Dispatchers.Default) { BitmapFactory.decodeByteArray(bytes, 0, bytes.size)?.asImageBitmap() }?.also { synchronized(held) { held[path] = it } }
+            // Bounded (2026-11-16): a row's or a card's picture is small; an oversized one is no picture.
+            withContext(Dispatchers.Default) { BoundedImage.image(bytes, DRIVE_THUMB_MAX_SIDE) }?.also { synchronized(held) { held[path] = it } }
         } catch (e: CancellationException) {
             throw e
         } catch (e: Exception) {

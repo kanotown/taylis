@@ -1,9 +1,8 @@
 package jp.chikuwachat.android.ui
 
-import android.graphics.BitmapFactory
 import android.util.Base64
 import androidx.compose.ui.graphics.ImageBitmap
-import androidx.compose.ui.graphics.asImageBitmap
+import jp.chikuwachat.android.platform.BoundedImage
 import jp.chikuwachat.android.R
 import jp.chikuwachat.android.L10n
 
@@ -24,10 +23,14 @@ object Totp {
         else -> null
     }
 
+    /** The setup's QR code (the server's PNG), bounded (2026-11-16, [BoundedImage]): an oversized one is no picture. */
     fun qrBitmap(base64: String): ImageBitmap? = runCatching {
         val bytes = Base64.decode(base64, Base64.DEFAULT)
-        BitmapFactory.decodeByteArray(bytes, 0, bytes.size)?.asImageBitmap()
+        BoundedImage.image(bytes, QR_MAX_SIDE, BoundedImage.SMALL_MAX_PIXELS)
     }.getOrNull()
+
+    /** The QR code is shown about 200 dp wide. */
+    private const val QR_MAX_SIDE = 1024
 
     /** The recovery codes as one text block for the clipboard. */
     fun recoveryCodesText(codes: List<String>): String =

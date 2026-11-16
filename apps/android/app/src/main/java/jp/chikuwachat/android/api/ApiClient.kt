@@ -56,6 +56,41 @@ sealed class ApiException(message: String) : Exception(message) {
 fun Throwable.isRetryable(): Boolean = this is ApiException.Network || (this is ApiException.Api && isRetryable)
 
 /**
+ * 2026-11-16 (a hostile-server review): how much of an answer the app holds in memory. Whole-body reads (bytes(), string())
+ * took whatever a server sent, and an answer of hundreds of MB (or a Content-Length claiming it) ran the app out of memory.
+ */
+data class ResponseLimits(
+    /** A JSON answer (the largest: a bootstrap, a page of history, a canvas or a page). */
+    val json: Long = 32L * 1024 * 1024,
+    /** Bytes [ApiClient.fetchBytes] reads unless the caller says otherwise (a picture to show, a thumbnail, a document's preview). */
+    val bytes: Long = 50L * 1024 * 1024,
+    /** A workspace icon, an avatar or a custom emoji. */
+    val small: Long = 2L * 1024 * 1024,
+) {
+    companion object {
+        /** The code of the error for an answer over its limit (no retry: the same answer would come again). */
+        const val TOO_LARGE = "response_too_large"
+
+        fun tooLarge(limit: Long): ApiException.Api = ApiException.Api(0, TOO_LARGE, "The answer is larger than $limit bytes")
+
+        /**
+         * All of [body] when it is (and says it is) at most [limit] bytes, else [tooLarge]: at most [limit] + 1 bytes are
+         * ever read.
+         */
+        fun read(body: okhttp3.ResponseBody, limit: Long): ByteArray {
+            if (body.contentLength() > limit) throw tooLarge(limit)
+            val source = body.source()
+            if (source.request(limit + 1)) throw tooLarge(limit)
+            return source.buffer.readByteArray()
+        }
+
+        /** [read] as text in the answer's charset (UTF-8 when it names none). */
+        fun readString(body: okhttp3.ResponseBody, limit: Long): String =
+            String(read(body, limit), body.contentType()?.charset(Charsets.UTF_8) ?: Charsets.UTF_8)
+    }
+}
+
+/**
  * Refused for good (4xx other than 429 and 401): sending the same request again cannot succeed. A 401 is temporary
  * (§7.2, M28c): the reconnect renews the token, or signs the workspace out; the desktop keeps the send queued and iOS
  * treats it the same, so an unsent message or read mark waits rather than being dropped or marked failed.
@@ -72,6 +107,8 @@ class ApiClient(
      */
     private val clock: () -> Long = { System.currentTimeMillis() },
     private val sleep: suspend (Long) -> Unit = { delay(it) },
+    /** 2026-11-16: how much of an answer is read into memory (tests make them small). */
+    val limits: ResponseLimits = ResponseLimits(),
 ) : SyncApi, DraftApi, ChannelLinksApi, ReservationsApi, AttendanceApi, ActionsApi, ActivityApi, CanvasApi, MyCanvasesApi, ChannelApi, CalendarApi, CalendarFeedApi, TaskApi, AiApi, WikiApi,
     jp.chikuwachat.android.sync.WikiDbApi, jp.chikuwachat.android.sync.WikiTemplatesApi, jp.chikuwachat.android.sync.DriveApi,
     jp.chikuwachat.android.sync.DriveWriteApi, jp.chikuwachat.android.sync.LendingApi, jp.chikuwachat.android.sync.AlbumApi,
@@ -445,27 +482,32 @@ class ApiClient(
 
     suspend fun deleteAvatar(): UserMe = request("DELETE", "/api/v1/users/me/avatar")
 
-    /** Authenticated GET returning raw bytes (thumbnails and downloads). */
-    suspend fun fetchBytes(path: String): ByteArray {
+    /**
+     * Authenticated GET returning raw bytes (thumbnails and downloads), at most [limit] bytes (2026-11-16: more, or a
+     * Content-Length saying more, is [ResponseLimits.TOO_LARGE]).
+     */
+    suspend fun fetchBytes(path: String, limit: Long = limits.bytes): ByteArray {
         if (accessToken == null && refreshToken != null) ensureAccessToken()
         val request = Request.Builder().url(baseUrl.trimEnd('/') + path)
         accessToken?.let { request.header("Authorization", "Bearer $it") }
         return withContext(Dispatchers.IO) {
             try {
                 http.newCall(request.build()).execute().use { response ->
-                    if (response.code == 401) null else if (response.code !in 200..299) throw ApiException.Api(response.code, "http_${response.code}", "Download failed") else response.body.bytes()
+                    if (response.code == 401) null else if (response.code !in 200..299) throw ApiException.Api(response.code, "http_${response.code}", "Download failed") else ResponseLimits.read(response.body, limit)
                 }
             } catch (e: IOException) {
                 throw ApiException.Network(e)
             }
-        } ?: run { refresh(); fetchBytes(path) }
+        } ?: run { refresh(); fetchBytes(path, limit) }
     }
 
     /**
      * M82: stream a download into `target` (a video for the in-app player: it never sits in memory as a whole). Written
      * to a sibling `.part` first and moved into place only once complete, so a cut-off download is never taken for the file.
+     * 2026-11-16: at most [maxBytes] (the attachment's own size): a longer answer, or a Content-Length saying so, is
+     * [ResponseLimits.TOO_LARGE] and nothing is kept.
      */
-    suspend fun downloadTo(path: String, target: java.io.File) {
+    suspend fun downloadTo(path: String, target: java.io.File, maxBytes: Long) {
         if (accessToken == null && refreshToken != null) ensureAccessToken()
         val request = Request.Builder().url(baseUrl.trimEnd('/') + path)
         accessToken?.let { request.header("Authorization", "Bearer $it") }
@@ -475,8 +517,14 @@ class ApiClient(
                 http.newCall(request.build()).execute().use { response ->
                     if (response.code == 401) return@use false
                     if (response.code !in 200..299) throw ApiException.Api(response.code, "http_${response.code}", "Download failed")
+                    if (response.body.contentLength() > maxBytes) throw ResponseLimits.tooLarge(maxBytes)
                     target.parentFile?.mkdirs()
-                    part.outputStream().use { out -> response.body.byteStream().copyTo(out) }
+                    try {
+                        part.outputStream().use { out -> copyAtMost(response.body.byteStream(), out, maxBytes) }
+                    } catch (e: ApiException) {
+                        part.delete()
+                        throw e
+                    }
                     if (!part.renameTo(target)) { target.delete(); if (!part.renameTo(target)) throw IOException("could not save the download") }
                     true
                 }
@@ -485,12 +533,25 @@ class ApiClient(
                 throw ApiException.Network(e)
             }
         }
-        if (!done) { refresh(); downloadTo(path, target) }
+        if (!done) { refresh(); downloadTo(path, target, maxBytes) }
+    }
+
+    /** [input] into [out]; past [maxBytes] it stops with [ResponseLimits.tooLarge]. */
+    private fun copyAtMost(input: java.io.InputStream, out: java.io.OutputStream, maxBytes: Long) {
+        val buffer = ByteArray(64 * 1024)
+        var total = 0L
+        while (true) {
+            val read = input.read(buffer)
+            if (read < 0) return
+            total += read
+            if (total > maxBytes) throw ResponseLimits.tooLarge(maxBytes)
+            out.write(buffer, 0, read)
+        }
     }
 
     private suspend fun execute(request: Request): Pair<Int, String> = withContext(Dispatchers.IO) {
         try {
-            http.newCall(request).execute().use { response -> response.code to response.body.string() }
+            http.newCall(request).execute().use { response -> response.code to ResponseLimits.readString(response.body, limits.json) }
         } catch (e: IOException) {
             throw ApiException.Network(e)
         }
@@ -1450,7 +1511,7 @@ class ApiClient(
             val watch = job?.invokeOnCompletion { if (job.isCancelled) call.cancel() }
             try {
                 call.execute().use { response ->
-                    if (response.code !in 200..299) null to decodeError(response.code, response.body.string())
+                    if (response.code !in 200..299) null to decodeError(response.code, ResponseLimits.readString(response.body, limits.json))
                     else read(response.body.byteStream(), response.body.contentLength()) to null
                 }
             } catch (e: IOException) {
@@ -1481,7 +1542,7 @@ class ApiClient(
             try {
                 http.newCall(request).execute().use { response ->
                     if (response.code !in 200..299) throw ApiException.Api(response.code, "http_${response.code}", "Download failed")
-                    response.body.bytes()
+                    ResponseLimits.read(response.body, limits.small) // 2026-11-16: an icon is small
                 }
             } catch (e: IOException) {
                 throw ApiException.Network(e)
@@ -1539,7 +1600,7 @@ class ApiClient(
             try {
                 http.newCall(builder.build()).execute().use { response ->
                     if (etagOut != null) etagOut[0] = response.header("ETag")
-                    response.code to (response.body.string())
+                    response.code to ResponseLimits.readString(response.body, limits.json) // 2026-11-16: bounded
                 }
             } catch (e: IOException) {
                 throw ApiException.Network(e)

@@ -2,7 +2,6 @@ package jp.chikuwachat.android.platform
 
 import android.content.Context
 import android.graphics.Bitmap
-import android.graphics.BitmapFactory
 import android.graphics.BitmapShader
 import android.graphics.Canvas
 import android.graphics.Color
@@ -148,9 +147,10 @@ class NotificationAvatars(context: Context) {
         runCatching { dir.deleteRecursively() }
     }
 
+    /** Bounded (2026-11-16, [BoundedImage]): sampled toward the notification's size; an oversized picture is the initials. */
     private fun decode(bytes: ByteArray): Bitmap? {
-        val source = runCatching { BitmapFactory.decodeByteArray(bytes, 0, bytes.size) }.getOrNull() ?: return null
-        return circle(source)
+        val source = BoundedImage.decode(bytes, ConversationStyle.AVATAR_PX * 2, BoundedImage.SMALL_MAX_PIXELS) ?: return null
+        return runCatching { circle(source) }.getOrNull()
     }
 
     private fun save(file: File, bitmap: Bitmap) {

@@ -24,6 +24,7 @@ import androidx.compose.ui.semantics.semantics
 import androidx.compose.ui.unit.IntOffset
 import androidx.compose.ui.unit.IntSize
 import androidx.core.graphics.createBitmap
+import jp.chikuwachat.android.platform.BoundedImage
 import kotlinx.coroutines.delay
 import kotlin.math.roundToInt
 
@@ -44,12 +45,23 @@ class EmojiAnimation(val frames: List<ImageBitmap>, val frameMs: Long) {
          * full size and area-averaged down (docs/EMOJI.md §10: no emoji is drawn higher than that; scaling the canvas
          * skipped pixels of thin outlines), with mipmaps so that drawing them smaller stays smooth.
          */
-        @Suppress("DEPRECATION") // Movie is the platform's GIF decoder that needs no API 28 (ImageDecoder)
         fun decode(bytes: ByteArray, maxHeightPx: Int = Int.MAX_VALUE): EmojiAnimation? {
-            if (bytes.size < 6 || String(bytes, 0, 4, Charsets.US_ASCII) != "GIF8") return null
+            // 2026-11-16 (BoundedImage): the whole canvas is a bitmap while the frames are drawn, and a GIF may declare
+            // one of 65535 × 65535 (kept on disk, so it crashed again at every start); past 2048 × 2048 it does not move.
+            val (canvasWidth, canvasHeight) = BoundedImage.gifCanvas(bytes) ?: return null
+            if (!BoundedImage.allowed(canvasWidth, canvasHeight, BoundedImage.MAX_GIF_PIXELS)) return null
+            return try {
+                frames(bytes, maxHeightPx)
+            } catch (_: Throwable) {
+                null // OutOfMemoryError: the still is shown
+            }
+        }
+
+        @Suppress("DEPRECATION") // Movie is the platform's GIF decoder that needs no API 28 (ImageDecoder)
+        private fun frames(bytes: ByteArray, maxHeightPx: Int): EmojiAnimation? {
             val movie = Movie.decodeByteArray(bytes, 0, bytes.size) ?: return null
             val duration = movie.duration()
-            if (duration <= 0 || movie.width() <= 0 || movie.height() <= 0) return null
+            if (duration <= 0 || !BoundedImage.allowed(movie.width(), movie.height(), BoundedImage.MAX_GIF_PIXELS)) return null
             val (width, height) = EmojiScale.storedPixels(movie.width(), movie.height(), maxHeightPx)
             val step = maxOf(FRAME_MS, (duration + MAX_FRAMES - 1).toLong() / MAX_FRAMES)
             val full = createBitmap(movie.width(), movie.height())
@@ -88,16 +100,14 @@ class DecodedEmoji(val still: ImageBitmap, val animation: EmojiAnimation?) {
          * 512 px; `inSampleSize` would skip pixels) and area-averaged down, so a thin outline survives (docs/EMOJI.md §10).
          */
         fun decode(bytes: ByteArray, maxHeightPx: Int): DecodedEmoji? {
-            val bounds = BitmapFactory.Options().apply { inJustDecodeBounds = true }
-            BitmapFactory.decodeByteArray(bytes, 0, bytes.size, bounds)
-            if (bounds.outWidth <= 0 || bounds.outHeight <= 0) return null
-            // Only a picture far beyond the server's limit is sampled while read (memory).
-            var sample = 1
-            while (maxOf(bounds.outWidth, bounds.outHeight) / sample > 2048) sample *= 2
-            val options = BitmapFactory.Options().apply { inSampleSize = sample; inPreferredConfig = Bitmap.Config.ARGB_8888 }
-            val full = BitmapFactory.decodeByteArray(bytes, 0, bytes.size, options) ?: return null
-            val (width, height) = EmojiScale.storedPixels(full.width, full.height, maxHeightPx)
-            val still = if (width == full.width && height == full.height) full else shrunk(full, width, height).also { full.recycle() }
+            // Only a picture far beyond the server's limit is sampled while read (memory); one of more than 16 megapixels
+            // is not read at all, and an OutOfMemoryError is no picture (2026-11-16, BoundedImage).
+            val still = BoundedImage.decodeWith(BoundedImage.bounds(bytes), 2048, BoundedImage.SMALL_MAX_PIXELS) { sample ->
+                val options = BitmapFactory.Options().apply { inSampleSize = sample; inPreferredConfig = Bitmap.Config.ARGB_8888 }
+                val full = BitmapFactory.decodeByteArray(bytes, 0, bytes.size, options) ?: return@decodeWith null
+                val (width, height) = EmojiScale.storedPixels(full.width, full.height, maxHeightPx)
+                if (width == full.width && height == full.height) full else shrunk(full, width, height).also { full.recycle() }
+            } ?: return null
             return DecodedEmoji(still.asImageBitmap(), EmojiAnimation.decode(bytes, maxHeightPx))
         }
     }

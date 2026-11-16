@@ -22,9 +22,8 @@ import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.graphics.ImageBitmap
-import androidx.compose.ui.graphics.asImageBitmap
 import androidx.compose.ui.layout.ContentScale
-import android.graphics.BitmapFactory
+import jp.chikuwachat.android.platform.BoundedImage
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.withContext
 import androidx.compose.ui.Alignment
@@ -40,6 +39,10 @@ import jp.chikuwachat.android.api.LinkPreviewOut
 import jp.chikuwachat.android.app.AppController
 import jp.chikuwachat.android.R
 import androidx.compose.ui.res.stringResource
+
+/** A preview's picture: read at most this much, shown 64 dp square. */
+private const val PREVIEW_IMAGE_MAX_BYTES = 2L * 1024 * 1024
+private const val PREVIEW_IMAGE_MAX_SIDE = 256
 
 /** The links a body shows (M11g, M185). */
 object Links {
@@ -165,7 +168,10 @@ private fun PreviewCard(url: String, preview: LinkPreviewOut, onLongPress: (() -
     }
 }
 
-/** A small third-party image (the preview thumbnail) loaded once per composition; nothing on failure. */
+/**
+ * A small third-party image (the preview thumbnail) loaded once per composition; nothing on failure. Bounded (2026-11-16,
+ * [BoundedImage]): at most [PREVIEW_IMAGE_MAX_BYTES] read, an oversized picture is none.
+ */
 @Composable
 private fun RemoteImage(url: String, modifier: Modifier) {
     var bitmap by remember(url) { mutableStateOf<ImageBitmap?>(null) }
@@ -173,7 +179,9 @@ private fun RemoteImage(url: String, modifier: Modifier) {
         bitmap = withContext(Dispatchers.IO) {
             runCatching {
                 val connection = java.net.URL(url).openConnection().apply { connectTimeout = 5000; readTimeout = 5000 }
-                connection.getInputStream().use { input -> BitmapFactory.decodeStream(input)?.asImageBitmap() }
+                if (connection.contentLengthLong > PREVIEW_IMAGE_MAX_BYTES) return@runCatching null
+                val bytes = connection.getInputStream().use { input -> BoundedImage.readAtMost(input, PREVIEW_IMAGE_MAX_BYTES) }
+                bytes?.let { BoundedImage.image(it, PREVIEW_IMAGE_MAX_SIDE, BoundedImage.SMALL_MAX_PIXELS) }
             }.getOrNull()
         }
     }

@@ -1,7 +1,6 @@
 package jp.chikuwachat.android.ui
 
 import android.content.Intent
-import android.graphics.BitmapFactory
 import androidx.compose.foundation.Image
 import androidx.compose.foundation.background
 import androidx.compose.foundation.border
@@ -64,7 +63,7 @@ import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.ImageBitmap
-import androidx.compose.ui.graphics.asImageBitmap
+import jp.chikuwachat.android.platform.BoundedImage
 import androidx.compose.ui.layout.ContentScale
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.semantics.contentDescription
@@ -236,12 +235,15 @@ private val PHOTO_GRID_WIDTH = 280.dp
  */
 internal suspend fun fetchThumbnail(controller: AppController, attachmentId: String): ImageBitmap? = try {
     val bytes = controller.fetchBytes("/api/v1/attachments/$attachmentId/thumbnail")
-    withContext(Dispatchers.Default) { BitmapFactory.decodeByteArray(bytes, 0, bytes.size)?.asImageBitmap() }
+    withContext(Dispatchers.Default) { BoundedImage.image(bytes, THUMBNAIL_MAX_SIDE) } // 2026-11-16: never an OutOfMemoryError
 } catch (e: kotlinx.coroutines.CancellationException) {
     throw e
 } catch (e: Exception) {
     null
 }
+
+/** A thumbnail or a picture in a message, a canvas or a card is drawn at most about 480 dp wide: 2048 px is plenty. */
+internal const val THUMBNAIL_MAX_SIDE = 2048
 
 /**
  * M82: a video in a message. With the server's size and poster (M79) it is a tile of the clip's final shape showing the
@@ -468,17 +470,10 @@ object DownloadCache {
     }
 }
 
-/** Download to the cache and hand the file to another app (FileProvider; SECURITY.md §4: never inline HTML). */
-suspend fun openDownloaded(context: android.content.Context, attachment: AttachmentOut, bytes: ByteArray) {
-    val file = File(File(context.cacheDir, "downloads"), DownloadCache.path(attachment.id, attachment.filename))
-    withContext(Dispatchers.IO) {
-        file.parentFile?.mkdirs()
-        file.writeBytes(bytes)
-    }
-    openCachedFile(context, attachment, file)
-}
-
-/** Hand a file already in the cache's `downloads/` to another app. */
+/**
+ * Hand a file already in the cache's `downloads/` to another app (FileProvider; SECURITY.md §4: never inline HTML). The
+ * controller streams it there first (AppController.openAttachment, ApiClient.downloadTo).
+ */
 fun openCachedFile(context: android.content.Context, attachment: AttachmentOut, file: File) {
     val uri = FileProvider.getUriForFile(context, context.packageName + ".files", file)
     val intent = Intent(Intent.ACTION_VIEW).setDataAndType(uri, attachment.contentType).addFlags(Intent.FLAG_GRANT_READ_URI_PERMISSION or Intent.FLAG_ACTIVITY_NEW_TASK)
