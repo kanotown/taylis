@@ -815,7 +815,8 @@ fun MessageRow(
     // Codex audit C4: closed only once the edit is saved; a failure (offline) keeps the text and shows the error.
     // M186: the files the edit holds live in the controller while the dialog is open (a rotation keeps them).
     if (editing) EditMessageDialog(
-        Mentions.decode(message.body, store.users, store.groups), files = controller.messageEdit(message), controller = controller, saving = savingEdit,
+        Mentions.decode(message.body, store.users, store.groups), files = controller.messageEdit(message), controller = controller,
+        channelId = message.channelId, parentId = message.parentId, version = version, saving = savingEdit,
         onDismiss = { if (!savingEdit) { editing = false; controller.endMessageEdit(message.id) } },
         onSave = { body, files ->
             rowScope.launch {

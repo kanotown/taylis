@@ -13,7 +13,9 @@ import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.heightIn
+import androidx.compose.foundation.layout.PaddingValues
 import androidx.compose.foundation.layout.navigationBarsPadding
+import androidx.compose.foundation.layout.offset
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.width
@@ -68,6 +70,7 @@ import androidx.compose.ui.focus.FocusRequester
 import androidx.compose.ui.focus.focusRequester
 import androidx.compose.ui.graphics.vector.ImageVector
 import androidx.compose.ui.platform.LocalDensity
+import androidx.compose.ui.platform.LocalSoftwareKeyboardController
 import androidx.compose.ui.semantics.Role
 import androidx.compose.ui.text.TextRange
 import androidx.compose.ui.text.input.TextFieldValue
@@ -421,12 +424,21 @@ fun ReactionChips(
  * 「メッセージを編集」. M186 (docs/CHANNEL_FILES.md §7.6): the message's files under the text ([EditFilesSection]): × takes
  * one off, 「ファイルを追加」 adds more; `onSave` gets the body and the `attachment_ids` (null when the files did not change).
  * A message of files only may be saved without text.
+ *
+ * M187: the composer's help with the text, nothing a send needs: under the field the `@` and `:` completions
+ * ([Completions], read at the cursor: a word in the middle of the text completes too), then @, the emoji picker and 「Aa」
+ * ([WritingTools]). [channelId] and [parentId] (a thread reply's parent) rank the people as the composer there does;
+ * [version] is the Store's (a custom emoji's image, the members read for the ranking). The body goes back as typed
+ * (`@name`, `:name:`): the caller encodes the mentions (Mentions.encode) as a send does.
  */
 @Composable
 fun EditMessageDialog(
     initial: String,
     files: EditFilesSession,
     controller: jp.chikuwachat.android.app.AppController,
+    channelId: String,
+    parentId: String?,
+    version: Int,
     saving: Boolean = false,
     onDismiss: () -> Unit,
     onSave: (body: String, attachmentIds: List<String>?) -> Unit,
@@ -436,12 +448,46 @@ fun EditMessageDialog(
     // Editing means typing: the keyboard is up as the dialog opens (testers, 2026-09-30).
     val focus = remember { FocusRequester() }
     LaunchedEffect(Unit) { focus.requestFocus() }
+    var pickingEmoji by rememberSaveable { mutableStateOf(false) }
     AlertDialog(
         onDismissRequest = onDismiss,
         title = { Text(stringResource(R.string.message_actions_edit_message)) },
         text = {
+            val keyboard = LocalSoftwareKeyboardController.current
+            /** Text put in by a completion or a tool: the field keeps (or takes back) the cursor and the keyboard. */
+            fun edit(result: ComposerFormat.Result) {
+                field = TextFieldValue(result.text, TextRange(result.start, result.end))
+                runCatching { focus.requestFocus() }
+                keyboard?.show()
+            }
+            // The picker's sheet is a window of its own, opened after this dialog's: it shows above it, and the pick goes
+            // in at the field's cursor.
+            if (pickingEmoji) EmojiPickerSheet(
+                frequent = FrequentEmoji.read(controller.prefs), store = controller.store,
+                onNeedImage = { controller.loadEmojiImage(it) }, onNeedPackTab = { controller.loadPackTab(it) },
+                onDismiss = { pickingEmoji = false },
+                onPick = { glyph ->
+                    pickingEmoji = false
+                    QuickReactions.remember(controller.prefs, glyph)
+                    edit(ComposerText.insert(field.text, field.selection.start, field.selection.end, glyph))
+                },
+            )
             Column(Modifier.verticalScroll(rememberScrollState())) {
                 OutlinedTextField(field, { field = it }, maxLines = 8, enabled = !saving, modifier = Modifier.fillMaxWidth().focusRequester(focus))
+                val typed = if (saving) "" else Completions.typed(field.text, field.selection.start, field.selection.end)
+                val hits = completionHits(controller, channelId, parentId, typed)
+                val rowPadding = PaddingValues(top = 6.dp)
+                EmojiCompletionRow(hits.emoji, controller, version, padding = rowPadding, onPick = { edit(Completions.emoji(field.text, field.selection.start, it.glyph)) })
+                MentionCompletionRow(hits.mentions, padding = rowPadding, onPick = { edit(Completions.mention(field.text, field.selection.start, it.username)) })
+                // The icon buttons' glyphs line up with the field's edge (their touch target reaches past it).
+                Row(Modifier.offset(x = (-12).dp), verticalAlignment = Alignment.CenterVertically) {
+                    WritingTools(
+                        MaterialTheme.colorScheme.onSurfaceVariant, enabled = !saving,
+                        onMention = { edit(ComposerText.mention(field.text, field.selection.start, field.selection.end)) },
+                        onEmoji = { pickingEmoji = true },
+                        onFormat = { format -> edit(format.apply(field.text, field.selection.start, field.selection.end)) },
+                    )
+                }
                 EditFilesSection(files, controller, enabled = !saving)
             }
         },

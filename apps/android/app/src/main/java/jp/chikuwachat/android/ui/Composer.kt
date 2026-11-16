@@ -34,31 +34,19 @@ import androidx.compose.foundation.text.BasicTextField
 import androidx.compose.foundation.verticalScroll
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.automirrored.outlined.ArrowBack
-import androidx.compose.material.icons.automirrored.outlined.FormatListBulleted
 import androidx.compose.material.icons.automirrored.outlined.InsertDriveFile
 import androidx.compose.material.icons.filled.AddCircle
 import androidx.compose.material.icons.filled.Check
 import androidx.compose.material.icons.outlined.AddCircleOutline
 import androidx.compose.material.icons.outlined.Bolt
-import androidx.compose.material.icons.outlined.AlternateEmail
 import androidx.compose.material.icons.outlined.ArrowUpward
-import androidx.compose.material.icons.outlined.Code
-import androidx.compose.material.icons.outlined.DataObject
-import androidx.compose.material.icons.outlined.EmojiEmotions
 import androidx.compose.material.icons.outlined.Flag
-import androidx.compose.material.icons.outlined.FormatBold
-import androidx.compose.material.icons.outlined.FormatItalic
-import androidx.compose.material.icons.outlined.FormatListNumbered
-import androidx.compose.material.icons.outlined.FormatQuote
-import androidx.compose.material.icons.outlined.FormatStrikethrough
-import androidx.compose.material.icons.outlined.Link
 import androidx.compose.material.icons.outlined.PhotoCamera
 import androidx.compose.material.icons.outlined.PhotoLibrary
 import androidx.compose.material.icons.outlined.EventAvailable
 import androidx.compose.material.icons.outlined.Poll
 import androidx.compose.material.icons.outlined.PostAdd
 import androidx.compose.material.icons.outlined.Schedule
-import androidx.compose.material.icons.outlined.Title
 import androidx.compose.material3.Checkbox
 import androidx.compose.material3.CircularProgressIndicator
 import androidx.compose.material3.DropdownMenu
@@ -252,41 +240,14 @@ fun ConversationComposer(controller: AppController, channelId: String, version: 
     val openCamera = rememberCameraCapture(controller) { uri, cleanup -> uploadPicked(listOf(uri), cleanup) }
     val hasCamera = openCamera != null
     Column {
-        val query = Mentions.query(draft)
-        // MOBILE_UI.md §23: while the @ list is open, the channel's members are read for it (once; again when they change).
-        val mentionOpen = query != null
-        val memberEpoch = store.memberEpoch(channelId)
-        LaunchedEffect(mentionOpen, channelId, memberEpoch) { if (mentionOpen) controller.readMentionMembers(channelId) }
-        // MOBILE_UI.md §23: the people of this conversation first (the thread's, then the channel's), me last.
-        val candidates = if (query != null) Mentions.candidates(query, store.users.values, store.groups.values, aiBotIds = controller.aiBotIdsRead, context = Mentions.context(store, channelId, parentId)) else emptyList()
-        // `:tada` completes to an emoji (M11f) when no mention is being typed.
-        val emojiHits = if (candidates.isEmpty()) Emoji.query(draft)?.let { q ->
-            // M100: also by label and keywords (":ありがとう" finds :hpd-bow:).
-            val found = CustomEmoji.candidates(q, store.customEmoji.values)
-            (found.map { EmojiEntry(shortcode = it.name, glyph = ":${it.name}:", category = "custom", keywords = it.label ?: "") } + Emoji.candidates(q)).take(8)
-        } ?: emptyList() else emptyList()
+        // M187: the `@` and `:` completions, the same rows as in 「メッセージを編集」 ([Completions]); the composer reads
+        // the whole draft and completes at its end (it edits at the end).
+        val hits = completionHits(controller, channelId, parentId, draft)
+        val candidates = hits.mentions
+        val emojiHits = hits.emoji
         var pickingEmoji by rememberSaveable { mutableStateOf(false) }
         if (pickingEmoji) EmojiPickerSheet(frequent = FrequentEmoji.read(controller.prefs), store = store, onNeedImage = { controller.loadEmojiImage(it) }, onNeedPackTab = { controller.loadPackTab(it) }, onDismiss = { pickingEmoji = false }, onPick = { pickingEmoji = false; QuickReactions.remember(controller.prefs, it); insertAtCursor(it) })
-        if (emojiHits.isNotEmpty()) {
-            LazyRow(Modifier.fillMaxWidth().padding(horizontal = 8.dp, vertical = 4.dp), horizontalArrangement = Arrangement.spacedBy(6.dp)) {
-                items(emojiHits, key = { it.shortcode }) { entry ->
-                    Surface(shape = MaterialTheme.shapes.small, color = MaterialTheme.colorScheme.secondaryContainer, modifier = Modifier.clickable { QuickReactions.remember(controller.prefs, entry.glyph); setText(Emoji.complete(draft, entry.glyph)) }) {
-                        val custom = if (entry.category == "custom") store.customEmoji[entry.shortcode] else null
-                        if (custom != null) {
-                            // The image (or text pill) and its label, not `:name:` twice.
-                            val image = store.emojiImages[custom.id]
-                            if (image == null) controller.loadEmojiImage(custom)
-                            Row(verticalAlignment = Alignment.CenterVertically, modifier = Modifier.padding(horizontal = 10.dp, vertical = 6.dp)) {
-                                if (image != null) EmojiImage(image, store.emojiAnimations[custom.id], contentDescription = null, modifier = Modifier.height(20.dp).width((20 * CustomEmoji.aspect(custom)).dp))
-                                Text("  " + (custom.label ?: ":${custom.name}:"), style = MaterialTheme.typography.labelLarge)
-                            }
-                        } else {
-                            Text(entry.glyph + "  :" + entry.shortcode + ":", style = MaterialTheme.typography.labelLarge, modifier = Modifier.padding(horizontal = 10.dp, vertical = 6.dp))
-                        }
-                    }
-                }
-            }
-        }
+        EmojiCompletionRow(emojiHits, controller, version, onPick = { setText(Emoji.complete(draft, it.glyph)) })
         // `/st` at the very start offers the slash commands (M13b).
         val commandHits = if (candidates.isEmpty() && emojiHits.isEmpty()) SlashCommands.candidates(draft) else emptyList()
         // M30: the templates after the built-in commands; picking one puts its body in at once (`/` alone: the input is empty).
@@ -317,18 +278,7 @@ fun ConversationComposer(controller: AppController, channelId: String, version: 
                 }
             }
         }
-        if (candidates.isNotEmpty()) {
-            LazyRow(Modifier.fillMaxWidth().padding(horizontal = 8.dp, vertical = 4.dp), horizontalArrangement = Arrangement.spacedBy(6.dp)) {
-                items(candidates, key = { it.username }) { candidate ->
-                    Surface(shape = MaterialTheme.shapes.small, color = MaterialTheme.colorScheme.secondaryContainer, modifier = Modifier.clickable { setText(Mentions.complete(draft, candidate.username)) }) {
-                        Row(verticalAlignment = Alignment.CenterVertically, modifier = Modifier.padding(horizontal = 10.dp, vertical = 6.dp)) {
-                            Text("@" + candidate.username + "  " + candidate.label, style = MaterialTheme.typography.labelLarge)
-                            if (candidate.ai) AiBadge(Modifier.padding(start = 6.dp)) // M66
-                        }
-                    }
-                }
-            }
-        }
+        MentionCompletionRow(candidates, onPick = { setText(Mentions.complete(draft, it.username)) })
         PendingAttachments(pendingUploads, controller, uploading) { removed -> store.setDraft(channelId, parentId) { it.copy(attachments = it.attachments - removed) } }
         LargeFileUploads(controller, channelId, parentId) // CF5: files over the limit on their way to the drive
         // CF4 (docs/CHANNEL_FILES.md §12.3): where files sent here go, under the chips (a public or private channel whose
@@ -602,20 +552,12 @@ fun ConversationComposer(controller: AppController, channelId: String, version: 
                 // The tools scroll sideways on a narrow phone (seven of them since the photos button); send stays in view.
                 Row(Modifier.weight(1f).horizontalScroll(rememberScrollState()), verticalAlignment = Alignment.CenterVertically) {
                 IconButton(enabled = uploading == 0, onClick = { plusOpen = true }) { Icon(Icons.Outlined.AddCircleOutline, contentDescription = stringResource(R.string.composer_attach_and_more), tint = tint) }
-                IconButton(onClick = { edit(ComposerText.mention(field.text, field.selection.start, field.selection.end)) }) {
-                    Icon(Icons.Outlined.AlternateEmail, contentDescription = stringResource(R.string.common_mention), tint = tint)
-                }
-                IconButton(onClick = { pickingEmoji = true }) { Icon(Icons.Outlined.EmojiEmotions, contentDescription = stringResource(R.string.common_emoji), tint = tint) }
-                Box {
-                    var formatOpen by remember { mutableStateOf(false) }
-                    IconButton(onClick = { formatOpen = true }, modifier = Modifier.semantics { contentDescription = L10n.str(R.string.composer_formatting) }) {
-                        Text("Aa", style = MaterialTheme.typography.titleMedium, fontWeight = FontWeight.Medium, color = tint)
-                    }
-                    FormatMenu(formatOpen, onDismiss = { formatOpen = false }) { format ->
-                        formatOpen = false
-                        edit(format.apply(field.text, field.selection.start, field.selection.end))
-                    }
-                }
+                WritingTools(
+                    tint,
+                    onMention = { edit(ComposerText.mention(field.text, field.selection.start, field.selection.end)) },
+                    onEmoji = { pickingEmoji = true },
+                    onFormat = { format -> edit(format.apply(field.text, field.selection.start, field.selection.end)) },
+                )
                 // `/`: the commands and templates, offered as at the start of the input (M13b, M30).
                 IconButton(
                     onClick = { if (draft.isBlank()) edit(ComposerFormat.Result("/", 1, 1)) else insertAtCursor("/") },
@@ -776,32 +718,6 @@ private fun PlusSheet(
             }
         }
     }
-}
-
-/** 仕上げ B: 「Aa」, the marks put around the selection or at the cursor ([ComposerFormat]). */
-@Composable
-private fun FormatMenu(expanded: Boolean, onDismiss: () -> Unit, onPick: (ComposerFormat) -> Unit) {
-    DropdownMenu(expanded = expanded, onDismissRequest = onDismiss) {
-        ComposerFormat.entries.forEach { format ->
-            DropdownMenuItem(
-                text = { Text(format.label) }, onClick = { onPick(format) },
-                leadingIcon = { Icon(format.icon(), contentDescription = null) },
-            )
-        }
-    }
-}
-
-private fun ComposerFormat.icon(): ImageVector = when (this) {
-    ComposerFormat.BOLD -> Icons.Outlined.FormatBold
-    ComposerFormat.ITALIC -> Icons.Outlined.FormatItalic
-    ComposerFormat.STRIKE -> Icons.Outlined.FormatStrikethrough
-    ComposerFormat.CODE -> Icons.Outlined.Code
-    ComposerFormat.CODE_BLOCK -> Icons.Outlined.DataObject
-    ComposerFormat.HEADING -> Icons.Outlined.Title
-    ComposerFormat.QUOTE -> Icons.Outlined.FormatQuote
-    ComposerFormat.BULLET -> Icons.AutoMirrored.Outlined.FormatListBulleted
-    ComposerFormat.NUMBERED -> Icons.Outlined.FormatListNumbered
-    ComposerFormat.LINK -> Icons.Outlined.Link
 }
 
 /** M15e: 通常 / 重要 / 緊急 and 「確認を求める」, from the 🚩 in the tools row. */
