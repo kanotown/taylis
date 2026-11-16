@@ -78,6 +78,12 @@ import kotlinx.coroutines.launch
 import jp.chikuwachat.android.R
 import androidx.compose.ui.res.stringResource
 import jp.chikuwachat.android.L10n
+import androidx.compose.foundation.text.BasicText
+import androidx.compose.foundation.text.TextAutoSize
+import androidx.compose.material3.LocalContentColor
+import androidx.compose.material3.LocalTextStyle
+import androidx.compose.ui.unit.sp
+import androidx.compose.ui.platform.LocalDensity
 
 /**
  * M34: the bottom tabs (MOBILE_UI.md §5) with their badges (§8, [MainTabs]): DM = the unread DMs, activity = the unread
@@ -95,10 +101,33 @@ fun MainTabBar(store: Store, version: Int, selected: MainTab, onTab: (MainTab) -
                 selected = isSelected,
                 onClick = { onTab(tab) },
                 icon = { TabIcon(tab, isSelected, badges) },
-                label = { Text(tab.label, maxLines = 1, softWrap = false) },
+                label = { TabLabel(tab.label) },
             )
         }
     }
+}
+
+/**
+ * A tab's name on one line. The longest (「アクティビティ」) is wider than a fifth of a phone at the default text size
+ * (a Pixel 9 cut it to 「アクティビテ」): it shrinks to fit instead of being cut, down to 9 dp on the screen whatever the
+ * system text size (a minimum in sp grew with it and the name was cut again at 130 %); the others keep the bar's size.
+ * The bar's text style and its selected / unselected colour (NavigationBarItem provides both) are kept.
+ */
+@Composable
+private fun TabLabel(label: String) {
+    val style = LocalTextStyle.current
+    val smallest = with(LocalDensity.current) { 9.dp.toSp() }
+    BasicText(
+        label,
+        style = style.copy(color = LocalContentColor.current),
+        maxLines = 1,
+        softWrap = false,
+        autoSize = TextAutoSize.StepBased(
+            minFontSize = if (smallest.value < style.fontSize.value) smallest else style.fontSize,
+            maxFontSize = style.fontSize,
+            stepSize = 0.25.sp,
+        ),
+    )
 }
 
 /**
@@ -121,7 +150,7 @@ fun MainTabRail(store: Store, version: Int, selected: MainTab, onTab: (MainTab) 
                 selected = isSelected,
                 onClick = { onTab(tab) },
                 icon = { TabIcon(tab, isSelected, badges) },
-                label = { Text(tab.label, maxLines = 1, softWrap = false) },
+                label = { TabLabel(tab.label) },
             )
         }
     }
