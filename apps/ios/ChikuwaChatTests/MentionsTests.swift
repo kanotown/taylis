@@ -98,6 +98,36 @@ final class MentionsTests: XCTestCase {
     }
 }
 
+/// M189: `@name` as the stored token against apps/shared/mention-encode.json (the desktop and Android read the same file).
+final class MentionEncodeTests: XCTestCase {
+    private struct Vectors: Decodable {
+        struct Case: Decodable { let name: String; let text: String; let stored: String }
+        let users: [[String]]
+        let groups: [[String]]
+        let cases: [Case]
+    }
+
+    private func vectors() throws -> Vectors {
+        let url = URL(fileURLWithPath: #filePath).deletingLastPathComponent().deletingLastPathComponent().deletingLastPathComponent()
+            .appendingPathComponent("shared/mention-encode.json")
+        return try JSONDecoder().decode(Vectors.self, from: Data(contentsOf: url))
+    }
+
+    func testTheSharedCases() throws {
+        let v = try vectors()
+        let users = v.users.map { UserPublic(id: $0[0], username: $0[1], displayName: $0[1], role: "member", deactivatedAt: nil, createdAt: "", updatedAt: "") }
+        let groups = v.groups.map { GroupOut(id: $0[0], name: $0[1], createdBy: "", createdAt: "", updatedAt: "") }
+        XCTAssertFalse(v.cases.isEmpty)
+        for c in v.cases { XCTAssertEqual(Mentions.encode(c.text, users: users, groups: groups), c.stored, c.name) }
+        // An edited message keeps its mention in italic when it is saved again (decoded, then encoded).
+        let byId = Dictionary(uniqueKeysWithValues: users.map { ($0.id, $0) })
+        let groupsById = Dictionary(uniqueKeysWithValues: groups.map { ($0.id, $0) })
+        for stored in ["_確認 <@\(users[0].id)>_", "_<@\(users[1].id)> 確認_", "_全員 <!here>_", "__<@group:\(groups[0].id)>__"] {
+            XCTAssertEqual(Mentions.encode(Mentions.decode(stored, users: byId, groups: groupsById), users: users, groups: groups), stored)
+        }
+    }
+}
+
 /// MOBILE_UI.md §23: the order of the @ suggestions against apps/shared/mention-rank.json (the desktop and Android read
 /// the same file).
 final class MentionRankTests: XCTestCase {

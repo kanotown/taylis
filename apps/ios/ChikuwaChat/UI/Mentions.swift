@@ -12,20 +12,29 @@ enum Mentions {
     }
 
     /// After anything but an ASCII handle character, @ or <: 「まとめます。@kano」 is a mention, a@b.jp and <@uuid> are not.
-    private static let handle = try! NSRegularExpression(pattern: #"(^|[^A-Za-z0-9._@<-])@([A-Za-z0-9._-]+)"#)
+    /// M189: also after the `_` that opens italic (「_@kano 確認_」; not after a letter or digit, as italic: 「確認_@kano」 is not).
+    private static let handle = try! NSRegularExpression(pattern: #"(^|[^A-Za-z0-9._@<-])(_*)@([A-Za-z0-9._-]+)"#)
     private static let userToken = try! NSRegularExpression(pattern: #"<@([0-9a-f-]{36})>"#)
     private static let allToken = try! NSRegularExpression(pattern: #"<!(channel|here)>"#)
     private static let groupToken = try! NSRegularExpression(pattern: #"<@group:([0-9a-f-]{36})>"#)
     private static let queryPattern = try! NSRegularExpression(pattern: #"(^|[^A-Za-z0-9._@<-])@([\p{L}\p{M}\p{N}._-]*)$"#)
 
+    /// `@name` as the stored token (apps/shared/mention-encode.json). M189: the longest known name wins, so a `.`, `_` or
+    /// `-` that ends the handle but is no one's (「@kano.」 ending a sentence, 「_確認 @kano_」 closing italic) stays after
+    /// the token.
     static func encode(_ text: String, users: some Collection<UserPublic>, groups: [GroupOut] = []) -> String {
         var byName = Dictionary(users.map { ($0.username.lowercased(), "<@\($0.id)>") }, uniquingKeysWith: { first, _ in first })
         for group in groups { byName[group.name.lowercased()] = "<@group:\(group.id)>" } // names never collide (server)
+        func token(_ name: String) -> String? { name == "channel" || name == "here" ? "<!\(name)>" : byName[name] }
         return replace(text, handle) { match in
-            let lead = match[1]
-            let name = match[2].lowercased()
-            if name == "channel" || name == "here" { return "\(lead)<!\(name)>" }
-            if let token = byName[name] { return "\(lead)\(token)" }
+            let (lead, opens, name) = (match[1], match[2], match[3])
+            if !opens.isEmpty, lead.range(of: #"^[\p{L}\p{N}]$"#, options: .regularExpression) != nil { return nil }
+            var end = name.endIndex
+            while end > name.startIndex {
+                if let found = token(name[..<end].lowercased()) { return lead + opens + found + name[end...] }
+                end = name.index(before: end)
+                guard "._-".contains(name[end]) else { return nil }
+            }
             return nil
         }
     }
