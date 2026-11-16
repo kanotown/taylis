@@ -2,7 +2,7 @@ import type { ReactNode } from "react";
 import { CalendarDays, MessageSquareText, Package } from "lucide-react";
 import type { CustomEmojiOut, GroupOut, UserPublic } from "../api/types";
 import type { AppController } from "../state/app";
-import { type Block, type ListItem, paragraphLayout, parseBlocks, type Token } from "./markdown";
+import { type Block, type EmphasisPiece, emphasisPieces, type ListItem, paragraphLayout, parseBlocks, type Token } from "./markdown";
 import { replaceShortcodes } from "./emoji";
 import { CustomEmojiImage, splitCustomEmoji } from "./customEmoji";
 import { splitKeywords } from "./keywords";
@@ -267,16 +267,55 @@ export function inline(tokens: Token[], users: Map<string, UserPublic>, options:
       typeof piece === "string" ? <span key={index}>{keywordNodes(piece, `k${index}-`)}</span> : <CustomEmojiImage key={index} controller={controller} emoji={customEmoji.get(piece.name)!} size="1.375em" inline />,
     );
   };
+  /** A mention: the person's card (someone this device knows), else their name; a group's or @channel / @here. */
+  const mentionNode = (token: Exclude<EmphasisPiece, { kind: "text" }>, key: number): ReactNode => {
+    switch (token.kind) {
+      case "mention": {
+        const user = users.get(token.userId);
+        // 2026-10-06: someone this device knows shows their card (hover or click); an unknown id stays plain.
+        if (user && controller) {
+          return (
+            <MentionCard key={key} controller={controller} userId={token.userId}>
+              @{user.display_name}
+            </MentionCard>
+          );
+        }
+        return (
+          <span key={key} className="mention">
+            @{user?.display_name ?? "unknown"}
+          </span>
+        );
+      }
+      case "mention_group":
+        return (
+          <span key={key} className="mention" title={t("composer.group")}>
+            @{groups?.get(token.groupId)?.name ?? t("composer.group")}
+          </span>
+        );
+      case "mention_all":
+        return (
+          <span key={key} className="mention">
+            @{token.target}
+          </span>
+        );
+    }
+  };
+  /** M188: bold, italic and strike text with the mentions in it drawn as mentions (markdown.emphasisPieces). */
+  const emphasisNodes = (text: string): ReactNode => {
+    const pieces = emphasisPieces(text);
+    if (pieces.length === 1 && pieces[0]!.kind === "text") return emojiNodes(text);
+    return pieces.map((piece, index) => (piece.kind === "text" ? <span key={index}>{emojiNodes(piece.text)}</span> : mentionNode(piece, index)));
+  };
   return tokens.map((token, i) => {
     switch (token.kind) {
       case "text":
         return <span key={i}>{emojiNodes(token.text)}</span>;
       case "bold":
-        return <strong key={i}>{emojiNodes(token.text)}</strong>;
+        return <strong key={i}>{emphasisNodes(token.text)}</strong>;
       case "italic":
-        return <em key={i}>{emojiNodes(token.text)}</em>;
+        return <em key={i}>{emphasisNodes(token.text)}</em>;
       case "strike":
-        return <del key={i}>{emojiNodes(token.text)}</del>;
+        return <del key={i}>{emphasisNodes(token.text)}</del>;
       case "code":
         return <code key={i}>{token.text}</code>;
       case "codeblock":
@@ -352,34 +391,10 @@ export function inline(tokens: Token[], users: Map<string, UserPublic>, options:
           </a>
         );
       }
-      case "mention": {
-        const user = users.get(token.userId);
-        // 2026-10-06: someone this device knows shows their card (hover or click); an unknown id stays plain.
-        if (user && controller) {
-          return (
-            <MentionCard key={i} controller={controller} userId={token.userId}>
-              @{user.display_name}
-            </MentionCard>
-          );
-        }
-        return (
-          <span key={i} className="mention">
-            @{user?.display_name ?? "unknown"}
-          </span>
-        );
-      }
+      case "mention":
       case "mention_group":
-        return (
-          <span key={i} className="mention" title={t("composer.group")}>
-            @{groups?.get(token.groupId)?.name ?? t("composer.group")}
-          </span>
-        );
       case "mention_all":
-        return (
-          <span key={i} className="mention">
-            @{token.target}
-          </span>
-        );
+        return mentionNode(token, i);
       case "math":
         return <MathView key={i} tex={token.text} display={false} inlineDisplay={token.display} />;
       case "newline":

@@ -4,12 +4,12 @@
  * header truncates it with an ellipsis). The topic is still edited as plain text. Only http(s) and mailto are ever
  * links (the message tokenizer links nothing else, so `[x](javascript:…)` stays text); a link on this server
  * (`/m/`, `/c/`, `/p/`, `/e/`, `/d/`, `/eq/`) opens in the app, any other one in the system browser on Tauri (a new tab on
- * the web), as in messages. Mentions read as names; math stays its text. No cards or chips: they do not fit one line.
+ * the web), as in messages. Mentions read as names (in bold, italic or strike too, M188); math stays its text. No cards or chips: they do not fit one line.
  */
 import type { MouseEvent, ReactNode } from "react";
 
 import type { AppController } from "../state/app";
-import { tokenizeInline, type Token } from "./markdown";
+import { type EmphasisPiece, emphasisPieces, tokenizeInline, type Token } from "./markdown";
 import { parseCanvasLink, parseDriveLink, parseEquipmentLink, parseEventLink, parsePageLink, parsePermalink } from "./permalink";
 import { openExternalLink } from "../platform/external";
 import { cn } from "./primitives";
@@ -39,6 +39,9 @@ export function topicTokens(topic: string, nameOf: (userId: string) => string | 
     }
     text(value.slice(last));
   };
+  /** A mention as the name it reads as. */
+  const mention = (token: Exclude<EmphasisPiece, { kind: "text" }>) =>
+    token.kind === "mention" ? `@${nameOf(token.userId) ?? "unknown"}` : token.kind === "mention_group" ? "@group" : `@${token.target}`;
   const one = (token: Token) => {
     switch (token.kind) {
       case "text":
@@ -46,16 +49,16 @@ export function topicTokens(topic: string, nameOf: (userId: string) => string | 
       case "bold":
       case "italic":
       case "strike":
+        // M188: a mention in emphasis reads as its name too (markdown.emphasisPieces).
+        return out.push({ kind: token.kind, text: emphasisPieces(token.text).map((piece) => (piece.kind === "text" ? piece.text : mention(piece))).join("") });
       case "code":
         return out.push({ kind: token.kind, text: token.text });
       case "link":
         return /^https?:\/\//i.test(token.url) ? out.push({ kind: "link", url: token.url, label: token.label }) : text(token.label ?? token.url);
       case "mention":
-        return text(`@${nameOf(token.userId) ?? "unknown"}`);
       case "mention_group":
-        return text("@group");
       case "mention_all":
-        return text(`@${token.target}`);
+        return text(mention(token));
       case "math":
         return text(token.display ? `$$${token.text}$$` : `$${token.text}$`);
       case "codeblock":

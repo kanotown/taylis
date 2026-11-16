@@ -271,6 +271,31 @@ function scan(body: string, pattern: RegExp, withBlocks: boolean): Token[] {
   return tokens;
 }
 
+/** A piece of an emphasis' text (emphasisPieces): text or a mention. */
+export type EmphasisPiece = Extract<Token, { kind: "text" | "mention" | "mention_group" | "mention_all" }>;
+
+/** The tokenizer's mention patterns (INLINE's `<@group:…>`, `<@…>`, `<!channel>` / `<!here>`, in its order). */
+const MENTION_TOKEN = /<@group:([0-9a-f-]{36})>|<@([0-9a-f-]{36})>|<!(channel|here)>/g;
+
+/**
+ * M188 (apps/shared/inline-format.json `emphasis_mentions`): the text of a bold, italic or strike token as text and
+ * mention pieces, so that a mention in emphasis (`**確認 <@id>**`) is drawn as the mention, in the emphasis' style,
+ * rather than as the raw `<@…>`. Emphasis still holds plain text (it does not nest): only mentions are read in it.
+ */
+export function emphasisPieces(text: string): EmphasisPiece[] {
+  const pieces: EmphasisPiece[] = [];
+  let last = 0;
+  for (const match of text.matchAll(MENTION_TOKEN)) {
+    if (match.index > last) pieces.push({ kind: "text", text: text.slice(last, match.index) });
+    if (match[1] !== undefined) pieces.push({ kind: "mention_group", groupId: match[1] });
+    else if (match[2] !== undefined) pieces.push({ kind: "mention", userId: match[2] });
+    else pieces.push({ kind: "mention_all", target: match[3] ?? "" });
+    last = match.index + match[0].length;
+  }
+  if (last < text.length || pieces.length === 0) pieces.push({ kind: "text", text: text.slice(last) });
+  return pieces;
+}
+
 /**
  * The text of an inline code span (apps/shared/inline-format.json): `single` is the text between single backticks;
  * otherwise `whole` is a ``double`` span, which may hold a backtick, and loses one space at each end when it has one at
