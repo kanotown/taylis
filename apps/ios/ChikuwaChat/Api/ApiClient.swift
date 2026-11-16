@@ -743,6 +743,15 @@ final class ApiClient: SyncApi, DraftApi, ChannelLinksApi, ActivityApi, CanvasAp
 
     func deleteAvatar() async throws -> UserMe { try await request("DELETE", "/api/v1/users/me/avatar") }
 
+    /// The request's URL: `path` on the server. Paths carry ids and paths the server sent (a hostile server's may be no
+    /// URL at all, 2026-11-16): such a request fails as a refused one instead of stopping the app.
+    func endpoint(_ path: String) throws -> URL {
+        guard let url = URL(string: path, relativeTo: baseUrl)?.absoluteURL else {
+            throw ApiError.api(status: 0, code: "invalid_url", message: "Invalid URL")
+        }
+        return url
+    }
+
     /// Authenticated GET returning the raw body (thumbnails, downloads).
     func fetchData(_ path: String) async throws -> Data {
         try await requestData("GET", path, body: nil, contentType: nil, retry401: true).0
@@ -751,7 +760,7 @@ final class ApiClient: SyncApi, DraftApi, ChannelLinksApi, ActivityApi, CanvasAp
     /// `fromFile` uploads the body from a file instead of `body` (large attachments).
     private func requestData(_ method: String, _ path: String, body: Data?, fromFile: URL? = nil, contentType: String?, retry401: Bool) async throws -> (Data, Int) {
         if accessToken == nil, refreshToken != nil { _ = try await refresh() }
-        var request = URLRequest(url: URL(string: path, relativeTo: baseUrl)!.absoluteURL)
+        var request = URLRequest(url: try endpoint(path))
         request.httpMethod = method
         request.setValue("application/json", forHTTPHeaderField: "Accept")
         request.setValue(UILanguage.shared.acceptLanguage, forHTTPHeaderField: "Accept-Language")
@@ -1509,7 +1518,7 @@ final class ApiClient: SyncApi, DraftApi, ChannelLinksApi, ActivityApi, CanvasAp
                             headers: [String: String] = [:], onError: ((Int, Data) -> Error?)? = nil,
                             onResponse: ((HTTPURLResponse) -> Void)? = nil) async throws -> (Data, Int) {
         if auth, accessToken == nil, refreshToken != nil { _ = try await refresh() }
-        var request = URLRequest(url: URL(string: path, relativeTo: baseUrl)!.absoluteURL)
+        var request = URLRequest(url: try endpoint(path))
         request.httpMethod = method
         if let timeout { request.timeoutInterval = timeout }
         request.setValue("application/json", forHTTPHeaderField: "Accept")

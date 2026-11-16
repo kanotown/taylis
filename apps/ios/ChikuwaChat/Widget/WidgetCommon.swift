@@ -124,7 +124,8 @@ enum WidgetLink: Equatable {
         }
         if let server { items.append(URLQueryItem(name: "server", value: server)) }
         if !items.isEmpty { components.queryItems = items }
-        return components.url!
+        // The ids come from a server: a link that cannot be made opens the app instead of stopping the widget.
+        return components.url ?? URL(string: "\(AttendanceWidgetLink.scheme)://open")!
     }
 
     /// nil: not a widget's link (the sign-in redirect, another scheme, a link without its id).

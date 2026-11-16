@@ -69,7 +69,9 @@ extension ShareApi {
 
     /// PUT /drive/uploads/{id}/parts/{n}: the slice's bytes (from its file, by a background task) and their SHA-256.
     func partRequest(uploadId: String, number: Int, sha256: String, token: String) -> URLRequest {
-        var request = URLRequest(url: URL(string: "/api/v1/drive/uploads/\(uploadId)/parts/\(number)", relativeTo: baseUrl)!.absoluteURL)
+        // The upload's id comes from the server: escaped, so the path is always a URL (it was force-unwrapped, 2026-11-16).
+        let id = uploadId.addingPercentEncoding(withAllowedCharacters: .alphanumerics.union(CharacterSet(charactersIn: "-._~"))) ?? ""
+        var request = URLRequest(url: URL(string: "/api/v1/drive/uploads/\(id)/parts/\(number)", relativeTo: baseUrl)?.absoluteURL ?? baseUrl)
         request.httpMethod = "PUT"
         request.setValue("application/json", forHTTPHeaderField: "Accept")
         request.setValue(language, forHTTPHeaderField: "Accept-Language")

@@ -385,7 +385,9 @@ final class ShareApi: @unchecked Sendable {
     /// One JSON request to the server (the tests look at what a call sends without sending it).
     static func request(baseUrl: URL, path: String, method: String, json: [String: Any]?, token: String?, language: String,
                         timeout: TimeInterval) throws -> URLRequest {
-        var request = URLRequest(url: URL(string: path, relativeTo: baseUrl)!.absoluteURL)
+        // A path with an id the server sent that is no URL (2026-11-16): refused, not a crash of the extension.
+        guard let url = URL(string: path, relativeTo: baseUrl)?.absoluteURL else { throw ShareFailure.refused(status: 0, code: "invalid_url") }
+        var request = URLRequest(url: url)
         request.httpMethod = method
         request.timeoutInterval = timeout
         request.setValue("application/json", forHTTPHeaderField: "Accept")

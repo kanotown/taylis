@@ -117,37 +117,48 @@ struct LinkPreviewCard: View {
         return host.hasPrefix("www.") ? String(host.dropFirst(4)) : host
     }
 
+    /// What a tap opens: the message's own link, never the preview's `url` (the server's answer). nil for a link the
+    /// system cannot read (`https://a:b:c`, `https://[x`: the tokenizer takes them as links): the card then has no tap.
+    /// It was force-unwrapped, and any member could stop every iPhone that showed such a message (2026-11-16).
+    static func destination(_ url: String) -> URL? { URL(string: url) }
+
     var body: some View {
-        Link(destination: URL(string: preview?.url ?? url) ?? URL(string: url)!) {
-            // A plain outlined card, the site first (tester, 2026-09-30: the accent bar at the left looked
-            // "AI-like"); the same on the desktop and Android.
-            HStack(alignment: .top, spacing: 10) {
-                VStack(alignment: .leading, spacing: 2) {
-                    Text(preview?.siteName ?? Self.host(preview?.url ?? url)).font(.caption).foregroundStyle(.secondary).lineLimit(1)
-                    if let preview {
-                        Text(preview.title ?? " ").font(.subheadline.weight(.semibold)).foregroundStyle(.primary)
-                            .lineLimit(2, reservesSpace: true)
-                        Text(preview.description ?? " ").font(.footnote).foregroundStyle(.secondary).lineLimit(2, reservesSpace: true)
-                    } else {
-                        Text("リンクのプレビュー").font(.subheadline.weight(.semibold)).lineLimit(2, reservesSpace: true)
-                            .redacted(reason: .placeholder)
-                        Text(" ").font(.footnote).lineLimit(2, reservesSpace: true)
-                    }
-                }
-                Spacer(minLength: 0)
-                if let image = preview?.imageUrl, let imageUrl = URL(string: image) {
-                    AsyncImage(url: imageUrl) { phase in
-                        if let image = phase.image { image.resizable().scaledToFill() } else { Color.clear }
-                    }
-                    .frame(width: Self.imageSide, height: Self.imageSide)
-                    .clipShape(RoundedRectangle(cornerRadius: 6, style: .continuous))
+        if let destination = Self.destination(url) {
+            Link(destination: destination) { card }
+                .buttonStyle(.plain)
+        } else {
+            card
+        }
+    }
+
+    private var card: some View {
+        // A plain outlined card, the site first (tester, 2026-09-30: the accent bar at the left looked
+        // "AI-like"); the same on the desktop and Android.
+        HStack(alignment: .top, spacing: 10) {
+            VStack(alignment: .leading, spacing: 2) {
+                Text(preview?.siteName ?? Self.host(preview?.url ?? url)).font(.caption).foregroundStyle(.secondary).lineLimit(1)
+                if let preview {
+                    Text(preview.title ?? " ").font(.subheadline.weight(.semibold)).foregroundStyle(.primary)
+                        .lineLimit(2, reservesSpace: true)
+                    Text(preview.description ?? " ").font(.footnote).foregroundStyle(.secondary).lineLimit(2, reservesSpace: true)
+                } else {
+                    Text("リンクのプレビュー").font(.subheadline.weight(.semibold)).lineLimit(2, reservesSpace: true)
+                        .redacted(reason: .placeholder)
+                    Text(" ").font(.footnote).lineLimit(2, reservesSpace: true)
                 }
             }
-            .frame(minHeight: Self.imageSide, alignment: .top)
-            .padding(10)
-            .overlay(RoundedRectangle(cornerRadius: 8, style: .continuous).strokeBorder(Color(.separator), lineWidth: 1))
-            .contentShape(RoundedRectangle(cornerRadius: 8, style: .continuous))
+            Spacer(minLength: 0)
+            if let image = preview?.imageUrl, let imageUrl = URL(string: image) {
+                AsyncImage(url: imageUrl) { phase in
+                    if let image = phase.image { image.resizable().scaledToFill() } else { Color.clear }
+                }
+                .frame(width: Self.imageSide, height: Self.imageSide)
+                .clipShape(RoundedRectangle(cornerRadius: 6, style: .continuous))
+            }
         }
-        .buttonStyle(.plain)
+        .frame(minHeight: Self.imageSide, alignment: .top)
+        .padding(10)
+        .overlay(RoundedRectangle(cornerRadius: 8, style: .continuous).strokeBorder(Color(.separator), lineWidth: 1))
+        .contentShape(RoundedRectangle(cornerRadius: 8, style: .continuous))
     }
 }

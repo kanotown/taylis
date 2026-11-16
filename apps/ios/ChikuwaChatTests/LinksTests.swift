@@ -270,6 +270,43 @@ final class LinkPreviewSlotTests: XCTestCase {
         }
     }
 
+    /// Hostile-server review (2026-11-16): links the tokenizer takes but the system cannot read stopped the app when their
+    /// card was drawn (a force-unwrap before the preview came). The card is drawn without a tap; nothing stops.
+    @MainActor
+    func testLinksTheSystemCannotReadDrawACardAndStopNothing() throws {
+        let unreadable = ["https://a:b:c", "https://exa%mple.com", "https://[x"]
+        for url in unreadable {
+            XCTAssertEqual(Links.first(in: "見て \(url) です"), url, "the tokenizer reads it as a link")
+            XCTAssertEqual(LinkPreviewCard.destination(url) == nil, URL(string: url) == nil)
+            let preview = LinkPreviewOut(url: "javascript:alert(1)", status: "ok", title: "T", description: nil, imageUrl: "https://[y",
+                                         siteName: nil, fetchedAt: "")
+            for shown in [nil, preview] {
+                let host = UIHostingController(rootView: LinkPreviewCard(preview: shown, url: url))
+                let size = host.sizeThatFits(in: CGSize(width: 320, height: UIView.layoutFittingCompressedSize.height))
+                XCTAssertGreaterThan(size.height, LinkPreviewCard.imageSide, url)
+                host.view.frame = CGRect(origin: .zero, size: size)
+                host.view.layoutIfNeeded()
+            }
+            // The whole row's body, as a conversation draws it.
+            let body = UIHostingController(rootView: MessageBodyView(text: "見て \(url) です", users: [:]))
+            body.view.frame = CGRect(x: 0, y: 0, width: 320, height: 200)
+            body.view.layoutIfNeeded()
+        }
+        // The card opens the message's link, not the preview's (the server's answer).
+        XCTAssertEqual(LinkPreviewCard.destination("https://a.test/x")?.absoluteString, "https://a.test/x")
+        // A request path built from such a string fails as a request, not as the app.
+        let api = ApiClient(baseUrl: URL(string: "https://server.test")!)
+        for path in unreadable + ["/api/v1/attachments/[x/content"] {
+            if URL(string: path, relativeTo: api.baseUrl) == nil {
+                XCTAssertThrowsError(try api.endpoint(path)) { XCTAssertEqual(($0 as? ApiError)?.code, "invalid_url") }
+            } else {
+                XCTAssertNoThrow(try api.endpoint(path))
+            }
+        }
+        XCTAssertThrowsError(try ShareApi.request(baseUrl: URL(string: "https://server.test")!, path: "https://[x", method: "GET", json: nil,
+                                                  token: nil, language: "ja", timeout: 5))
+    }
+
     @MainActor
     func testPreviewsAreKeptWithTheAccountButAFailedRequestIsNot() throws {
         let path = FileManager.default.temporaryDirectory.appendingPathComponent("previews-\(UUID().uuidString).db").path
