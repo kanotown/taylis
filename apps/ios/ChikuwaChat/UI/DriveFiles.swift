@@ -10,8 +10,33 @@ enum DriveFiles {
     /// Caches/drive/<area>: `downloads` (one folder per transfer, removed when its sheet closes) and `view` (a photo's
     /// original for the viewer, per version: the same version is never fetched twice).
     static func directory(_ area: String) -> URL {
-        FileManager.default.urls(for: .cachesDirectory, in: .userDomainMask)[0]
-            .appendingPathComponent("drive", isDirectory: true).appendingPathComponent(area, isDirectory: true)
+        root.appendingPathComponent(area, isDirectory: true)
+    }
+
+    private static var root: URL {
+        FileManager.default.urls(for: .cachesDirectory, in: .userDomainMask)[0].appendingPathComponent("drive", isDirectory: true)
+    }
+
+    /// Caches/drive/<server>/<area>: what is kept of one workspace (`view`: originals per version, `display`: an album's
+    /// display sizes). Per server (2026-11-16): another server's file with the same id is never this one; cleared when
+    /// the workspace signs out (`forget(server:)`).
+    static func directory(_ area: String, server: String) -> URL {
+        root.appendingPathComponent(SafePaths.serverKey(server), isDirectory: true).appendingPathComponent(area, isDirectory: true)
+    }
+
+    /// The workspace signs out or leaves: nothing of its files stays here.
+    static func forget(server: String) {
+        try? FileManager.default.removeItem(at: root.appendingPathComponent(SafePaths.serverKey(server), isDirectory: true))
+    }
+
+    /// The caches of builds before they were kept per server (Caches/drive/view, /display): gone once.
+    static func removeUnkeyedCaches() {
+        for area in ["view", "display"] { try? FileManager.default.removeItem(at: directory(area)) }
+    }
+
+    /// A version's file in the `view` cache (<server>/view/<version>/<name>); nil when the server's ids would leave it.
+    static func viewDestination(_ file: DriveFileOut, name: String, server: String) -> URL? {
+        SafePaths.file(under: directory("view", server: server), [SafePaths.idComponent(file.versionId ?? file.attachmentId), name])
     }
 
     /// An absolute URL for a path the server answered (`/api/v1/drive/download/<token>`).
@@ -75,9 +100,8 @@ enum DriveFiles {
     /// A photo's original for the viewer: from this device when this version was fetched already.
     @MainActor
     static func viewFile(_ item: DriveItemOut, controller: AppController) async -> URL? {
-        guard let api = controller.api, let file = item.file else { return nil }
-        let destination = directory("view").appendingPathComponent(file.versionId ?? file.attachmentId, isDirectory: true)
-            .appendingPathComponent(DriveRules.fileName(item.name))
+        guard let api = controller.api, let file = item.file,
+              let destination = viewDestination(file, name: DriveRules.fileName(item.name), server: api.baseUrl.absoluteString) else { return nil }
         if FileManager.default.fileExists(atPath: destination.path) { return destination }
         do {
             let ticket = try await api.driveDownloadTicket(item.id)
@@ -144,7 +168,10 @@ final class DriveDownload {
                     path = try await api.driveDownloadTicket(request.item.id).url
                 }
                 guard let url = DriveFiles.absolute(path, base: api.baseUrl) else { throw ApiError.network(URLError(.badURL)) }
-                let destination = folder.appendingPathComponent(name)
+                // The name is the server's: one component inside this transfer's folder (SafePaths).
+                guard let destination = SafePaths.file(under: folder, [SafePaths.nameComponent(name)]) else {
+                    throw ApiError.network(URLError(.cannotCreateFile))
+                }
                 state = .running
                 try await DriveFiles.download(url, to: destination) { [weak self] received, total in
                     guard let self, self.state == .running else { return }

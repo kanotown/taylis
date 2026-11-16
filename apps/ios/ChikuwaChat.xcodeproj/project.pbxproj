@@ -395,6 +395,7 @@
 		EDE53AD32D895962D18304A7 /* ComposerFormat.swift in Sources */ = {isa = PBXBuildFile; fileRef = 191961E1D178CA371B035C04 /* ComposerFormat.swift */; };
 		EEA72715611F65D23231E4D8 /* WidgetCommon.swift in Sources */ = {isa = PBXBuildFile; fileRef = 532F7B8A073805DC05D558B3 /* WidgetCommon.swift */; };
 		F078BBB3BB92B5F179638714 /* ScheduleCardView.swift in Sources */ = {isa = PBXBuildFile; fileRef = A88DC4E77DB8FC18AC5C65A7 /* ScheduleCardView.swift */; };
+		F0D02090D242A25097880EA1 /* SafePaths.swift in Sources */ = {isa = PBXBuildFile; fileRef = ACF321BE5DCBFAD423F3823D /* SafePaths.swift */; };
 		F0D4015861480BEFF75F8B6A /* CanvasesListTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = F2514359D7FCDBE0E8916EF8 /* CanvasesListTests.swift */; };
 		F14DD832AEE02B0491215BBC /* ShareSession.swift in Sources */ = {isa = PBXBuildFile; fileRef = 42BF2A2E4141DC20BF06CD05 /* ShareSession.swift */; };
 		F1DF4502E645742E45499BC4 /* MessageCodingTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = 5B4A789666614090C341ED42 /* MessageCodingTests.swift */; };
@@ -727,6 +728,7 @@
 		A88DC4E77DB8FC18AC5C65A7 /* ScheduleCardView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ScheduleCardView.swift; sourceTree = "<group>"; };
 		A8D41462A5457300887E01A5 /* PeopleList.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = PeopleList.swift; sourceTree = "<group>"; };
 		A980BB847A9CA5813A391341 /* DraftSync.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = DraftSync.swift; sourceTree = "<group>"; };
+		ACF321BE5DCBFAD423F3823D /* SafePaths.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = SafePaths.swift; sourceTree = "<group>"; };
 		ACF3C9EE8224ED1E97813BCF /* WidgetWorkspaces.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = WidgetWorkspaces.swift; sourceTree = "<group>"; };
 		AD73867C215B4C74259890CB /* AppController.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = AppController.swift; sourceTree = "<group>"; };
 		AD8985AFAA19CE7A4EEF8F77 /* DraftsTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = DraftsTests.swift; sourceTree = "<group>"; };
@@ -965,6 +967,7 @@
 				88CDEB6FCD3A86A6FCF05F3B /* CommunicationNotification.swift */,
 				F6DCE6D93A3F67867298163D /* InitialsAvatar.swift */,
 				B7A02E6942A8D6B822643B15 /* PushCenter.swift */,
+				ACF321BE5DCBFAD423F3823D /* SafePaths.swift */,
 				39E9ADECBF5D923FAA0488AD /* SQLiteStore.swift */,
 			);
 			path = Platform;
@@ -1998,6 +2001,7 @@
 				995E4F17B336663DCCF7D424 /* RevisionsView.swift in Sources */,
 				4C1D216F9007A60F431172C1 /* Roster.swift in Sources */,
 				A3F88C6675368E5954280D1E /* SQLiteStore.swift in Sources */,
+				F0D02090D242A25097880EA1 /* SafePaths.swift in Sources */,
 				F620F4D16BD57ABD77ABECE3 /* SavedView.swift in Sources */,
 				1C8D809901927C185631CCC1 /* Schedule.swift in Sources */,
 				F078BBB3BB92B5F179638714 /* ScheduleCardView.swift in Sources */,

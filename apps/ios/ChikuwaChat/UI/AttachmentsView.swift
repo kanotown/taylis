@@ -250,9 +250,10 @@ struct AttachmentTiles: View {
 }
 
 enum AttachmentFileCache {
-    static func destination(for attachment: AttachmentOut, in directory: URL) -> URL {
-        directory.appendingPathComponent(attachment.id.replacingOccurrences(of: "/", with: "_"), isDirectory: true)
-            .appendingPathComponent(attachment.filename.replacingOccurrences(of: "/", with: "_"))
+    /// <directory>/<attachment id>/<file name>; nil when the server's id or name would not stay inside `directory`
+    /// (2026-11-16: an id `..` wrote the file one folder up).
+    static func destination(for attachment: AttachmentOut, in directory: URL) -> URL? {
+        SafePaths.file(under: directory, [SafePaths.idComponent(attachment.id), SafePaths.nameComponent(attachment.filename)])
     }
 }
 
@@ -407,8 +408,8 @@ struct VideoTile: View {
         }
         guard model.readsVideoOnDevice(posterFailed: posterFailed) else { return }
         // Downloaded before (this launch or an earlier one): its header says, and a frame stands in for the poster.
-        let file = AttachmentFileCache.destination(for: attachment, in: FileManager.default.temporaryDirectory.appendingPathComponent("attachments", isDirectory: true))
-        guard FileManager.default.fileExists(atPath: file.path) else { return }
+        guard let file = AttachmentFileCache.destination(for: attachment, in: FileManager.default.temporaryDirectory.appendingPathComponent("attachments", isDirectory: true)),
+              FileManager.default.fileExists(atPath: file.path) else { return }
         await readVideo(file)
     }
 

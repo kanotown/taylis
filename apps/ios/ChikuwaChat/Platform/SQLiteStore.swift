@@ -90,9 +90,12 @@ final class SQLitePersistence: Persistence {
     }
 
     /// `profile` is "server|username"; each account gets its own file.
+    ///
+    /// No file of another name is adopted (2026-11-16): the move of the sanitised-name files of the first build
+    /// (2026-09-26, renamed the next day before any release) took any `chikuwa-<server-user>.db` it found, so a file planted
+    /// there (through a path a server's id could reach) became an account's cache and send queue.
     static func open(profile: String) throws -> SQLitePersistence {
         let url = try location(profile: profile)
-        moveLegacyFile(profile: profile, to: url)
         return try SQLitePersistence(db: SQLiteDatabase(path: url.path))
     }
 
@@ -118,17 +121,6 @@ final class SQLitePersistence: Persistence {
         let directory = try FileManager.default.url(for: .applicationSupportDirectory, in: .userDomainMask, appropriateFor: nil, create: true)
         let digest = SHA256.hash(data: Data(profile.utf8)).prefix(16).map { String(format: "%02x", $0) }.joined()
         return directory.appendingPathComponent("chikuwa-\(digest).db")
-    }
-
-    /// Earlier builds named the file after the sanitised profile; its cache and unsent messages move over once.
-    private static func moveLegacyFile(profile: String, to url: URL) {
-        let safe = profile.replacingOccurrences(of: "[^a-zA-Z0-9]+", with: "-", options: .regularExpression).prefix(80)
-        let legacy = url.deletingLastPathComponent().appendingPathComponent("chikuwa-\(safe).db")
-        let files = FileManager.default
-        guard legacy != url, !files.fileExists(atPath: url.path), files.fileExists(atPath: legacy.path) else { return }
-        for suffix in ["", "-wal", "-shm"] where files.fileExists(atPath: legacy.path + suffix) {
-            try? files.moveItem(atPath: legacy.path + suffix, toPath: url.path + suffix)
-        }
     }
 
     func close() { db.close() }

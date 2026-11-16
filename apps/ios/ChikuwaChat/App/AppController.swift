@@ -324,6 +324,7 @@ final class AppController {
         if defaults === UserDefaults.standard { publishWidgetWorkspaces() } // the widgets' list, also when nothing changed
         Task { await refreshServerInfo() }
         Task { await refreshSummaries() }
+        Task.detached(priority: .background) { DriveFiles.removeUnkeyedCaches() } // kept per server since 2026-11-16
         // Its screen, as a tap on a running app opens it (its workspace is open already). It only set the conversation
         // (2026-11-13): a reply's thread, a reaction's message, an event, a task, a page… were lost whenever iOS handed
         // the tap over before this ran, and opened as they should when it came a moment later (the `late` one).
@@ -1009,11 +1010,10 @@ final class AppController {
 
     /// Fetch with authentication into a per-attachment temporary file for preview / sharing.
     func downloadAttachment(_ attachment: AttachmentOut) async -> URL? {
-        guard let api else { return nil }
+        let dir = FileManager.default.temporaryDirectory.appendingPathComponent("attachments", isDirectory: true)
+        guard let api, let url = AttachmentFileCache.destination(for: attachment, in: dir) else { return nil }
         do {
             let data = try await api.fetchData("/api/v1/attachments/\(attachment.id)/content")
-            let dir = FileManager.default.temporaryDirectory.appendingPathComponent("attachments", isDirectory: true)
-            let url = AttachmentFileCache.destination(for: attachment, in: dir)
             try FileManager.default.createDirectory(at: url.deletingLastPathComponent(), withIntermediateDirectories: true)
             try data.write(to: url, options: .atomic)
             return url
@@ -2491,6 +2491,7 @@ final class AppController {
         forgetAttendanceWidget(account: workspace.account) // the 在室状況 widget's snapshot of it (and the other widgets')
         SQLitePersistence.destroy(profile: workspace.account)
         EmojiImageCache.remove(server: serverUrl) // its custom emoji pictures (docs/EMOJI.md §10)
+        DriveFiles.forget(server: serverUrl) // its drive originals and album photos kept on this device
         RecentSearches.clear(key: RecentSearches.key(account: workspace.account))
         if remove {
             workspaces.removeAll { $0.serverUrl == serverUrl }

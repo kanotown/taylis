@@ -108,8 +108,8 @@ final class BrowserSnapshotTests: XCTestCase {
         let a = AttachmentFileCache.destination(for: file("a"), in: directory)
         let b = AttachmentFileCache.destination(for: file("b"), in: directory)
         XCTAssertNotEqual(a, b)
-        XCTAssertEqual(a.lastPathComponent, "notes.txt")
-        XCTAssertEqual(b.lastPathComponent, "notes.txt")
+        XCTAssertEqual(a?.lastPathComponent, "notes.txt")
+        XCTAssertEqual(b?.lastPathComponent, "notes.txt")
     }
 
     func testMemberLoadFailureIsNotAnEmptySuccessfulList() async {

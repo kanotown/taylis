@@ -202,7 +202,8 @@ actor EmojiImageCache {
 
     /// A file: the version (UTF-8, no newline; "" for none), a newline, then the image as the server sent it.
     private nonisolated func file(_ id: String) -> URL {
-        directory.appendingPathComponent(id.replacingOccurrences(of: "/", with: "_"), isDirectory: false)
+        // The id is the server's: as it is only when UUID-shaped, else hashed (never `..` or a separator; SafePaths).
+        directory.appendingPathComponent(SafePaths.idComponent(id), isDirectory: false)
     }
 
     struct Stored {

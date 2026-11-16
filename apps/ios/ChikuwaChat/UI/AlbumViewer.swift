@@ -5,7 +5,8 @@ import UIKit
 
 // AL3 (docs/ALBUMS.md §6, §10.3, §12): an album's photos full screen and as a slideshow. Both read the display size
 // (2048 px WebP, no metadata) and the original only on 「元の画像」, a zoom past the display size, saving to Photos or
-// sharing. Kept per attachment in Caches/drive/display (the system clears caches when it needs the room).
+// sharing. Kept per attachment in Caches/drive/<server>/display (the system clears caches when it needs the room; a
+// sign-out clears its workspace's).
 
 /// What the photo viewer adds for an album (ImageViewer's `extras`).
 struct ImageViewerExtras {
@@ -27,8 +28,10 @@ enum AlbumFiles {
     /// A photo's display size on this device (fetched once per attachment: a version's bytes never change).
     @MainActor
     static func display(_ attachmentId: String, controller: AppController) async -> URL? {
-        guard let api = controller.api else { return nil }
-        let destination = DriveFiles.directory("display").appendingPathComponent(attachmentId + ".img")
+        // Per server, and only inside the folder whatever the id (2026-11-16: `attachmentId + ".img"` took `../…`).
+        guard let api = controller.api,
+              let destination = SafePaths.file(under: DriveFiles.directory("display", server: api.baseUrl.absoluteString),
+                                               [SafePaths.idComponent(attachmentId) + ".img"]) else { return nil }
         if FileManager.default.fileExists(atPath: destination.path) { return destination }
         do {
             let data = try await api.fetchData(AlbumRules.displayPath(attachmentId))

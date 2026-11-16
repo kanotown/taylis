@@ -1215,3 +1215,101 @@ final class MessageEditFilesTests: XCTestCase {
         XCTAssertEqual(controller.error, "このサーバではファイルを変更できません")
     }
 }
+
+/// 2026-11-16 (a hostile-server review): server strings that reach a file path stay under their folder. An attachment id
+/// `..` or `../../Library/…` put the app's files wherever the server liked.
+final class SafePathsTests: XCTestCase {
+    private let root = FileManager.default.temporaryDirectory.appendingPathComponent("safe-paths-\(UUID().uuidString)", isDirectory: true)
+
+    func testOnlyUUIDShapedIdsNameAPathAsTheyAre() {
+        let id = "0190a8c2-7d3e-7b1a-9c4e-1f2a3b4c5d6e"
+        XCTAssertEqual(SafePaths.idComponent(id), id)
+        XCTAssertEqual(SafePaths.idComponent(id.uppercased()), id.uppercased())
+        for hostile in ["..", ".", "", "../x", "../../Library/Application Support", "a/b", "0190a8c2-7d3e-7b1a-9c4e-1f2a3b4c5d6e/..",
+                        "0190a8c2-7d3e-7b1a-9c4e-1f2a3b4c5d6", "tab-0190a8c2-7d3e-7b1a-9c4e-1f2a3b4c5d6e", "%2e%2e"] {
+            let component = SafePaths.idComponent(hostile)
+            XCTAssertTrue(component.hasPrefix("h-"), hostile)
+            XCTAssertFalse(component.contains("/"), hostile)
+            XCTAssertNotNil(SafePaths.file(under: root, [component]), hostile)
+        }
+        XCTAssertNotEqual(SafePaths.idComponent("../a"), SafePaths.idComponent("../b"))
+    }
+
+    func testNamesLoseTheirSeparators() {
+        XCTAssertEqual(SafePaths.nameComponent("議事録.pdf"), "議事録.pdf")
+        XCTAssertEqual(SafePaths.nameComponent("../../x.txt"), ".._.._x.txt")
+        XCTAssertEqual(SafePaths.nameComponent("a\\b:c"), "a_b_c")
+        XCTAssertEqual(SafePaths.nameComponent("a\u{0}b\u{7}c"), "a_b_c")
+        for empty in ["", "  ", ".", ".."] { XCTAssertEqual(SafePaths.nameComponent(empty), "file", empty) }
+        let long = SafePaths.nameComponent(String(repeating: "あ", count: 300) + ".pdf")
+        XCTAssertEqual(long.count, 200)
+        XCTAssertTrue(long.hasSuffix(".pdf"))
+    }
+
+    func testAPathIsCheckedToStayUnderItsRoot() {
+        XCTAssertEqual(SafePaths.file(under: root, ["a", "b.txt"])?.path, root.appendingPathComponent("a/b.txt").path)
+        for escape in [[".."], [".", ".."], ["..", "x"], ["a/../../x"], ["a", "../../x"], ["."], ["a", ".."], []] {
+            XCTAssertNil(SafePaths.file(under: root, escape), "\(escape)")
+        }
+        XCTAssertTrue(SafePaths.isInside(root.appendingPathComponent("x"), root: root))
+        XCTAssertFalse(SafePaths.isInside(URL(fileURLWithPath: root.path + "-sibling/x"), root: root), "a sibling with the same prefix")
+    }
+
+    func testAttachmentAndDriveCachesStayInTheirFolders() throws {
+        func attachment(_ id: String, _ name: String) -> AttachmentOut {
+            AttachmentOut(id: id, filename: name, contentType: "application/octet-stream", sizeBytes: 1, width: nil, height: nil,
+                          hasThumbnail: false, status: "attached", createdAt: "")
+        }
+        for (id, name) in [("..", "x.txt"), ("../../Library", "../Preferences/evil.plist"), ("0190a8c2-7d3e-7b1a-9c4e-1f2a3b4c5d6e", "..")] {
+            let file = try XCTUnwrap(AttachmentFileCache.destination(for: attachment(id, name), in: root), id)
+            XCTAssertTrue(SafePaths.isInside(file, root: root), "\(id) \(name)")
+            XCTAssertEqual(file.deletingLastPathComponent().deletingLastPathComponent().standardizedFileURL.path, root.standardizedFileURL.path)
+        }
+        // A drive version's original: per server, inside its `view` folder whatever the ids.
+        let hostile = DriveFileOut(attachmentId: "../../x", versionId: "../..")
+        let a = try XCTUnwrap(DriveFiles.viewDestination(hostile, name: DriveRules.fileName("../evil"), server: "https://a.example"))
+        XCTAssertTrue(SafePaths.isInside(a, root: DriveFiles.directory("view", server: "https://a.example")))
+        let b = try XCTUnwrap(DriveFiles.viewDestination(DriveFileOut(attachmentId: "x", versionId: "0190a8c2-7d3e-7b1a-9c4e-1f2a3b4c5d6e"),
+                                                         name: "photo.jpg", server: "https://b.example"))
+        XCTAssertTrue(b.path.hasSuffix("/view/0190a8c2-7d3e-7b1a-9c4e-1f2a3b4c5d6e/photo.jpg"))
+        XCTAssertNotEqual(DriveFiles.directory("view", server: "https://a.example"), DriveFiles.directory("view", server: "https://b.example"))
+        XCTAssertEqual(DriveFiles.directory("view", server: "HTTPS://A.example/"), DriveFiles.directory("view", server: "https://a.example"))
+    }
+
+    /// A workspace's sign-out clears its cached drive files, not another's.
+    func testSigningOutClearsTheWorkspacesCachedFiles() throws {
+        let aServer = "https://forget-a-\(UUID().uuidString.prefix(8).lowercased()).example"
+        let bServer = "https://forget-b-\(UUID().uuidString.prefix(8).lowercased()).example"
+        let a = DriveFiles.directory("view", server: aServer)
+        let b = DriveFiles.directory("display", server: bServer)
+        for folder in [a, b] {
+            try FileManager.default.createDirectory(at: folder, withIntermediateDirectories: true)
+            try Data([1]).write(to: folder.appendingPathComponent("f"))
+        }
+        DriveFiles.forget(server: bServer)
+        XCTAssertFalse(FileManager.default.fileExists(atPath: b.path))
+        XCTAssertTrue(FileManager.default.fileExists(atPath: a.appendingPathComponent("f").path))
+        DriveFiles.forget(server: aServer)
+        XCTAssertFalse(FileManager.default.fileExists(atPath: a.path))
+    }
+
+    /// The first build's sanitised-name database is no longer adopted: a file planted under that name never becomes an
+    /// account's cache and send queue.
+    func testAPlantedDatabaseIsNotAdopted() throws {
+        let profile = "https://planted-\(UUID().uuidString.prefix(8).lowercased()).example|bob"
+        let url = try SQLitePersistence.location(profile: profile)
+        let safe = profile.replacingOccurrences(of: "[^a-zA-Z0-9]+", with: "-", options: .regularExpression).prefix(80)
+        let planted = url.deletingLastPathComponent().appendingPathComponent("chikuwa-\(safe).db")
+        defer {
+            SQLitePersistence.destroy(profile: profile)
+            for suffix in ["", "-wal", "-shm"] { try? FileManager.default.removeItem(atPath: planted.path + suffix) }
+        }
+        let plantedDb = try SQLitePersistence(db: SQLiteDatabase(path: planted.path))
+        try plantedDb.saveMeta(key: "planted", value: "yes")
+        plantedDb.close()
+        let opened = try SQLitePersistence.open(profile: profile)
+        defer { opened.close() }
+        XCTAssertNil(try opened.loadAll().meta["planted"])
+        XCTAssertTrue(FileManager.default.fileExists(atPath: planted.path), "left where it was")
+    }
+}

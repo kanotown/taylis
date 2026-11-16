@@ -127,11 +127,14 @@ final class DocumentPDFLoader {
         let data = try await api.fetchData("/api/v1/attachments/\(attachmentId)/preview/pdf")
         try Task.checkCancellation()
         guard let document = PDFDocument(data: data) else { status = .failed; return }
-        // For the share button: a PDF named after the original (「議事録.pdf」), in the app's temporary folder.
-        let dir = FileManager.default.temporaryDirectory.appendingPathComponent("previews", isDirectory: true)
-            .appendingPathComponent(attachmentId.replacingOccurrences(of: "/", with: "_"), isDirectory: true)
-        try FileManager.default.createDirectory(at: dir, withIntermediateDirectories: true)
-        let url = dir.appendingPathComponent(Self.pdfName(filename))
+        // For the share button: a PDF named after the original (「議事録.pdf」), in the app's temporary folder. The id and
+        // the name are the server's: kept inside the folder (SafePaths).
+        let previews = FileManager.default.temporaryDirectory.appendingPathComponent("previews", isDirectory: true)
+        guard let url = SafePaths.file(under: previews, [SafePaths.idComponent(attachmentId), SafePaths.nameComponent(Self.pdfName(filename))]) else {
+            status = .failed
+            return
+        }
+        try FileManager.default.createDirectory(at: url.deletingLastPathComponent(), withIntermediateDirectories: true)
         try data.write(to: url, options: .atomic)
         self.file = url
         self.document = document
@@ -199,10 +202,11 @@ final class DocumentPDFLoader {
 
     /// The PDF itself (its preview is not ready): the download ticket's URL to the caches, kept per version.
     private func loadOriginal(_ item: DriveItemOut, api: ApiClient) async throws {
-        guard let file = item.file else { status = .failed; return }
         let name = Self.pdfName(DriveRules.fileName(item.name))
-        let destination = DriveFiles.directory("view").appendingPathComponent(file.versionId ?? file.attachmentId, isDirectory: true)
-            .appendingPathComponent(name)
+        guard let file = item.file, let destination = DriveFiles.viewDestination(file, name: name, server: api.baseUrl.absoluteString) else {
+            status = .failed
+            return
+        }
         if !FileManager.default.fileExists(atPath: destination.path) {
             let ticket = try await api.driveDownloadTicket(item.id)
             guard let url = DriveFiles.absolute(ticket.url, base: api.baseUrl) else { status = .failed; return }
