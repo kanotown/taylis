@@ -37,12 +37,14 @@ enum ComposerCompletions {
     }
 
     /// `completed` (`Mentions.complete` / `Emoji.complete`, which end with a space) on the text before `cursor`; the text
-    /// after it stays, without a second space when one follows. The new text and the cursor after the completion.
+    /// after it stays. A space right after the cursor is the one the completion ends with (the desktop's `takenAfter`):
+    /// one space there, and the cursor after it, past the completed word (before it, the word would be read again and
+    /// offered). The new text and the cursor.
     static func complete(_ text: String, cursor: Int, _ completed: (String) -> String) -> (text: String, selection: Range<Int>) {
         let at = max(0, min(cursor, text.count))
-        let rest = String(text.dropFirst(at))
-        var head = completed(String(text.prefix(at)))
-        if head.hasSuffix(" "), rest.first?.isWhitespace == true { head.removeLast() }
+        let head = completed(String(text.prefix(at)))
+        var rest = Substring(text.dropFirst(at))
+        if head.hasSuffix(" "), rest.first == " " { rest = rest.dropFirst() }
         return (head + rest, head.count..<head.count)
     }
 

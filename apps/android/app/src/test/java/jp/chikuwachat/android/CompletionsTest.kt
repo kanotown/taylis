@@ -54,8 +54,8 @@ class CompletionsTest {
         val text = "確認 @al を見て"
         val at = text.indexOf(" を")
         val done = Completions.mention(text, at, "alice")
-        assertEquals("確認 @alice を見て", done.text) // one space: the one after the cursor stays
-        assertEquals(Result(done.text, "確認 @alice".length, "確認 @alice".length), done)
+        assertEquals("確認 @alice を見て", done.text) // one space: the one after the cursor is the completion's
+        assertEquals(Result(done.text, "確認 @alice ".length, "確認 @alice ".length), done) // after it, as on the desktop
         val party = "やった :tad!"
         val glyph = Completions.emoji(party, party.indexOf("!"), "🎉")
         assertEquals("やった 🎉 !", glyph.text)

@@ -44,7 +44,10 @@ final class ComposerCompletionsTests: XCTestCase {
         XCTAssertEqual(ComposerCompletions.typed("abc", range: 9..<9), "abc")
         let middle = ComposerCompletions.complete("了解です :tad 明日", cursor: 9) { Emoji.complete($0, glyph: "🎉") }
         XCTAssertEqual(middle.text, "了解です 🎉 明日")  // no second space before 「明日」
-        XCTAssertEqual(middle.selection, 6..<6)  // after 🎉
+        XCTAssertEqual(middle.selection, 7..<7)  // after the space, as on the desktop
+        // Before a line break the completion keeps its own space (only a space is taken).
+        let line = ComposerCompletions.complete("確認 @yam\n次", cursor: 7) { Mentions.complete($0, username: "yamada") }
+        XCTAssertEqual(line.text, "確認 @yamada \n次")
         let end = ComposerCompletions.complete("確認 @yam", cursor: 7) { Mentions.complete($0, username: "yamada") }
         XCTAssertEqual(end.text, "確認 @yamada ")
         XCTAssertEqual(end.selection, 11..<11)

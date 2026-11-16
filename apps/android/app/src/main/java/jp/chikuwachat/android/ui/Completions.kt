@@ -92,11 +92,15 @@ object Completions {
     /** `:name` typed before [cursor] replaced with [glyph] (and a space), the cursor after it. */
     fun emoji(text: String, cursor: Int, glyph: String): ComposerFormat.Result = complete(text, cursor) { Emoji.complete(it, glyph) }
 
-    /** [completed] on the text before [cursor]; the text after it stays (the added space is dropped before a space there). */
+    /**
+     * [completed] on the text before [cursor]; the text after it stays. A space right after the cursor is the one the
+     * completion ends with (the desktop's `takenAfter`): one space there, and the cursor after it, past the completed word
+     * (before it, the word would be read again and offered).
+     */
     private fun complete(text: String, cursor: Int, completed: (String) -> String): ComposerFormat.Result {
         val at = cursor.coerceIn(0, text.length)
-        val rest = text.substring(at)
-        val head = completed(text.substring(0, at)).let { if (it.endsWith(" ") && rest.firstOrNull()?.isWhitespace() == true) it.dropLast(1) else it }
+        val head = completed(text.substring(0, at))
+        val rest = text.substring(at).let { if (head.endsWith(" ") && it.startsWith(" ")) it.substring(1) else it }
         return ComposerFormat.Result(head + rest, head.length, head.length)
     }
 
