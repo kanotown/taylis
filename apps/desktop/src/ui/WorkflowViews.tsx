@@ -55,9 +55,18 @@ export function invalidateWorkflowLists(): void {
   cache.clear();
 }
 
+/**
+ * The cache's key: the server and the channel (2026-11-16: by the channel's id alone, a server that gave a channel
+ * another workspace's id had its workflows offered in that workspace's channel for a minute).
+ */
+function cacheKey(server: string | undefined, channelId: string): string {
+  return `${server ?? ""}|${channelId}`;
+}
+
 /** The workflows a channel offers (null while loading; [] on an older server or a failure). No fetch for null. */
 export function useChannelWorkflows(controller: AppController, channelId: string | null, refresh = 0): WorkflowOut[] | null {
-  const cached = channelId ? cache.get(channelId) : undefined;
+  const server = controller.api?.baseUrl;
+  const cached = channelId ? cache.get(cacheKey(server, channelId)) : undefined;
   const [list, setList] = useState<WorkflowOut[] | null>(cached?.list ?? null);
   useEffect(() => {
     const api = controller.api;
@@ -65,7 +74,8 @@ export function useChannelWorkflows(controller: AppController, channelId: string
       setList(null);
       return;
     }
-    const hit = cache.get(channelId);
+    const key = cacheKey(api.baseUrl, channelId);
+    const hit = cache.get(key);
     if (hit && Date.now() - hit.at < CACHE_MS && refresh === 0) {
       setList(hit.list);
       return;
@@ -75,13 +85,13 @@ export function useChannelWorkflows(controller: AppController, channelId: string
       .then(() => api.channelWorkflows(channelId))
       .then(
         (rows) => {
-          cache.set(channelId, { at: Date.now(), list: rows });
+          cache.set(key, { at: Date.now(), list: rows });
           if (current) setList(rows);
         },
         () => { if (current) setList([]); },
       );
     return () => { current = false; };
-  }, [controller, channelId, refresh]);
+  }, [controller, server, channelId, refresh]);
   return channelId ? list : null;
 }
 

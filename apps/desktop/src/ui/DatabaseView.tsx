@@ -66,17 +66,26 @@ import {
 
 const PAGE = 200;
 
-function readRemembered(databaseId: string): string | null {
+/**
+ * The view last shown of a database, on this device, by server and database (2026-11-16: by the database's id alone,
+ * a server could name another workspace's database and read or set which view it opens with). The key before that
+ * is still read, never written.
+ */
+function viewKey(server: string, databaseId: string): string {
+  return `wikidb:view:${server}|${databaseId}`;
+}
+
+export function readRemembered(server: string, databaseId: string): string | null {
   try {
-    return localStorage.getItem(`wikidb:view:${databaseId}`);
+    return localStorage.getItem(viewKey(server, databaseId)) ?? localStorage.getItem(`wikidb:view:${databaseId}`);
   } catch {
     return null;
   }
 }
 
-function remember(databaseId: string, viewId: string): void {
+export function remember(server: string, databaseId: string, viewId: string): void {
   try {
-    localStorage.setItem(`wikidb:view:${databaseId}`, viewId);
+    localStorage.setItem(viewKey(server, databaseId), viewId);
   } catch {
     // private mode: the first view next time
   }
@@ -136,9 +145,10 @@ export function DatabaseView({ controller, databaseId, compact, renderPeek, onOp
   embed?: DbEmbed | null;
 }) {
   const hub = useWikiHub(controller);
+  const server = controller.api?.baseUrl ?? "";
   const [database, setDatabase] = useState<DatabaseOut | null>(null);
   const [failed, setFailed] = useState(false);
-  const [viewId, setViewId] = useState<string | null>(() => (embed ? embed.viewId : readRemembered(databaseId)));
+  const [viewId, setViewId] = useState<string | null>(() => (embed ? embed.viewId : readRemembered(server, databaseId)));
   const [draft, setDraft] = useState<DbViewIn | null>(null);
   const [rows, setRows] = useState<DbRow[]>([]);
   // M147: a grouped answer's groups and the group of each row (null: not grouped).
@@ -376,7 +386,7 @@ export function DatabaseView({ controller, databaseId, compact, renderPeek, onOp
       setDatabase(next);
       lastSaved.current = JSON.stringify(body);
       setViewId(id);
-      remember(databaseId, id);
+      remember(server, databaseId, id);
     } catch (error) {
       controller.setError(error);
     }
@@ -458,7 +468,7 @@ export function DatabaseView({ controller, databaseId, compact, renderPeek, onOp
         <div role="tablist" aria-label={t("docs.db.views")} className="flex min-w-0 flex-1 flex-wrap items-center gap-0.5">
           {database.views.map((v) => (
             <ViewTab key={v.id} view={v} active={v.id === view.id} canShape={canShape} last={database.views.length === 1}
-              onPick={() => { setViewId(v.id); remember(databaseId, v.id); setDraft(viewBody(v)); lastSaved.current = JSON.stringify(viewBody(v)); }}
+              onPick={() => { setViewId(v.id); remember(server, databaseId, v.id); setDraft(viewBody(v)); lastSaved.current = JSON.stringify(viewBody(v)); }}
               onRename={() => setRenaming(v)}
               onDelete={() => void deleteView(v.id)}
             />

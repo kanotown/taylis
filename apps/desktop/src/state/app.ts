@@ -958,6 +958,8 @@ export class AppController {
 
   readonly linkPreviews = new Map<string, LinkPreviewOut | null>();
   private readonly previewLoads = new Map<string, Promise<void>>();
+  /** The workspace whose answers linkPreviews and attachmentMetas hold (emptied when another comes on screen). */
+  private cachesServer: string | null = null;
   /** The cards waiting for a preview (M21): a preview arriving re-renders them only, not the whole app. */
   private readonly previewListeners = new Set<() => void>();
 
@@ -971,16 +973,16 @@ export class AppController {
     if (this.linkPreviews.has(url)) return this.linkPreviews.get(url);
     if (!this.api || this.previewLoads.has(url)) return undefined;
     const api = this.api;
-    const load = api
+    const load: Promise<void> = api
       .linkPreview(url)
       .then((preview) => {
-        this.linkPreviews.set(url, preview.status === "ok" ? preview : null);
+        if (this.api === api) this.linkPreviews.set(url, preview.status === "ok" ? preview : null); // not after a switch
       })
       .catch(() => {
-        this.linkPreviews.set(url, null); // refused or rate limited: no card for this session
+        if (this.api === api) this.linkPreviews.set(url, null); // refused or rate limited: no card for this session
       })
       .finally(() => {
-        this.previewLoads.delete(url);
+        if (this.previewLoads.get(url) === load) this.previewLoads.delete(url);
         for (const listener of this.previewListeners) listener();
       });
     this.previewLoads.set(url, load);
@@ -2409,6 +2411,14 @@ export class AppController {
     this.openChannelRequest = null;
     this.totpRequired = false;
     configureAvatars((path) => session.api.fetchBlob(path, undefined, SMALL_IMAGE_MAX_BYTES), session.serverUrl); // M14a: another workspace starts an empty cache
+    // 2026-11-16: link previews (by URL) and attachment details (by id) are another workspace's server's answers;
+    // they are not shown in this one (its server may name the same URL or id).
+    if (this.cachesServer !== session.serverUrl) {
+      this.cachesServer = session.serverUrl;
+      this.linkPreviews.clear();
+      this.previewLoads.clear();
+      this.attachmentMetas.clear();
+    }
     noteVersions(session.store.users.values());
     this.saveWorkspaces();
     setTitleBase(this.workspaceName);
@@ -3219,10 +3229,12 @@ export class AppController {
     if (!api) return Promise.resolve(null);
     let pending = this.attachmentMetas.get(attachmentId);
     if (!pending) {
-      pending = api.getAttachment(attachmentId).catch((error: unknown) => {
-        if (!(error instanceof ApiError)) this.attachmentMetas.delete(attachmentId); // network: ask again later
+      const asked: Promise<AttachmentOut | null> = api.getAttachment(attachmentId).catch((error: unknown) => {
+        // A network failure: ask again later (unless another workspace's answers replaced the cache meanwhile).
+        if (!(error instanceof ApiError) && this.attachmentMetas.get(attachmentId) === asked) this.attachmentMetas.delete(attachmentId);
         return null;
       });
+      pending = asked;
       this.attachmentMetas.set(attachmentId, pending);
     }
     return pending;
