@@ -4,10 +4,10 @@
  *   npm run build:mobile-editor     → apps/shared/mobile-editor/dist: index.html, editor.js, editor.css, fonts/ (KaTeX)
  *   npm run preview:mobile-editor   → http://127.0.0.1:1422/?dev=1 (the dev harness stands in for native)
  *
- * One classic script (no module, no preload: a WKURLSchemeHandler / WebViewAssetLoader and file:// all take it), one
- * stylesheet, relative paths, a CSP that lets the page talk to no one (connect-src 'none'). KaTeX is in the script
- * and its fonts (woff2 only) beside it. The i18n dictionaries are cut down to the keys the bundled modules name
- * (prunedDictionaries: 3,200 texts × 3 languages would be most of the bundle).
+ * One classic script (no module, no preload: a WKURLSchemeHandler and WebViewAssetLoader both take it), one
+ * stylesheet, relative paths, a CSP that lets the page talk to no one (connect-src 'none') and run nothing but its
+ * own script. KaTeX is in the script and its fonts (woff2 only) beside it. The i18n dictionaries are cut down to the
+ * keys the bundled modules name (prunedDictionaries: 3,200 texts × 3 languages would be most of the bundle).
  */
 import { readFileSync } from "node:fs";
 import { resolve } from "node:path";
@@ -20,9 +20,18 @@ import { katexWoff2Only } from "./vite.config.ts";
 /** The URL scheme the iOS app serves the bundle and its pictures from (WKURLSchemeHandler); Android serves https://appassets.androidplatform.net, which is 'self'. */
 const IOS_SCHEME = "taylis-editor:";
 
-const CSP = [
+/**
+ * The bundle's one script where each app serves it (2026-11-16, a hostile-server review): iOS at
+ * taylis-editor://app/ (EditorSchemeHandler in apps/ios/ChikuwaChat/UI/MobileEditor/MobileEditorWebView.swift), Android
+ * at https://appassets.androidplatform.net/editor/ (WebViewAssetLoader in apps/android/…/ui/MobileEditor.kt). Before,
+ * script-src was the whole scheme and 'self', which also hold the page's pictures (`/attachment/<id>`, a server's
+ * bytes): an injected <script> pointing at one would have run.
+ */
+export const EDITOR_SCRIPTS = ["taylis-editor://app/editor.js", "https://appassets.androidplatform.net/editor/editor.js"] as const;
+
+export const CSP = [
   "default-src 'none'",
-  `script-src 'self' ${IOS_SCHEME}`,
+  `script-src ${EDITOR_SCRIPTS.join(" ")}`,
   `style-src 'self' ${IOS_SCHEME} 'unsafe-inline'`,
   `img-src 'self' ${IOS_SCHEME} data:`,
   `font-src 'self' ${IOS_SCHEME}`,
@@ -30,6 +39,27 @@ const CSP = [
   "base-uri 'none'",
   "form-action 'none'",
 ].join("; ");
+
+const OUT_DIR = resolve(import.meta.dirname, "../shared/mobile-editor/dist");
+
+/**
+ * `npm run preview:mobile-editor` serves the built page from this computer: there its script-src also takes the
+ * preview's own editor.js ('self'). The built file, which the apps ship, names only theirs.
+ */
+function previewPage(): Plugin {
+  return {
+    name: "taylis-preview-page",
+    configurePreviewServer(server) {
+      server.middlewares.use((req, res, next) => {
+        const path = (req.url ?? "/").split("?")[0];
+        if (path !== "/" && path !== "/index.html") return next();
+        const html = readFileSync(resolve(OUT_DIR, "index.html"), "utf8").replace("script-src ", "script-src 'self' ");
+        res.setHeader("Content-Type", "text/html; charset=utf-8");
+        res.end(html);
+      });
+    },
+  };
+}
 
 /** The built page: a classic script tag (Vite writes a module one), the CSP (not in the source: the dev server needs its inline scripts). */
 function classicPage(): Plugin {
@@ -91,12 +121,12 @@ function prunedDictionaries(): Plugin {
 export default defineConfig({
   root: resolve(import.meta.dirname, "mobile-editor"),
   base: "./",
-  plugins: [katexWoff2Only(), react(), tailwindcss(), prunedDictionaries(), classicPage()],
+  plugins: [katexWoff2Only(), react(), tailwindcss(), prunedDictionaries(), classicPage(), previewPage()],
   clearScreen: false,
   server: { port: 1422, strictPort: true },
   preview: { port: 1422, strictPort: true },
   build: {
-    outDir: resolve(import.meta.dirname, "../shared/mobile-editor/dist"),
+    outDir: OUT_DIR,
     emptyOutDir: true,
     target: "es2022",
     // One script: no preload helper (its import.meta has no meaning in a classic script) and no polyfill.
