@@ -50,8 +50,14 @@ def main(scratch: Path) -> None:
     src.resize((1024, 1024), LANCZOS).save(ios, optimize=True)
 
     # Android foreground: the source pixels inside the squirrel grown by a few pixels (the edge
-    # blends with the brown, which matches the background layer), transparent elsewhere.
-    grown = Image.fromarray(((diff > 12) * 255).astype(np.uint8)).filter(ImageFilter.MaxFilter(9))
+    # blends with the brown, which matches the background layer), transparent elsewhere. Inside is
+    # whatever the brown around the squirrel does not reach, so that a patch whose own brown is
+    # close to the background's does not become a hole. (copy(): fromarray's image is read-only,
+    # and floodfill on it changes nothing.)
+    outline = Image.fromarray(((diff > 12) * 255).astype(np.uint8)).copy()
+    ImageDraw.floodfill(outline, (0, 0), 128)  # the outside
+    inside = Image.fromarray(((np.asarray(outline) != 128) * 255).astype(np.uint8))
+    grown = inside.filter(ImageFilter.MaxFilter(9))
     grown = grown.filter(ImageFilter.GaussianBlur(2))
     fg = src.convert("RGBA")
     fg.putalpha(grown)
@@ -110,9 +116,18 @@ def main(scratch: Path) -> None:
 
 
 def flatten(img: Image.Image) -> Image.Image:
-    """Snap the source's faint grain to its few flat colours (edges stay as they are). The
-    artwork is flat, and grain-free PNGs are a fraction of the size."""
+    """Take the source's faint grain off the flat areas (edges stay as they are). The artwork is
+    flat, and grain-free PNGs are a fraction of the size. Two steps: a pixel close to the median
+    colour of its neighbourhood becomes that colour; then an area that is (nearly) one of the
+    image's main colours becomes exactly that colour.
+
+    (2026-11-16: the second step used to be the only one, with a margin wide enough for the grain.
+    A patch whose brown lay between two main colours then went to one or the other pixel by pixel,
+    following the grain, and the squirrel's mid-brown patches came out speckled.)"""
     px = np.asarray(img).astype(int)
+    local = np.asarray(img.filter(ImageFilter.MedianFilter(15))).astype(int)
+    px = np.where((np.abs(px - local).max(axis=-1) <= 12)[..., None], local, px)
+
     q = img.quantize(64, method=Image.Quantize.MEDIANCUT, dither=Image.Dither.NONE)
     counts = np.bincount(np.asarray(q).ravel(), minlength=64)
     palette = np.array(q.getpalette()[: 64 * 3]).reshape(-1, 3)
@@ -123,8 +138,10 @@ def flatten(img: Image.Image) -> Image.Image:
         if all(np.abs(palette[i] - f).max() > 14 for f in flat):
             flat.append(palette[i])
     colors = np.array(flat)
+    # Without the grain an area sits within 3 of its main colour; the patches between two main
+    # colours are 8 or more away and keep their own (now even) colour.
     dist = np.abs(px[:, :, None, :] - colors[None, None]).max(axis=-1)
-    snapped = np.where((dist.min(axis=-1) <= 12)[..., None], colors[dist.argmin(axis=-1)], px)
+    snapped = np.where((dist.min(axis=-1) <= 4)[..., None], colors[dist.argmin(axis=-1)], px)
     return Image.fromarray(snapped.astype(np.uint8))
 
 
