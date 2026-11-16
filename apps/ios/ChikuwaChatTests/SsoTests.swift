@@ -86,7 +86,7 @@ final class SsoTests: XCTestCase {
     // MARK: the flow, with a fake sheet
 
     func testFlowReturnsTheTicketWithTheVerifierOfTheChallenge() async throws {
-        let sheet = FakeWebAuthenticator { _ in URL(string: "chikuwachat://sso?ticket=tk")! }
+        let sheet = FakeWebAuthenticator { _ in URL(string: "chikuwachat://sso?ticket=tk&iss=https%3A%2F%2Fa.example.ac.jp")! }
         let outcome = await Sso.run(server: URL(string: "https://a.example.ac.jp")!, authenticator: sheet)
         guard case .ticket(let ticket, let verifier) = outcome else { return XCTFail("\(outcome)") }
         XCTAssertEqual(ticket, "tk")
@@ -101,7 +101,7 @@ final class SsoTests: XCTestCase {
 
     func testFlowOutcomes() async {
         let server = URL(string: "https://a.example.ac.jp")!
-        let refused = FakeWebAuthenticator { _ in URL(string: "chikuwachat://sso?sso_error=not_registered")! }
+        let refused = FakeWebAuthenticator { _ in URL(string: "chikuwachat://sso?sso_error=not_registered&iss=https%3A%2F%2Fa.example.ac.jp")! }
         let outcome = await Sso.run(server: server, authenticator: refused)
         XCTAssertEqual(outcome, .failed("このメールアドレスのアカウントはありません。管理者に登録を依頼してください"))
         let closed = FakeWebAuthenticator { _ in throw WebAuthenticationError.cancelled }
@@ -145,7 +145,7 @@ final class SsoTests: XCTestCase {
         XCTAssertNil(cancelled)
         XCTAssertTrue(exchanges.isEmpty)
 
-        let returning = FakeWebAuthenticator { _ in URL(string: "chikuwachat://sso?ticket=tk")! }
+        let returning = FakeWebAuthenticator { _ in URL(string: "chikuwachat://sso?ticket=tk&iss=https%3A%2F%2Fb.example.ac.jp")! }
         let outcome = await controller.signInWithGoogle(server: "B.example.ac.jp/", authenticator: returning)
         XCTAssertEqual(outcome, .failed("ログインの手続きが無効か、期限が切れています。もう一度「Google でログイン」からやり直してください"))
         let opened = try XCTUnwrap(returning.opened.first?.url)
@@ -153,6 +153,42 @@ final class SsoTests: XCTestCase {
         XCTAssertEqual(exchanges.count, 1)
         XCTAssertEqual(exchanges.first?.host, "b.example.ac.jp")
         XCTAssertEqual(query(opened, "challenge"), exchanges.first?.verifier.map(Sso.challenge(for:)))
+
+        // SSO.md §3 step 6: an answer naming another server (or none) is refused before any exchange.
+        for callback in ["chikuwachat://sso?ticket=tk&iss=https%3A%2F%2Fa.example.ac.jp", "chikuwachat://sso?ticket=tk"] {
+            let mixedUp = FakeWebAuthenticator { _ in URL(string: callback)! }
+            let refused = await controller.signInWithGoogle(server: "https://b.example.ac.jp", authenticator: mixedUp)
+            XCTAssertEqual(refused, .failed("別のサーバからの応答なので、ログインを中止しました"), callback)
+        }
+        XCTAssertEqual(exchanges.count, 1, "nothing more was exchanged")
+    }
+
+    /// SSO.md §3 step 6 (2026-11-16): the answer's `iss` must be the server the sign-in started on, normalized; a hostile
+    /// server that sends its start on to another server's would otherwise have that server's ticket handed back to it.
+    func testTheAnswerMustComeFromTheServerItStartedOn() async {
+        let server = URL(string: "https://chat.example.ac.jp")!
+        XCTAssertEqual(Sso.issuer(URL(string: "chikuwachat://sso?ticket=t&iss=https%3A%2F%2Fchat.example.ac.jp")!), "https://chat.example.ac.jp")
+        XCTAssertNil(Sso.issuer(URL(string: "chikuwachat://sso?ticket=t&iss=")!))
+        XCTAssertNil(Sso.issuer(URL(string: "chikuwachat://sso?ticket=t")!))
+        for same in ["https://chat.example.ac.jp", "HTTPS://Chat.Example.ac.jp/", "https://chat.example.ac.jp:443"] {
+            XCTAssertTrue(Sso.isFromServer(same, server: server), same)
+        }
+        XCTAssertTrue(Sso.isFromServer("http://127.0.0.1:8000", server: URL(string: "http://127.0.0.1:8000/")!))
+        XCTAssertTrue(Sso.isFromServer("https://example.ac.jp/chat", server: URL(string: "https://example.ac.jp/chat/")!))
+        for other in [nil, "", "https://evil.example", "http://chat.example.ac.jp", "https://chat.example.ac.jp:8443",
+                      "https://chat.example.ac.jp/other", "https://user@chat.example.ac.jp"] as [String?] {
+            XCTAssertFalse(Sso.isFromServer(other, server: server), other ?? "nil")
+        }
+
+        let elsewhere = FakeWebAuthenticator { _ in URL(string: "chikuwachat://sso?ticket=tk&iss=https%3A%2F%2Fevil.example")! }
+        let mixedUp = await Sso.run(server: server, authenticator: elsewhere)
+        XCTAssertEqual(mixedUp, .failed(Sso.otherServerText))
+        let unnamed = FakeWebAuthenticator { _ in URL(string: "chikuwachat://sso?sso_error=expired")! }
+        let unnamedOutcome = await Sso.run(server: server, authenticator: unnamed)
+        XCTAssertEqual(unnamedOutcome, .failed(Sso.otherServerText))
+        let ok = FakeWebAuthenticator { _ in URL(string: "chikuwachat://sso?ticket=tk&iss=https%3A%2F%2Fchat.example.ac.jp%2F")! }
+        guard case .ticket(let ticket, _) = await Sso.run(server: server, authenticator: ok) else { return XCTFail("refused its own server") }
+        XCTAssertEqual(ticket, "tk")
     }
 
     // MARK: API

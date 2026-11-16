@@ -5,8 +5,9 @@ import Security
 import UIKit
 
 /// Google sign-in (M48, docs/SSO.md §6): the app makes a secret `verifier`, opens the server's start URL in the system's
-/// sign-in sheet with only its SHA-256 (`challenge`), and gets back `chikuwachat://sso?ticket=…` (or `?sso_error=…`).
-/// The ticket is worth nothing without the verifier, which never leaves memory until the exchange.
+/// sign-in sheet with only its SHA-256 (`challenge`), and gets back `chikuwachat://sso?ticket=…&iss=…` (or
+/// `?sso_error=…&iss=…`). The ticket is worth nothing without the verifier, which never leaves memory until the exchange;
+/// an answer whose `iss` is not the server the sign-in started on is refused before any exchange (SSO.md §3 step 6).
 enum Sso {
     static let callbackScheme = "chikuwachat"
 
@@ -62,12 +63,31 @@ enum Sso {
         return nil
     }
 
+    /// The answer's `iss` (SSO.md §3 step 6, 2026-11-16): the server that issued it; nil when it names none.
+    static func issuer(_ url: URL) -> String? {
+        guard let value = URLComponents(url: url, resolvingAgainstBaseURL: false)?.queryItems?.first(where: { $0.name == "iss" })?.value,
+              !value.isEmpty else { return nil }
+        return value
+    }
+
+    /// Whether the answer came from the server the sign-in started on: `iss` and the server, both normalized (lower-case
+    /// scheme and host, no default port, no trailing "/"). A missing `iss` is never it. Without this a hostile server
+    /// could send the start on to another server's and have that server's ticket handed back to it (a mix-up; PKCE
+    /// protects the ticket, not the one who started).
+    static func isFromServer(_ issuer: String?, server: URL) -> Bool {
+        guard let issuer, let answered = Workspaces.normalize(issuer), let started = Workspaces.normalize(server.absoluteString) else { return false }
+        return answered == started
+    }
+
     /// The Japanese text for a returned `sso_error` code (apps/shared/errors.json).
     static func errorText(_ code: String) -> String {
         ErrorMessages.byCode[code] ?? failedText
     }
 
     static var failedText: String { tr("Google でのログインに失敗しました。もう一度お試しください") }
+
+    /// An answer from a server other than the one the sign-in started on: nothing is exchanged.
+    static var otherServerText: String { tr("別のサーバからの応答なので、ログインを中止しました") }
 
     /// Opens the start URL of `server` and waits for the sheet to come back.
     @MainActor
@@ -77,10 +97,11 @@ enum Sso {
         }
         do {
             let callback = try await authenticator.authenticate(url: url, callbackScheme: callbackScheme)
-            switch parse(callback) {
+            guard let answer = parse(callback) else { return .failed(failedText) }
+            guard isFromServer(issuer(callback), server: server) else { return .failed(otherServerText) }
+            switch answer {
             case .ticket(let ticket): return .ticket(ticket: ticket, verifier: verifier)
             case .error(let code): return .failed(errorText(code))
-            case nil: return .failed(failedText)
             }
         } catch WebAuthenticationError.cancelled {
             return .cancelled

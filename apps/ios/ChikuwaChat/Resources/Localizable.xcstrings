@@ -2618,6 +2618,22 @@
         }
       }
     },
+    "別のサーバからの応答なので、ログインを中止しました" : {
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "The answer came from a different server, so the login was stopped"
+          }
+        },
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "响应来自其他服务器，已中止登录"
+          }
+        }
+      }
+    },
     "削除されたメッセージ" : {
       "localizations" : {
         "en" : {
