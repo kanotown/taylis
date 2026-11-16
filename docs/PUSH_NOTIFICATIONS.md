@@ -670,13 +670,18 @@ APNs が無効なサーバ、プロバイダの失敗と失効トークン、DND
   アプリと拡張機能の両方に入れ、アプリのテストから確かめる) が:
   1. `kind = message` で `sender_id` と `channel_id` があるときだけ (それ以外はそのまま返す)。
   2. `sender_avatar_url` (http / https のみ) を 5 秒・1 MB・`image/*` の制限で取る。URL が無い・取れないときは
-     既定のアバター（§16.1）を描いて使う（2026-10-08）。
+     既定のアバター（§16.1）を描いて使う（2026-10-08）。2026-11-16（悪意のあるサーバの点検）から、取るのはペイロードの
+     `workspace_id` を持つ登録済みのワークスペースが **ちょうど 1 つ** で、URL がそのワークスペースのアドレスの
+     `/api/v1/users/…` のときだけ（ユーザー名の部分・リダイレクトは不可）。1 MB で読むのをやめる（全部を読んでから
+     比べない）。そうでなければ既定のアバター。
   3. `INSendMessageIntent` を作る: 送り手は `INPerson` (表示名、`customIdentifier` = 送った人の id、画像)、
-     `conversationIdentifier` = チャンネルの id。チャンネルとグループ DM は `speakableGroupName` = 題 (「#general」/
+     `conversationIdentifier` = `<workspace_id>:<チャンネルの id>`（2026-11-16 からワークスペースで分ける。スレッドの id と送り手の
+     `customIdentifier` も同じ）。チャンネルとグループ DM は `speakableGroupName` = 題 (「#general」/
      「グループ DM」) と受け手 2 人 (自分と会話) でグループとして、1:1 の DM は送った人の会話として。
   4. `INInteraction` (incoming) を寄贈し、`content.updating(from: intent)` を返す。
 - どれかが失敗したら (画像が取れない、iOS が断る、時間切れの `serviceExtensionTimeWillExpire`) サーバが書いたままの通知を出す。
-  拡張機能は資格情報を持たない (Keychain の共有も App Group も無い)。
+  拡張機能は資格情報を持たない (Keychain の共有は無い)。App Group (`group.jp.chikuwachat.ios`) は 2026-11-16 から
+  読むだけに使う (登録済みのワークスペースのアドレスを確かめるため)。
 - アプリ: `com.apple.developer.usernotifications.communication` の entitlement と Info.plist の
   `NSUserActivityTypes = [INSendMessageIntent]` (拡張機能の Info.plist にも)。
 - 拡張機能の版とビルド番号はアプリと同じにする (`NotificationService/Info.plist` と `project.yml` の 2 つ目の
