@@ -73,23 +73,27 @@ export function LinkPreviewCard({ controller, url, auto = true, onRemove }: { co
   }
   if (!known) return <span ref={probe} aria-hidden className="block h-0" />;
   if (!preview) return null;
+  // 2026-11-16 (a hostile-server review): the card opens the link the message has — the one it was asked for — never
+  // the `url` of the server's answer, which could send a click on 「example.com」 somewhere else. Its picture is
+  // drawn only from https (the CSP's img-src allows no other remote scheme either).
+  const image = preview.image_url && /^https:\/\//i.test(preview.image_url) ? preview.image_url : null;
   return (
     // M185 (docs/LINK_PREVIEWS.md §4): the sender's × sits beside the link, not in it.
     <div data-link-card={url} className="group/card relative mt-1.5 max-w-xl">
       <a
-        href={preview.url}
+        href={url}
         target="_blank"
         rel="noreferrer noopener"
-        onClick={(event) => openExternalLink(event, preview.url)}
+        onClick={(event) => openExternalLink(event, url)}
         // A plain outlined card, the site first (tester, 2026-09-30: the accent bar at the left looked "AI-like").
         className={cn("flex gap-3 rounded-lg border border-line px-3 py-2.5 text-sm no-underline transition-colors hover:bg-panel", onRemove && "pr-8")}
       >
         <div className="min-w-0 flex-1">
-          <div className="truncate text-xs text-muted">{preview.site_name || hostOf(preview.url)}</div>
+          <div className="truncate text-xs text-muted">{preview.site_name || hostOf(url)}</div>
           {preview.title && <div className="mt-0.5 line-clamp-2 font-semibold text-ink">{preview.title}</div>}
           {preview.description && <div className="mt-0.5 line-clamp-2 text-[13px] text-muted">{preview.description}</div>}
         </div>
-        {preview.image_url && <img src={preview.image_url} alt="" loading="lazy" className="h-16 w-16 shrink-0 rounded-md object-cover" />}
+        {image && <img src={image} alt="" loading="lazy" className="h-16 w-16 shrink-0 rounded-md object-cover" />}
       </a>
       {onRemove && <RemoveCardButton onRemove={onRemove} />}
     </div>
