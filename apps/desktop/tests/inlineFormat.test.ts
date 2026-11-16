@@ -42,6 +42,84 @@ describe("inline format (apps/shared/inline-format.json)", () => {
   });
 });
 
+/**
+ * 2026-11-16 (a hostile-server review): a body of many emphasis openers is read in linear time. `_a ` repeated took
+ * seconds on every client before; the shared `timing` list holds each tokenizer to `max_ms`.
+ */
+describe("linear time (apps/shared/inline-format.json timing)", () => {
+  const timing = (JSON.parse(readFileSync(new URL("../../shared/inline-format.json", import.meta.url), "utf8")) as { timing: Timing[] }).timing;
+  // Snake_case and dunder chains: an underscore after a word character never opens emphasis, so none of them may make
+  // the scan go back over the rest of the line (the opener's check runs after the match here, not in a lookbehind).
+  const local: Timing[] = [
+    { name: "a snake_case chain", unit: "a_", repeat: 10000, max_ms: 250 },
+    { name: "dunder chains", unit: "a__", repeat: 7000, max_ms: 250 },
+    { name: "a chain that ends in an emphasis", unit: "ab_", repeat: 6000, max_ms: 250 },
+  ];
+  const readers: Array<[string, (body: string) => unknown]> = [
+    ["tokenizeInline", (body) => tokenizeInline(body)],
+    ["tokenizeInline (canvas)", (body) => tokenizeInline(body, true)],
+    ["tokenize", (body) => tokenize(body)],
+    ["plainText", (body) => plainText(body)],
+  ];
+
+  it("has the shared cases", () => {
+    expect(timing.length).toBeGreaterThanOrEqual(3);
+  });
+
+  it.each([...timing, ...local])("$name ($repeat × $unit) within $max_ms ms", ({ unit, repeat, max_ms }) => {
+    const body = unit.repeat(repeat);
+    for (const [name, read] of readers) {
+      read(body.slice(0, 200)); // compiled and warm
+      const started = performance.now();
+      read(body);
+      const ms = performance.now() - started;
+      expect(ms, `${name}: ${ms.toFixed(0)} ms`).toBeLessThan(max_ms);
+    }
+  });
+});
+
+interface Timing {
+  name: string;
+  unit: string;
+  repeat: number;
+  max_ms: number;
+}
+
+/**
+ * The tokenizer avoids lookbehinds (older WebKit); the server's rule is written with them. Over random lines of
+ * letters, digits, CJK, underscores, spaces and punctuation (no other markup), both read the same italics and text.
+ */
+describe("the italic rule matches the server's (mentions.py)", () => {
+  const SERVER_ITALIC = /(?<![\p{L}\p{N}_])_(?![\s　_])((?:[^\n\\_]|(?<=[\p{L}\p{N}])_)*?[^\s　_\\])_(?![\p{L}\p{N}_])/gu;
+  function serverTokens(line: string): string[][] {
+    const out: string[][] = [];
+    const text = (value: string) => {
+      if (!value) return;
+      const last = out[out.length - 1];
+      if (last?.[0] === "text") last[1] += value;
+      else out.push(["text", value]);
+    };
+    let at = 0;
+    for (const match of line.matchAll(SERVER_ITALIC)) {
+      text(line.slice(at, match.index));
+      out.push(["italic", match[1]!]);
+      at = match.index + match[0].length;
+    }
+    text(line.slice(at));
+    return out;
+  }
+
+  it("on 5,000 random lines", () => {
+    const alphabet = ["a", "b", "1", "日", "_", "_", " ", ",", ".", "　"];
+    let seed = 20261116;
+    const next = () => (seed = (seed * 1103515245 + 12345) % 2 ** 31) / 2 ** 31;
+    for (let i = 0; i < 5000; i++) {
+      const line = Array.from({ length: Math.floor(next() * 14) }, () => alphabet[Math.floor(next() * alphabet.length)]).join("");
+      expect(simple(tokenizeInline(line)), JSON.stringify(line)).toEqual(serverTokens(line));
+    }
+  });
+});
+
 /** M188: an emphasis piece as the shared file writes it. */
 function piece(p: EmphasisPiece): string[] {
   switch (p.kind) {

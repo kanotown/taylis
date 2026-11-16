@@ -122,8 +122,14 @@ export type TableAlign = "left" | "center" | "right" | null;
 // older WebKit), so snake_case and e-mail addresses stay as they are. `\_` `\*` `\~` `` \` `` are the literal character
 // (also inside emphasis). E-mail addresses (and the shrug ¯\_(ツ)_/¯, which keeps its backslash) are text tokens of
 // their own, so emphasis and escapes are never read inside them.
+// Linear time (2026-11-16, the shared file's `timing`): inside `_…_` an `_` counts only right after a letter or digit
+// (snake_case); one after anything else could open emphasis itself, so the search for the closer stops there. The
+// server's `(?:\\.|[^\n\\_]|(?<=[^\W_])_)` without a lookbehind: a letter or digit takes the one `_` after it
+// (`[\p{L}\p{N}]_?`, after a backslash too), and the alternatives never overlap, so a failed search does not try a
+// line two ways. The last group takes a word's underscores (`snake_case_`) as text: they never open emphasis (`scan`
+// would refuse them after the match), and without it each one made the engine search to the end of the line again.
 const INLINE =
-  /(\*\*((?:\\.|[^*\n\\])+?)\*\*)|(``(?!`)(?:[^`\n]|`(?!`))+?``(?!`)|`([^`\n]+)`)|(\*((?:\\.|[^*\n\\])+)\*)|(_(?![\s\u3000_])((?:\\.|[^\n\\])*?(?:\\.|[^\s\u3000_\\]))_(?![\p{L}\p{N}_]))|(~~((?:\\.|[^~\n\\])+)~~)|(\[([^\]\n]+)\]\((https?:\/\/[^\s)]+)\))|(<@group:([0-9a-f-]{36})>)|(<@([0-9a-f-]{36})>)|(<!(channel|here)>)|(https?:\/\/[^\s<>　-〿＀-￯]+)|(\\([_*~`$]))|([A-Za-z0-9._%+-]{1,64}@[A-Za-z0-9-]{1,63}(?:\.[A-Za-z0-9-]{1,63}){1,8}|¯\\_\(ツ\)_\/¯)|(\$\$((?:\\.|[^$\n\\])+?)\$\$)|(\$(?![\s$])((?:\\.|[^$\n\\])*?(?:\\.|[^\s$\\]))\$(?![0-9A-Za-z]))/gu;
+  /(\*\*((?:\\.|[^*\n\\])+?)\*\*)|(``(?!`)(?:[^`\n]|`(?!`))+?``(?!`)|`([^`\n]+)`)|(\*((?:\\.|[^*\n\\])+)\*)|(_(?![\s\u3000_])((?:\\[\p{L}\p{N}]_?|\\(?![\p{L}\p{N}]).|[\p{L}\p{N}]_?|[^\n\\_\p{L}\p{N}])*?(?:\\.|[^\s\u3000_\\]))_(?![\p{L}\p{N}_]))|(~~((?:\\.|[^~\n\\])+)~~)|(\[([^\]\n]+)\]\((https?:\/\/[^\s)]+)\))|(<@group:([0-9a-f-]{36})>)|(<@([0-9a-f-]{36})>)|(<!(channel|here)>)|(https?:\/\/[^\s<>　-〿＀-￯]+)|(\\([_*~`$]))|([A-Za-z0-9._%+-]{1,64}@[A-Za-z0-9-]{1,63}(?:\.[A-Za-z0-9-]{1,63}){1,8}|¯\\_\(ツ\)_\/¯)|(\$\$((?:\\.|[^$\n\\])+?)\$\$)|(\$(?![\s$])((?:\\.|[^$\n\\])*?(?:\\.|[^\s$\\]))\$(?![0-9A-Za-z]))|([\p{L}\p{N}]_+)/gu;
 const WITH_BLOCKS = new RegExp(`(\`\`\`([\\s\\S]*?)\`\`\`)|${INLINE.source}|(\\n)`, "gu");
 /**
  * M121 (WIKI.md §2.3): the canvas dialect (canvases and Docs pages) also links `[label](page:<uuid>)` (a Docs page) and
@@ -264,7 +270,8 @@ function scan(body: string, pattern: RegExp, withBlocks: boolean): Token[] {
       const tex = g(24) !== undefined ? (g(25) ?? "") : (g(27) ?? "");
       if (tex.length > MATH_MAX_LENGTH || tex.trim() === "") text(match[0]);
       else tokens.push({ kind: "math", text: tex, display: g(24) !== undefined });
-    } else tokens.push({ kind: "newline" });
+    } else if (g(28) !== undefined) text(g(28) ?? ""); // a word's underscores: never an opener (INLINE's comment)
+    else tokens.push({ kind: "newline" });
     last = index + match[0].length;
   }
   text(body.slice(last));
