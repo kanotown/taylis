@@ -307,6 +307,26 @@ final class LinkPreviewSlotTests: XCTestCase {
                                                   token: nil, language: "ja", timeout: 5))
     }
 
+    /// 2026-11-16: what a server sends is opened only as http(s) (mailto where the UI means an address): channel bookmarks,
+    /// the link card, a call's room, PDF and Quick Look links.
+    func testOnlyWebLinksAreOpened() {
+        for ok in ["https://example.com/a", "HTTP://example.com", "https://meet.jit.si/room-1"] {
+            XCTAssertNotNil(ExternalLink.url(ok), ok)
+        }
+        for refused in ["tel:+81312345678", "sms:123", "facetime:a@b.c", "shortcuts://run-shortcut?name=x", "file:///etc/hosts",
+                        "javascript:alert(1)", "data:text/html,x", "otherapp://do", "https://", "https:///path", "mailto:a@example.com", "", "not a url"] {
+            XCTAssertNil(ExternalLink.url(refused), refused)
+            XCTAssertNil(LinkPreviewCard.destination(refused), refused)
+            XCTAssertNil(CallRules.joinUrl(refused), refused)
+        }
+        XCTAssertNotNil(ExternalLink.url("mailto:a@example.com", mail: true), "a document's address")
+        XCTAssertNil(ExternalLink.url("tel:123", mail: true))
+        XCTAssertTrue(ExternalLink.isAllowed(URL(string: "https://example.com")!))
+        XCTAssertFalse(ExternalLink.isAllowed(URL(string: "tel:123")!, mail: true))
+        // The call's room from POST /calls goes through the same rule as the card's.
+        XCTAssertEqual(CallRules.joinUrl("https://meet.jit.si/abc")?.absoluteString, "https://meet.jit.si/abc")
+    }
+
     @MainActor
     func testPreviewsAreKeptWithTheAccountButAFailedRequestIsNot() throws {
         let path = FileManager.default.temporaryDirectory.appendingPathComponent("previews-\(UUID().uuidString).db").path

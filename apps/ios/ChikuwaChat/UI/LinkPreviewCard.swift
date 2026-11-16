@@ -1,4 +1,31 @@
 import SwiftUI
+import UIKit
+
+/// What the app hands to the system to open from a server's string (2026-11-16, a hostile-server review): http and https
+/// with a host, and mailto where the UI means an address (a document's links). Anything else (tel:, sms:, facetime:,
+/// shortcuts:, another app's scheme, file:) is refused: a tap on what a server sent must not start a call or run
+/// another app's action. Channel bookmarks, link cards, calls, PDF links and Quick Look go through it.
+enum ExternalLink {
+    static func isAllowed(_ url: URL, mail: Bool = false) -> Bool {
+        guard let scheme = url.scheme?.lowercased() else { return false }
+        if scheme == "http" || scheme == "https" { return url.host?.isEmpty == false }
+        return mail && scheme == "mailto"
+    }
+
+    /// The URL of `text` when it may be opened; nil otherwise (not a URL, or refused).
+    static func url(_ text: String, mail: Bool = false) -> URL? {
+        guard let url = URL(string: text), isAllowed(url, mail: mail) else { return nil }
+        return url
+    }
+
+    /// Opens `url` with the system (Safari, Mail, a universal link's app) when it is allowed; false when refused.
+    @MainActor @discardableResult
+    static func open(_ url: URL, mail: Bool = false) -> Bool {
+        guard isAllowed(url, mail: mail) else { return false }
+        UIApplication.shared.open(url)
+        return true
+    }
+}
 
 /// The links a body shows (M11g, M166, M185).
 enum Links {
@@ -134,10 +161,11 @@ struct LinkPreviewCard: View {
         return host.hasPrefix("www.") ? String(host.dropFirst(4)) : host
     }
 
-    /// What a tap opens: the message's own link, never the preview's `url` (the server's answer). nil for a link the
-    /// system cannot read (`https://a:b:c`, `https://[x`: the tokenizer takes them as links): the card then has no tap.
-    /// It was force-unwrapped, and any member could stop every iPhone that showed such a message (2026-11-16).
-    static func destination(_ url: String) -> URL? { URL(string: url) }
+    /// What a tap opens: the message's own link, never the preview's `url` (the server's answer), and only http(s)
+    /// (ExternalLink). nil for a link the system cannot read (`https://a:b:c`, `https://[x`: the tokenizer takes them as
+    /// links): the card then has no tap. It was force-unwrapped, and any member could stop every iPhone that showed such
+    /// a message (2026-11-16).
+    static func destination(_ url: String) -> URL? { ExternalLink.url(url) }
 
     var body: some View {
         if let destination = Self.destination(url) {

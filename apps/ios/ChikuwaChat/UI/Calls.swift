@@ -15,11 +15,10 @@ enum CallRules {
     static func startedLine(_ name: String) -> String { tr("📞 \(name) さんが通話を始めました") }
 
     /// What the card opens: http(s) only (the server makes https rooms; http only for a local test server).
-    static func joinUrl(_ call: MessageCall) -> URL? {
-        guard let url = URL(string: call.url), let scheme = url.scheme?.lowercased(), scheme == "https" || scheme == "http",
-              url.host?.isEmpty == false else { return nil }
-        return url
-    }
+    static func joinUrl(_ call: MessageCall) -> URL? { joinUrl(call.url) }
+
+    /// The same rule for the room `POST /calls` answers with (it was opened whatever its scheme, 2026-11-16).
+    static func joinUrl(_ url: String) -> URL? { ExternalLink.url(url) }
 
     /// The server's own line in the body (§5, for clients before M117).
     static let bodyLead = "📞 通話を始めました"  // i18n-ignore: the server's text, matched
@@ -36,9 +35,9 @@ enum CallRules {
             .trimmingCharacters(in: .whitespacesAndNewlines)
     }
 
-    /// Outside the app, never in a web view (camera and microphone permissions, §7).
+    /// Outside the app, never in a web view (camera and microphone permissions, §7); http(s) only.
     @MainActor
-    static func open(_ url: URL) { UIApplication.shared.open(url) }
+    static func open(_ url: URL) { ExternalLink.open(url) }
 }
 
 /// One idempotency key per conversation until its call is posted (CALLS.md §7): a retry after a failure (a lost answer
@@ -69,7 +68,7 @@ extension AppController {
             let call = try await api.startCall(channelId: channelId, clientMsgId: key)
             callKeys.done(channelId)
             if let engine { engine.postedFromHere(call.message) } else { store.upsertMessage(call.message) }
-            return URL(string: call.url)
+            return CallRules.joinUrl(call.url)
         } catch {
             if let apiError = error as? ApiError, !apiError.isRetryable {
                 callKeys.done(channelId)

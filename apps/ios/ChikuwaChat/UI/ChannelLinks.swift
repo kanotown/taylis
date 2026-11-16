@@ -52,7 +52,8 @@ struct ChannelLinkChips: View {
     var body: some View {
         let links = controller.store.linksOf(channel.id)
         ForEach(Array(links.enumerated()), id: \.element.id) { index, link in
-            Button { if let url = URL(string: link.url) { openURL(url) } } label: {
+            // http(s) only (ExternalLink): the server checks the bookmarks it keeps, but this one may not.
+            Button { if let url = ExternalLink.url(link.url) { openURL(url) } } label: {
                 Label(link.title, systemImage: "link").font(.caption).lineLimit(1)
             }
             .buttonStyle(.bordered)

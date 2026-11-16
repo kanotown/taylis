@@ -447,6 +447,7 @@ struct PDFKitView: UIViewRepresentable {
         view.autoScales = true
         view.backgroundColor = .secondarySystemBackground
         view.document = document
+        view.delegate = context.coordinator // a link in the document: http(s) and mailto only (PDFLinks)
         context.coordinator.attach(to: view)
         return view
     }
@@ -462,8 +463,15 @@ struct PDFKitView: UIViewRepresentable {
 /// The pages' pull to close: a one-finger pan on the PDFView that PDFKit's scroll view waits for. It begins only for a
 /// drag down from the top while not zoomed in (DocumentDismiss), so scrolling, panning a zoomed page and pinching
 /// carry on as before; then the document follows the finger (in the window's coordinates, as the view moves with it).
-final class DocumentPullController: NSObject, UIGestureRecognizerDelegate {
+final class DocumentPullController: NSObject, UIGestureRecognizerDelegate, PDFViewDelegate {
     let pan = UIPanGestureRecognizer()
+
+    /// A tapped link of the document (a server's file): PDFKit opened any URL it held (tel:, another app's scheme);
+    /// only http(s) and mailto go to the system now (ExternalLink, 2026-11-16). Links within the document still move
+    /// to their page (PDFKit handles those without asking).
+    func pdfViewWillClick(onLink sender: PDFView, with url: URL) {
+        MainActor.assumeIsolated { _ = ExternalLink.open(url, mail: true) }
+    }
     private(set) weak var view: PDFView?
     private weak var linked: UIScrollView?
     var onPull: (CGFloat) -> Void = { _ in }

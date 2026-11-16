@@ -444,6 +444,7 @@ struct FilePreviewSheet: UIViewControllerRepresentable {
     func makeUIViewController(context: Context) -> UINavigationController {
         let preview = QLPreviewController()
         preview.dataSource = context.coordinator
+        preview.delegate = context.coordinator
         preview.navigationItem.leftBarButtonItem = UIBarButtonItem(systemItem: .done, primaryAction: UIAction { _ in onDismiss() })
         return UINavigationController(rootViewController: preview)
     }
@@ -454,11 +455,16 @@ struct FilePreviewSheet: UIViewControllerRepresentable {
         }
     }
 
-    final class Coordinator: NSObject, QLPreviewControllerDataSource {
+    final class Coordinator: NSObject, QLPreviewControllerDataSource, QLPreviewControllerDelegate {
         var url: URL
         init(url: URL) { self.url = url }
         func numberOfPreviewItems(in controller: QLPreviewController) -> Int { 1 }
         func previewController(_ controller: QLPreviewController, previewItemAt index: Int) -> QLPreviewItem { url as NSURL }
+
+        /// A link tapped in the previewed file (a server's): http(s) and mailto only (ExternalLink, 2026-11-16).
+        func previewController(_ controller: QLPreviewController, shouldOpen url: URL, for item: QLPreviewItem) -> Bool {
+            ExternalLink.isAllowed(url, mail: true)
+        }
     }
 }
 
