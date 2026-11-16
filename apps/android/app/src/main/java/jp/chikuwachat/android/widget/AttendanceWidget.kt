@@ -51,6 +51,7 @@ import jp.chikuwachat.android.MainActivity
 import jp.chikuwachat.android.R
 import jp.chikuwachat.android.app.Workspaces
 import jp.chikuwachat.android.platform.Notifier
+import jp.chikuwachat.android.platform.OpenToken
 import jp.chikuwachat.android.ui.AttendanceBadgeColors
 import jp.chikuwachat.android.ui.AttendanceIcons
 import jp.chikuwachat.android.ui.TextEmojiPill
@@ -106,6 +107,7 @@ class AttendanceWidget : GlanceAppWidget() {
             flags = Intent.FLAG_ACTIVITY_NEW_TASK or Intent.FLAG_ACTIVITY_SINGLE_TOP
             putExtra(EXTRA_OPEN, true)
             if (serverUrl != null) putExtra(Notifier.EXTRA_WORKSPACE, serverUrl)
+            OpenToken.stamp(context, this) // MainActivity acts only on the app's own intents
         }
     }
 }

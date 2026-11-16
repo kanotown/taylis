@@ -4,6 +4,7 @@ import android.content.Context
 import android.content.Intent
 import jp.chikuwachat.android.MainActivity
 import jp.chikuwachat.android.platform.Notifier
+import jp.chikuwachat.android.platform.OpenToken
 
 /** A screen a widget's body opens (its workspace on screen first). */
 enum class WidgetScreen(val key: String) {
@@ -105,5 +106,6 @@ object WidgetLinks {
         action = ACTION
         flags = Intent.FLAG_ACTIVITY_NEW_TASK or Intent.FLAG_ACTIVITY_SINGLE_TOP
         extras(link).forEach { (key, value) -> putExtra(key, value) }
+        OpenToken.stamp(context, this) // MainActivity acts only on the app's own intents
     }
 }

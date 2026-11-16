@@ -123,11 +123,14 @@ class Notifier(private val context: Context) {
             .setPerson(sender)
             .setIcon(icon ?: IconCompat.createWithResource(context, R.mipmap.ic_launcher))
             .setIntent(
-                Intent(context, MainActivity::class.java).apply {
-                    action = ACTION_CONVERSATION
-                    putExtra(EXTRA_CHANNEL_ID, channelId)
-                    if (workspace != null) putExtra(EXTRA_WORKSPACE, workspace)
-                },
+                OpenToken.stamp(
+                    context,
+                    Intent(context, MainActivity::class.java).apply {
+                        action = ACTION_CONVERSATION
+                        putExtra(EXTRA_CHANNEL_ID, channelId)
+                        if (workspace != null) putExtra(EXTRA_WORKSPACE, workspace)
+                    },
+                ),
             )
             .build()
         // The notification never depends on the shortcut (a launcher's limit, a work profile's policy…).
@@ -174,6 +177,7 @@ class Notifier(private val context: Context) {
             if (parentId != null) putExtra(EXTRA_PARENT_ID, parentId)
             if (reveal) putExtra(EXTRA_REVEAL, true)
         }
+        OpenToken.stamp(context, intent) // MainActivity acts only on the app's own intents
         val request = ((workspace ?: "") + "|" + key).hashCode()
         return PendingIntent.getActivity(context, request, intent, PendingIntent.FLAG_UPDATE_CURRENT or PendingIntent.FLAG_IMMUTABLE)
     }

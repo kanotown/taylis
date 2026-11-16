@@ -550,6 +550,7 @@ class DriveUploadNotifications(private val context: Context) {
             putExtra(EXTRA_DRIVE_UPLOADS, true)
             putExtra(Notifier.EXTRA_WORKSPACE, server)
         }
+        OpenToken.stamp(context, intent) // MainActivity acts only on the app's own intents
         return PendingIntent.getActivity(context, ("drive-upload|$server|$key").hashCode(), intent, PendingIntent.FLAG_UPDATE_CURRENT or PendingIntent.FLAG_IMMUTABLE)
     }
 

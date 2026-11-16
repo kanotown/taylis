@@ -32,6 +32,7 @@ import jp.chikuwachat.android.api.ApiClient
 import jp.chikuwachat.android.api.MessageOut
 import jp.chikuwachat.android.platform.ConversationStyle
 import jp.chikuwachat.android.platform.Notifier
+import jp.chikuwachat.android.platform.OpenToken
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.withContext
 import okhttp3.MediaType
@@ -363,6 +364,7 @@ class ShareNotifications(private val context: Context) {
             putExtra(Notifier.EXTRA_WORKSPACE, job.serverUrl)
             // Not revealed at the message: it is the newest one, and a reveal shows 「検索結果の前後」 instead of the timeline.
         }
+        OpenToken.stamp(context, intent) // MainActivity acts only on the app's own intents
         return PendingIntent.getActivity(context, ("share|" + job.id + "|" + messageId).hashCode(), intent,
             PendingIntent.FLAG_UPDATE_CURRENT or PendingIntent.FLAG_IMMUTABLE)
     }
@@ -399,11 +401,14 @@ object ShareShortcuts {
             .setCategories(setOf(CATEGORY))
             .setIcon(IconCompat.createWithResource(context, R.mipmap.ic_launcher))
             .setIntent(
-                Intent(context, MainActivity::class.java).apply {
-                    action = Notifier.ACTION_CONVERSATION
-                    putExtra(Notifier.EXTRA_CHANNEL_ID, channelId)
-                    putExtra(Notifier.EXTRA_WORKSPACE, workspace)
-                },
+                OpenToken.stamp(
+                    context,
+                    Intent(context, MainActivity::class.java).apply {
+                        action = Notifier.ACTION_CONVERSATION
+                        putExtra(Notifier.EXTRA_CHANNEL_ID, channelId)
+                        putExtra(Notifier.EXTRA_WORKSPACE, workspace)
+                    },
+                ),
             )
             .build()
         runCatching { ShortcutManagerCompat.pushDynamicShortcut(context, shortcut) }

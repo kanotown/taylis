@@ -14,6 +14,7 @@ import androidx.activity.enableEdgeToEdge
 import androidx.compose.foundation.isSystemInDarkTheme
 import androidx.compose.runtime.LaunchedEffect
 import jp.chikuwachat.android.platform.Notifier
+import jp.chikuwachat.android.platform.OpenToken
 import jp.chikuwachat.android.ui.AppRoot
 import jp.chikuwachat.android.ui.ChikuwaTheme
 import jp.chikuwachat.android.ui.HardwareKeys
@@ -68,6 +69,9 @@ class MainActivity : ComponentActivity() {
     }
 
     private fun takeConversation(intent: Intent?) {
+        // 2026-11-16: this activity is exported (and BROWSABLE for the sign-in's return): the extras below are acted on only
+        // when the intent is one of the app's own (notifications, widgets, shortcuts), never from a web page or another app.
+        if (intent == null || !OpenToken.verify(this, intent)) return
         // DRIVE.md §6: a drive upload's notification (a name conflict to answer, a failure, done): the uploads panel.
         if (intent?.getBooleanExtra(jp.chikuwachat.android.platform.DriveUploadNotifications.EXTRA_DRIVE_UPLOADS, false) == true) {
             val workspace = intent.getStringExtra(Notifier.EXTRA_WORKSPACE)
