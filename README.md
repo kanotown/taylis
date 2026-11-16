@@ -18,13 +18,18 @@ keep the old name.)
 > requests are welcome, but there is no promise of support, fixes, or a roadmap. See [CONTRIBUTING.md](CONTRIBUTING.md).
 
 <p>
-  <img src="docs/images/desktop.png" alt="Taylis desktop app: the attendance board, who is in the lab, on campus, off campus or gone home (demo data)" width="75%">
-  <img src="docs/images/lab/widgets.jpg" alt="Taylis widgets on an iPhone Home Screen: today's events and deadlines, unread messages, attendance (demo data)" width="21.5%">
+  <img src="docs/images/chat.png" alt="Taylis desktop app: a channel with a thread open, reactions and unread channels in the sidebar (demo data)" width="75%">
+  <img src="docs/images/iphone-chat.png" alt="A channel on iPhone (demo data)" width="21.5%">
 </p>
 
 ## Features
 
 For research labs:
+
+<p>
+  <img src="docs/images/desktop.png" alt="Taylis desktop app: the attendance board, who is in the lab, on campus, off campus or gone home (demo data)" width="75%">
+  <img src="docs/images/lab/widgets.jpg" alt="Taylis widgets on an iPhone Home Screen: today's events and deadlines, unread messages, attendance (demo data)" width="21.5%">
+</p>
 
 - Attendance board: in the lab, on campus, off campus or gone home with one tap; who is in the lab at a glance, also
   from a Home Screen widget
@@ -43,12 +48,7 @@ For research labs:
 | :---: | :---: | :---: | :---: |
 | <img src="docs/images/lab/attendance.jpg" alt="Attendance board: who is in the lab, on campus, off campus or gone home (demo data)" width="160"> | <img src="docs/images/lab/weekly-report.jpg" alt="A weekly-report thread with the submission count and deadline (demo data)" width="160"> | <img src="docs/images/lab/times.jpg" alt="The Times feed: students' work logs in one list (demo data)" width="160"> | <img src="docs/images/lab/acknowledge.jpg" alt="Announcements with an acknowledge button and the count of members who confirmed (demo data)" width="160"> |
 
-Chat and workspace:
-
-<p>
-  <img src="docs/images/chat.png" alt="Taylis desktop app: a channel with a thread open (demo data)" width="75%">
-  <img src="docs/images/iphone-chat.png" alt="A channel on iPhone (demo data)" width="21.5%">
-</p>
+Chat and workspace (pictured at the top):
 
 - Public and private channels, direct messages and group DMs
 - Threads, reactions, mentions, editing and deletion, unread state synchronised across devices

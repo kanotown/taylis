@@ -16,13 +16,18 @@ Taylis（テイリス）は、大学の研究室のためのセルフホスト�
 > Issue やプルリクエストは歓迎しますが、対応・修正・今後の予定はお約束できません。[CONTRIBUTING.md](CONTRIBUTING.md) をご覧ください。
 
 <p>
-  <img src="docs/images/desktop.png" alt="Taylis のデスクトップ版：在室状況のボード（在室・学内・学外・帰宅の人。デモのデータ）" width="75%">
-  <img src="docs/images/lab/widgets.jpg" alt="iPhone のホーム画面の Taylis のウィジェット：今日の予定・締切、未読、在室状況（デモのデータ）" width="21.5%">
+  <img src="docs/images/chat.png" alt="Taylis のデスクトップ版：スレッドを開いたチャンネル。リアクションと、サイドバーの未読のチャンネル（デモのデータ）" width="75%">
+  <img src="docs/images/iphone-chat.png" alt="iPhone のチャンネル（デモのデータ）" width="21.5%">
 </p>
 
 ## 主な機能
 
 研究室のための機能：
+
+<p>
+  <img src="docs/images/desktop.png" alt="Taylis のデスクトップ版：在室状況のボード（在室・学内・学外・帰宅の人。デモのデータ）" width="75%">
+  <img src="docs/images/lab/widgets.jpg" alt="iPhone のホーム画面の Taylis のウィジェット：今日の予定・締切、未読、在室状況（デモのデータ）" width="21.5%">
+</p>
 
 - 在室状況：在室・学内・学外・帰宅をワンタップで。誰が研究室にいるかひと目でわかり、ホーム画面のウィジェットからも
   変えられます
@@ -41,12 +46,7 @@ Taylis（テイリス）は、大学の研究室のためのセルフホスト�
 | :---: | :---: | :---: | :---: |
 | <img src="docs/images/lab/attendance.jpg" alt="在室状況：在室・学内・学外・帰宅の人（デモのデータ）" width="160"> | <img src="docs/images/lab/weekly-report.jpg" alt="週報のスレッド：提出数と締切（デモのデータ）" width="160"> | <img src="docs/images/lab/times.jpg" alt="Times のフィード：学生の作業メモの一覧（デモのデータ）" width="160"> | <img src="docs/images/lab/acknowledge.jpg" alt="確認ボタン付きのお知らせと、確認した人数（デモのデータ）" width="160"> |
 
-チャットとワークスペース：
-
-<p>
-  <img src="docs/images/chat.png" alt="Taylis のデスクトップ版：スレッドを開いたチャンネル（デモのデータ）" width="75%">
-  <img src="docs/images/iphone-chat.png" alt="iPhone のチャンネル（デモのデータ）" width="21.5%">
-</p>
+チャットとワークスペース（いちばん上の画面）：
 
 - 公開・非公開のチャンネル、DM、グループ DM
 - スレッド、リアクション、メンション、編集と削除。未読の位置は端末の間で同期します
