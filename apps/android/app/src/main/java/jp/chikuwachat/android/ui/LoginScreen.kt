@@ -75,7 +75,17 @@ fun LoginScreen(controller: AppController) {
     val needsCode = controller.totpRequired
     val scope = rememberCoroutineScope()
     val canSubmit = !controller.busy && server.isNotBlank() && username.isNotBlank() && password.isNotEmpty() && (!needsCode || totpCode.isNotBlank())
-    fun submit() { if (canSubmit) scope.launch { controller.login(server, username, password, if (needsCode) totpCode else null) } }
+    // M190: plain HTTP to a server on the internet is confirmed first (「https で接続」 puts the https URL in the field).
+    val insecure = remember { InsecureServerPrompt() }
+    fun signIn(target: String) {
+        if (target != server) server = target
+        scope.launch { controller.login(target, username, password, if (needsCode) totpCode else null) }
+    }
+    fun submit() {
+        if (!canSubmit) return
+        // The code step of the same sign-in (the password went already) is not asked again.
+        if (needsCode) signIn(server) else insecure.check(server, ::signIn)
+    }
     // M48: 「Google でログイン」 when this server offers it (GET /auth/methods); a server before M48 answers 404 (hidden).
     val context = LocalContext.current
     // A server restricted to its Workspace domains gets 「<domain> のアカウントでログイン」 (guideline 4.8).
@@ -86,12 +96,14 @@ fun LoginScreen(controller: AppController) {
         delay(400) // typing: ask once the address stops changing
         google = controller.googleSignInButton(server)
     }
-    fun signInWithGoogle() {
+    fun signInWithGoogle() = insecure.check(server) { target ->
+        if (target != server) server = target
         scope.launch {
-            val url = controller.beginGoogleSignIn(server) ?: return@launch
+            val url = controller.beginGoogleSignIn(target) ?: return@launch
             if (!openSignInPage(context, url)) controller.googleSignInNotOpened()
         }
     }
+    InsecureServerDialog(insecure)
 
     Column(
         // T1: a form of a phone's width in the middle of a tablet, not stretched across it.

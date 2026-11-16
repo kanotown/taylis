@@ -830,6 +830,10 @@
     <string name="image_viewer_zoom_in">放大</string>
     <string name="invite_a_times_channel_will_be_created">将为你创建 times。</string>
     <string name="invite_check_what_you_entered">请检查输入内容</string>
+    <string name="insecure_server_title">连接未加密</string>
+    <string name="insecure_server_message">此 URL 使用 http。密码和消息将以未加密方式发送，可能在传输途中被读取或篡改。如果服务器支持 https，请使用 https 连接。</string>
+    <string name="insecure_server_use_https">使用 https 连接</string>
+    <string name="insecure_server_continue">仍然连接</string>
     <string name="invite_screen_back_to_sign_in">返回登录页面</string>
     <string name="invite_screen_channels_youll_join">将加入的频道：</string>
     <string name="invite_screen_check_link">检查链接</string>

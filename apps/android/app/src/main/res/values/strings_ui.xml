@@ -830,6 +830,10 @@
     <string name="image_viewer_zoom_in">拡大</string>
     <string name="invite_a_times_channel_will_be_created">times を作ります。</string>
     <string name="invite_check_what_you_entered">入力内容を確認してください</string>
+    <string name="insecure_server_title">暗号化されていない接続です</string>
+    <string name="insecure_server_message">この URL は http です。パスワードやメッセージが暗号化されずに送られ、途中で読まれたり書き換えられたりするおそれがあります。サーバが https に対応していれば https で接続してください。</string>
+    <string name="insecure_server_use_https">https で接続</string>
+    <string name="insecure_server_continue">このまま接続</string>
     <string name="invite_screen_back_to_sign_in">ログイン画面に戻る</string>
     <string name="invite_screen_channels_youll_join">参加するチャンネル：</string>
     <string name="invite_screen_check_link">リンクを確認</string>

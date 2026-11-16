@@ -61,9 +61,7 @@ fun InviteScreen(controller: AppController, onBack: () -> Unit) {
     }
     val canJoin = !busy && !controller.busy && username.length >= 3 && displayName.isNotBlank() && password.length >= minLength && confirm == password
 
-    fun check() {
-        val parsed = Invite.parse(link)
-        if (parsed == null) { error = L10n.str(R.string.invite_screen_the_invite_link_is_not_in); return }
+    fun lookUp(parsed: Invite.Target) {
         scope.launch {
             busy = true; error = null
             try {
@@ -74,6 +72,20 @@ fun InviteScreen(controller: AppController, onBack: () -> Unit) {
             } catch (e: Exception) {
                 error = (e as? ApiException.Api)?.let { Invite.errorText(it.code) } ?: controller.describe(e)
             } finally { busy = false }
+        }
+    }
+
+    // M190: a link to a server on the internet over plain HTTP is confirmed before the server is first asked.
+    val insecure = remember { InsecureServerPrompt() }
+    InsecureServerDialog(insecure)
+    fun check() {
+        val parsed = Invite.parse(link)
+        if (parsed == null) { error = L10n.str(R.string.invite_screen_the_invite_link_is_not_in); return }
+        error = null
+        insecure.check(parsed.server) { server ->
+            // 「https で接続」: the link in the field says https too.
+            if (server != parsed.server) link = link.trim().replaceFirst(Regex("^http:", RegexOption.IGNORE_CASE), "https:")
+            lookUp(parsed.copy(server = server))
         }
     }
 
