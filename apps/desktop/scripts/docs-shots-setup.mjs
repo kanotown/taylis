@@ -14,6 +14,8 @@
 //   LINK_BASE    the address the screenshots' browser client counts as the server (default APP_URL, else
 //                http://localhost:1422): the message link is written with it, so the client draws its card
 //   PHOTO_CACHE  where the photos are kept between runs (default: taylis-demo-photos in the OS temp directory)
+//   REVIEW_AVATAR  a picture (PNG/JPEG) uploaded as the screenshot account's profile picture (with REVIEW_PASS); the
+//                file stays outside the repository
 // Run again, it refreshes the attendance board and adds what is missing; the Docs pages, the database and the action buttons
 // are made only when the Docs page 「研究室マニュアル」 does not exist yet.
 import { createHash } from "node:crypto";
@@ -25,6 +27,8 @@ const API = (process.env.API ?? "http://127.0.0.1:8061").replace(/\/$/, "") + "/
 const LINK_BASE = (process.env.LINK_BASE ?? process.env.APP_URL ?? "http://localhost:1422").replace(/\/+$/, "");
 const uuid = () => crypto.randomUUID();
 const sleep = (ms) => new Promise((r) => setTimeout(r, ms));
+/** The date (YYYY-MM-DD) in Japan `offset` days from today, whatever the machine's time zone and hour. */
+const jstDate = (offset = 0) => new Date(Date.now() + 9 * 3600000 + offset * 86400000).toISOString().slice(0, 10);
 
 async function login(username, password) {
   for (let attempt = 0; ; attempt++) {
@@ -66,6 +70,14 @@ if (process.env.REVIEW_PASS) {
   for (const c of channels.filter((c) => /^times-(watanabe|takahashi)$/.test(c.name))) {
     const r = await fetch(`${API}/channels/${c.id}/join`, { method: "POST", headers });
     if (!r.ok) throw new Error(`join ${c.name}: ${r.status}`);
+  }
+  // Its profile picture (REVIEW_AVATAR), through the same endpoint as the apps' 「プロフィール写真」.
+  if (process.env.REVIEW_AVATAR) {
+    const form = new FormData();
+    const type = /\.jpe?g$/i.test(process.env.REVIEW_AVATAR) ? "image/jpeg" : "image/png";
+    form.append("file", new Blob([readFileSync(process.env.REVIEW_AVATAR)], { type }), `avatar.${type === "image/png" ? "png" : "jpg"}`);
+    const r = await fetch(`${API}/users/me/avatar`, { method: "POST", headers, body: form });
+    if (!r.ok) throw new Error(`avatar: ${r.status} ${await r.text()}`);
   }
 }
 
@@ -127,7 +139,8 @@ if (meeting && !workflows.some((w) => w.name === "ゼミの案内")) {
 // by three members (with SEED_LOG), so its bar reads 「3/7 人が確認」.
 const notice = (await api("GET", `/channels/${meeting}/workflows`)).find((w) => w.name === "ゼミの案内");
 if (notice) {
-  const monday = new Date(Date.now() + ((8 - new Date().getDay()) % 7 || 7) * 86400000).toISOString().slice(0, 10);
+  // Next Monday in Japan (toISOString alone gave Sunday when run between midnight and 9:00 there).
+  const monday = jstDate((8 - new Date(`${jstDate()}T00:00:00Z`).getUTCDay()) % 7 || 7);
   const posted = await api("POST", `/workflows/${notice.id}/submit`, {
     client_msg_id: "6f1e3c2a-7d1b-4c8e-9a51-2b7d0c9e4f10",
     values: { 日時: `${monday}T10:00`, 場所: "演習室 2", 発表者: [byName.yamamoto.id, byName.ito.id] },
@@ -470,7 +483,7 @@ const schema = await api("PATCH", `/wiki/databases/${db.id}/schema`, {
 const props = schema.properties ?? schema.schema?.properties ?? schema.database?.properties ?? [];
 const prop = (name) => props.find((p) => p.name === name);
 const opt = (name, option) => prop(name).options.find((o) => o.name === option).id;
-const day = (offset) => { const d = new Date(Date.now() + offset * 86400000); return d.toISOString().slice(0, 10); };
+const day = jstDate;
 const rows = [
   ["Attention Is All You Need", "Vaswani et al.", 2017, "読了", "takahashi", -6],
   ["Denoising Diffusion Probabilistic Models", "Ho et al.", 2020, "読んでいる", "yamamoto", 1],
