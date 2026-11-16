@@ -112,6 +112,7 @@ PDF や Word・Excel・PowerPoint は、1 ページ目のサムネイル付き�
 
 <div class="screens" markdown>
 ![メッセージへのリンクを貼った投稿。下に、リンク先のメッセージのカード（書いた人・#研究ミーティング・日時・本文の最初の数行・グラフの画像）が出ている（デモのデータ）](../assets/screens/web-message-link.webp){ .wide }
+![iPhone の DM に貼ったメッセージのリンク。リンク先の作者・チャンネル・日時・最初の行がカードで出ている（デモのデータ）](../assets/screens/ios-message-link.jpg){ .phone }
 </div>
 
 メッセージの ⋯ →「リンクをコピー」で取ったリンク（`https://サーバ/m/…`）を本文に貼ると、送ったメッセージの下に
@@ -168,6 +169,8 @@ PDF や Word・Excel・PowerPoint は、1 ページ目のサムネイル付き�
 
 <div class="screens" markdown>
 ![メッセージの編集欄。末尾に打った「:ありがと」に合う絵文字の候補（カスタム絵文字の「ありがとうございます」が先頭）が上に出ている。下には付いている写真 2 枚（それぞれに ×）と、「ファイルを追加」・絵文字・@・書式（Aa）のボタン、「キャンセル」「保存」（デモのデータ）](../assets/screens/web-edit-message.webp){ .wide }
+![iPhone で送ったメッセージを編集しているところ。「:tha」で絵文字の候補が出て、下に @・絵文字・書式のボタン（デモのデータ）](../assets/screens/ios-edit-message.jpg){ .phone }
+![Android の「メッセージを編集」。絵文字の候補と、@・絵文字・書式のボタン（デモのデータ）](../assets/screens/android-edit-message.jpg){ .phone }
 </div>
 
 自分のメッセージにポインタを合わせて ✏️（編集）を押すか、空の入力欄で ++up++ を押すと、その場で直せます（スマートフォンは
