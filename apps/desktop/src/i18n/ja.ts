@@ -239,6 +239,7 @@ export const ja = {
   "app.notLoggedIn": "ログインしていません",
   "app.ssoStorageBlocked": "このブラウザの設定では Google でログインできません（サイトのデータの保存を許可してください）",
   "app.browserOpenFailed": "ブラウザを開けませんでした。もう一度お試しください",
+  "app.ssoWrongIssuer": "別のサーバからの応答なので、ログインを中止しました",
   "app.emojiAdded": ":{name}: を追加しました",
   "feature.textEmoji": "文字の絵文字",
   "feature.emojiEdit": "絵文字の編集",

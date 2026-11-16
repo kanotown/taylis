@@ -240,6 +240,7 @@ export const zhHans: Readonly<Record<MessageKey, string>> = {
   "app.notLoggedIn": "尚未登录",
   "app.ssoStorageBlocked": "此浏览器的设置不允许使用 Google 登录（请允许网站保存数据）",
   "app.browserOpenFailed": "无法打开浏览器。请重试",
+  "app.ssoWrongIssuer": "响应来自另一台服务器，已停止登录",
   "app.emojiAdded": "已添加 :{name}:",
   "feature.textEmoji": "文字表情",
   "feature.emojiEdit": "编辑表情",

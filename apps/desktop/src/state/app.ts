@@ -7,7 +7,7 @@ import { reactionText } from "../ui/customEmoji";
 import { clearEmojiImages, serverKey } from "../ui/emojiImageCache";
 import { canvasLink, messagePermalink, pageLink } from "../ui/permalink";
 import { inviteErrorText } from "../ui/invite";
-import { challengeFor, newVerifier, parseSsoDeepLink, saveSsoPending, type SsoPending, ssoErrorText, ssoStartUrl, takeSsoPending, takeSsoReturn } from "../ui/sso";
+import { challengeFor, issuerMatches, newVerifier, parseSsoDeepLink, saveSsoPending, type SsoPending, ssoErrorText, ssoStartUrl, takeSsoPending, takeSsoReturn } from "../ui/sso";
 import { totpErrorText } from "../ui/totp";
 import { shareBody } from "../ui/share";
 import { conversationTitle, hasUnread, isDmChannel, unreadBadgeTotal } from "../ui/channels";
@@ -639,6 +639,14 @@ export class AppController {
       return;
     }
     this.ssoFlow = null;
+    // docs/SSO.md §3 step 6: an answer from any other server than the one started with (or naming none) is refused,
+    // ticket and error alike; the ticket is never sent anywhere.
+    if (!issuerMatches(found.issuer, flow.serverUrl)) {
+      console.warn("refused a sign-in answer from another server", found.issuer);
+      this.ssoState = "idle";
+      this.setScreen("login", t("app.ssoWrongIssuer"));
+      return;
+    }
     if (found.kind === "error") {
       this.ssoState = "idle";
       this.setScreen("login", ssoErrorText(found.code));

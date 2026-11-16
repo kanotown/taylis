@@ -14,7 +14,7 @@ import { ERROR_MESSAGES } from "../src/api/errorMessages";
 import type { TokenResponse, UserMe } from "../src/api/types";
 import { AppController } from "../src/state/app";
 import { LoginScreen } from "../src/ui/LoginScreen";
-import { base64url, challengeFor, googleButtonText, newVerifier, parseSsoDeepLink, parseSsoReturn, saveSsoPending, ssoErrorText, ssoStartUrl, takeSsoPending } from "../src/ui/sso";
+import { base64url, challengeFor, googleButtonText, issuerMatches, newVerifier, parseSsoDeepLink, parseSsoReturn, saveSsoPending, ssoErrorText, ssoStartUrl, takeSsoPending } from "../src/ui/sso";
 
 // The Tauri app's side (tauri-plugin-deep-link, the credential-store commands), captured for the desktop tests.
 const tauri = vi.hoisted(() => ({
@@ -78,15 +78,26 @@ describe("helpers", () => {
   });
 
   it("reads the Tauri app's deep link, and only chikuwachat://sso", () => {
-    expect(parseSsoDeepLink("chikuwachat://sso?ticket=T-1_x")).toEqual({ kind: "ticket", ticket: "T-1_x" });
-    expect(parseSsoDeepLink("chikuwachat://sso/?ticket=T")).toEqual({ kind: "ticket", ticket: "T" });
-    expect(parseSsoDeepLink("chikuwachat://sso?sso_error=cancelled")).toEqual({ kind: "error", code: "cancelled" });
-    expect(parseSsoDeepLink("chikuwachat://sso?sso_error=%3Cb%3E")).toEqual({ kind: "error", code: "provider_error" });
+    expect(parseSsoDeepLink("chikuwachat://sso?ticket=T-1_x")).toEqual({ kind: "ticket", ticket: "T-1_x", issuer: null });
+    expect(parseSsoDeepLink("chikuwachat://sso/?ticket=T")).toEqual({ kind: "ticket", ticket: "T", issuer: null });
+    expect(parseSsoDeepLink("chikuwachat://sso?ticket=T&iss=https%3A%2F%2Fchat.example.ac.jp")).toEqual({ kind: "ticket", ticket: "T", issuer: "https://chat.example.ac.jp" });
+    expect(parseSsoDeepLink("chikuwachat://sso?sso_error=cancelled&iss=https%3A%2F%2Fa.example")).toEqual({ kind: "error", code: "cancelled", issuer: "https://a.example" });
+    expect(parseSsoDeepLink("chikuwachat://sso?sso_error=%3Cb%3E")).toEqual({ kind: "error", code: "provider_error", issuer: null });
     expect(parseSsoDeepLink("chikuwachat://sso")).toBeNull();
     expect(parseSsoDeepLink("chikuwachat://other?ticket=T")).toBeNull();
     expect(parseSsoDeepLink("chikuwachat://ssox?ticket=T")).toBeNull();
     expect(parseSsoDeepLink("https://sso?ticket=T")).toBeNull();
     expect(parseSsoDeepLink("not a url")).toBeNull();
+  });
+
+  it("compares the answer's issuer with the server started with as URLs (docs/SSO.md §3 step 6)", () => {
+    const server = "https://chat.example.ac.jp";
+    for (const same of [server, "https://chat.example.ac.jp/", "HTTPS://Chat.Example.AC.jp", "https://chat.example.ac.jp:443"]) expect(issuerMatches(same, server)).toBe(true);
+    expect(issuerMatches("http://127.0.0.1:8000", "http://127.0.0.1:8000/")).toBe(true);
+    expect(issuerMatches("https://chat.example.ac.jp/taylis", "https://chat.example.ac.jp/taylis/")).toBe(true);
+    for (const other of [null, "", "https://evil.example", "http://chat.example.ac.jp", "https://chat.example.ac.jp:8443", "https://chat.example.ac.jp/other", "chat.example.ac.jp", "https://chat.example.ac.jp?x=1", "https://user@chat.example.ac.jp", "javascript:alert(1)"]) {
+      expect(issuerMatches(other, server)).toBe(false);
+    }
   });
 
   it("keeps the pending sign-in for one exchange", () => {
@@ -232,6 +243,7 @@ describe("return from Google", () => {
 
 describe("the Tauri app (deep link)", () => {
   const SERVER = "http://127.0.0.1:8000"; // the login form's default server without a workspace
+  const ISS = encodeURIComponent(SERVER); // the server's answer names itself (docs/SSO.md §3 step 6)
   const json = (body: unknown, status = 200) => new Response(JSON.stringify(body), { status, headers: { "Content-Type": "application/json" } });
   function tokens(): TokenResponse {
     return {
@@ -325,7 +337,7 @@ describe("the Tauri app (deep link)", () => {
     await controller.startGoogleSignIn(SERVER);
     const challenge = new URL(openBrowser.mock.calls[0]![0]).searchParams.get("challenge");
 
-    await link("chikuwachat://sso?ticket=TICKET_123");
+    await link(`chikuwachat://sso?ticket=TICKET_123&iss=${ISS}`);
 
     const [exchange] = exchanges(calls);
     expect(exchange!.url).toBe(`${SERVER}/api/v1/auth/sso/exchange`);
@@ -343,7 +355,7 @@ describe("the Tauri app (deep link)", () => {
     expect(controller.ssoState).toBe("idle");
 
     // The same link again (a second copy) finds nothing waiting.
-    await link("chikuwachat://sso?ticket=TICKET_123");
+    await link(`chikuwachat://sso?ticket=TICKET_123&iss=${ISS}`);
     expect(exchanges(calls)).toHaveLength(1);
   });
 
@@ -351,7 +363,7 @@ describe("the Tauri app (deep link)", () => {
     const calls = serve(() => json({ error: { code: "invalid_ticket", message: "x", details: {} } }, 401));
     const { controller } = await listening();
     await controller.startGoogleSignIn(SERVER);
-    await link("chikuwachat://sso?sso_error=domain_not_allowed");
+    await link(`chikuwachat://sso?sso_error=domain_not_allowed&iss=${ISS}`);
     expect(exchanges(calls)).toHaveLength(0);
     expect(controller.ssoState).toBe("idle");
     expect(controller.screen).toBe("login");
@@ -359,10 +371,34 @@ describe("the Tauri app (deep link)", () => {
 
     await controller.startGoogleSignIn(SERVER);
     expect(controller.error).toBeNull();
-    await link("chikuwachat://sso?ticket=T");
+    await link(`chikuwachat://sso?ticket=T&iss=${encodeURIComponent(`${SERVER}/`)}`); // a trailing slash is the same server
     expect(exchanges(calls)).toHaveLength(1);
     expect(controller.ssoState).toBe("idle");
     expect(controller.error).toBe(ERROR_MESSAGES["invalid_ticket"]);
+  });
+
+  it("refuses an answer from another server, or one that names none: nothing is exchanged (docs/SSO.md §3 step 6)", async () => {
+    const calls = serve();
+    const { controller, enter } = await listening();
+    vi.spyOn(console, "warn").mockImplementation(() => {});
+    for (const answer of [
+      "chikuwachat://sso?ticket=T_FROM_B&iss=https%3A%2F%2Fb.example.com", // a hostile server sent its start on to B
+      "chikuwachat://sso?ticket=T_NO_ISS", // a server before 2026-11-16, or a forged link
+      "chikuwachat://sso?ticket=T&iss=http%3A%2F%2F127.0.0.1%3A8001",
+      "chikuwachat://sso?sso_error=cancelled&iss=https%3A%2F%2Fb.example.com",
+    ]) {
+      await controller.startGoogleSignIn(SERVER);
+      expect(controller.ssoState).toBe("waiting");
+      await link(answer);
+      expect(controller.ssoState).toBe("idle");
+      expect(controller.screen).toBe("login");
+      expect(controller.error).toBe("別のサーバからの応答なので、ログインを中止しました");
+    }
+    expect(exchanges(calls)).toHaveLength(0);
+    expect(enter).not.toHaveBeenCalled();
+    // The sign-in was stopped: the real answer coming afterwards finds nothing waiting.
+    await link(`chikuwachat://sso?ticket=T&iss=${ISS}`);
+    expect(exchanges(calls)).toHaveLength(0);
   });
 
   it("ignores links when no sign-in waits: the one that launched the app, after キャンセル, and other links", async () => {

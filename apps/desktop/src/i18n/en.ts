@@ -240,6 +240,7 @@ export const en: Readonly<Record<MessageKey, string>> = {
   "app.notLoggedIn": "Not logged in",
   "app.ssoStorageBlocked": "This browser's settings don't allow Google sign-in (allow sites to store data)",
   "app.browserOpenFailed": "Couldn't open the browser. Try again",
+  "app.ssoWrongIssuer": "The answer came from a different server, so sign-in was stopped",
   "app.emojiAdded": "Added :{name}:",
   "feature.textEmoji": "text emoji",
   "feature.emojiEdit": "editing emoji",

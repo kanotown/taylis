@@ -18,6 +18,9 @@ export interface SsoPending {
 
 export type SsoReturn = { kind: "ticket"; ticket: string } | { kind: "error"; code: string };
 
+/** The Tauri app's deep link also names the server that answered (`iss`, docs/SSO.md §3 step 6); null when it has none. */
+export type SsoDeepLink = SsoReturn & { issuer: string | null };
+
 export function base64url(bytes: Uint8Array): string {
   let binary = "";
   for (const byte of bytes) binary += String.fromCharCode(byte);
@@ -78,15 +81,40 @@ export function parseSsoReturn(hash: string): SsoReturn | null {
  * link (the scheme is anyone's to open). Read by hand: older WebView2 (Chromium) builds give a custom scheme's URL no
  * host.
  */
-export function parseSsoDeepLink(link: string): SsoReturn | null {
+export function parseSsoDeepLink(link: string): SsoDeepLink | null {
   const match = /^chikuwachat:\/\/sso\/?\?([^#]*)/i.exec(link.trim());
   if (!match) return null;
   const params = new URLSearchParams(match[1]);
+  const issuer = params.get("iss");
   const ticket = params.get("ticket");
-  if (ticket) return { kind: "ticket", ticket };
+  if (ticket) return { kind: "ticket", ticket, issuer };
   const code = params.get("sso_error");
-  if (code !== null) return { kind: "error", code: CODE.test(code) ? code : "provider_error" };
+  if (code !== null) return { kind: "error", code: CODE.test(code) ? code : "provider_error", issuer };
   return null;
+}
+
+/**
+ * docs/SSO.md §3 step 6 (2026-11-16, RFC 9207's idea): whether the answer's `iss` is the server the sign-in started
+ * with. A hostile server could send its start on to another server's; that server's ticket would then come back here
+ * and be exchanged with the hostile one (PKCE protects the verifier, not which server started). Both sides compared
+ * as URLs: scheme and host in lower case, no default port, no trailing slash; a missing or unreadable `iss` never
+ * matches.
+ */
+export function issuerMatches(issuer: string | null, serverUrl: string): boolean {
+  if (!issuer) return false;
+  const answered = issuerKey(issuer);
+  return answered !== null && answered === issuerKey(serverUrl);
+}
+
+function issuerKey(value: string): string | null {
+  let url: URL;
+  try {
+    url = new URL(value.trim());
+  } catch {
+    return null;
+  }
+  if ((url.protocol !== "http:" && url.protocol !== "https:") || !url.hostname || url.username || url.password || url.search || url.hash) return null;
+  return `${url.protocol}//${url.host}${url.pathname.replace(/\/+$/, "")}`;
 }
 
 /** Reads the return and removes the fragment from the address bar and history at once (the ticket must not linger). */
