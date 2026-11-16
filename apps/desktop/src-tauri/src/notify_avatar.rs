@@ -4,7 +4,7 @@
 //! 128 px circle: src/platform/notificationAvatar.ts) and hands its PNG bytes here with a key naming the user and the
 //! picture's version. Windows' toast takes an image only as a file (`appLogoOverride`), and macOS' fallback
 //! attachment too, so each picture is written once under the app's cache folder (`notification-avatars/`, the file
-//! named by a hash of the key) and reused. A toast left in the Action Center still points at its file, so files are not
+//! named by the SHA-256 of the key) and reused. A toast left in the Action Center still points at its file, so files are not
 //! removed right after showing: the folder keeps the newest `KEEP` pictures and is emptied at sign-out.
 //!
 //! Sign-out also ends the notification epoch: a send still on its way (it runs off the command's thread) that started
@@ -65,9 +65,18 @@ fn dir(app: &AppHandle) -> Option<PathBuf> {
     app.path().app_cache_dir().ok().map(|cache| cache.join(DIR))
 }
 
-/// FNV-1a, 64 bits: a stable file name for a key (the key itself has ids and a timestamp, not file-name safe).
-fn fnv1a(text: &str) -> u64 {
-    text.bytes().fold(0xcbf2_9ce4_8422_2325, |hash, byte| (hash ^ u64::from(byte)).wrapping_mul(0x0100_0000_01b3))
+/// The file name for a key (`server|user|version`, not file-name safe): its SHA-256 in hex (2026-11-16). It was a
+/// 64-bit FNV-1a, which a server can collide on purpose: a key of its own naming another workspace's cached picture
+/// would show that picture (or this one, there) beside a message.
+fn file_name(key: &str) -> String {
+    use sha2::{Digest, Sha256};
+    let digest = Sha256::digest(key.as_bytes());
+    let mut name = String::with_capacity(digest.len() * 2 + 4);
+    for byte in digest {
+        name.push_str(&format!("{byte:02x}"));
+    }
+    name.push_str(".png");
+    name
 }
 
 /// Whether bytes look like the PNG the page draws (a signature, a sane size).
@@ -84,7 +93,7 @@ pub fn file(app: &AppHandle, person: &NotificationPerson) -> Option<PathBuf> {
         return None;
     }
     let dir = dir(app)?;
-    let path = dir.join(format!("{:016x}.png", fnv1a(key)));
+    let path = dir.join(file_name(key));
     if path.is_file() {
         return Some(path);
     }
@@ -153,9 +162,10 @@ mod tests {
 
     #[test]
     fn stable_names_and_png_check() {
-        assert_eq!(fnv1a(""), 0xcbf2_9ce4_8422_2325);
-        assert_eq!(fnv1a("a"), 0xaf63_dc4c_8601_ec8c);
-        assert_ne!(fnv1a("srv|u1|v1"), fnv1a("srv|u1|v2"));
+        assert_eq!(file_name(""), "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855.png");
+        assert_eq!(file_name("https://a.example|u1|v1"), file_name("https://a.example|u1|v1"));
+        assert_ne!(file_name("srv|u1|v1"), file_name("srv|u1|v2"));
+        assert_ne!(file_name("https://a.example|u1|v1"), file_name("https://b.example|u1|v1"));
         assert!(acceptable_png(b"\x89PNG\r\n\x1a\n\0\0\0\rIHDR"));
         assert!(!acceptable_png(b"GIF89a......"));
         assert!(!acceptable_png(PNG_SIGNATURE));
