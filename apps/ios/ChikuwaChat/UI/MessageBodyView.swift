@@ -103,7 +103,10 @@ enum BodyTokenizer {
     // the closing one not followed by a letter, digit or `_`, so snake_case and e-mail addresses stay as they are.
     // `\_` `\*` `\~` `\`` are the literal character (also inside emphasis). E-mail addresses (and the shrug, which keeps its
     // backslash) are text tokens of their own, so emphasis and escapes are never read inside them.
-    private static let inline = #"(\*\*((?:\\.|[^*\n\\])+?)\*\*)|(``(?!`)(?:[^`\n]|`(?!`))+?``(?!`)|`([^`\n]+)`)|(\*((?:\\.|[^*\n\\])+)\*)|((?<![\p{L}\p{N}_])_(?![\s\u3000_])((?:\\.|[^\n\\])*?(?:\\.|[^\s\u3000_\\]))_(?![\p{L}\p{N}_]))|(~~((?:\\.|[^~\n\\])+)~~)|(\[([^\]\n]+)\]\((https?://[^\s)]+|(?:page|attachment):[0-9a-fA-F-]{36})\))|(<@group:([0-9a-f-]{36})>)|(<@([0-9a-f-]{36})>)|(<!(channel|here)>)|(https?://[^\s<>\u3000-\u303F\uFF00-\uFFEF]+)|(\\([_*~`$]))|([A-Za-z0-9._%+-]{1,64}@[A-Za-z0-9-]{1,63}(?:\.[A-Za-z0-9-]{1,63}){1,8}|¯\\_\(ツ\)_/¯)|(\$\$((?:\\.|[^$\n\\])+?)\$\$)|(\$(?![\s$])((?:\\.|[^$\n\\])*?(?:\\.|[^\s$\\]))\$(?![0-9A-Za-z]))"#
+    // Linear time (2026-11-16, the `timing` list): inside `_\u2026_` an `_` counts only after a letter or digit (snake_case);
+    // one after anything else could open emphasis itself, so the search for the closer stops there. Before, every `_`
+    // searched to the end of the line: a body of `_a ` repeated took seconds to draw.
+    private static let inline = #"(\*\*((?:\\.|[^*\n\\])+?)\*\*)|(``(?!`)(?:[^`\n]|`(?!`))+?``(?!`)|`([^`\n]+)`)|(\*((?:\\.|[^*\n\\])+)\*)|((?<![\p{L}\p{N}_])_(?![\s\u3000_])((?:\\.|[^\n\\_]|(?<=[\p{L}\p{N}])_)*?(?:\\.|[^\s\u3000_\\]))_(?![\p{L}\p{N}_]))|(~~((?:\\.|[^~\n\\])+)~~)|(\[([^\]\n]+)\]\((https?://[^\s)]+|(?:page|attachment):[0-9a-fA-F-]{36})\))|(<@group:([0-9a-f-]{36})>)|(<@([0-9a-f-]{36})>)|(<!(channel|here)>)|(https?://[^\s<>\u3000-\u303F\uFF00-\uFFEF]+)|(\\([_*~`$]))|([A-Za-z0-9._%+-]{1,64}@[A-Za-z0-9-]{1,63}(?:\.[A-Za-z0-9-]{1,63}){1,8}|¯\\_\(ツ\)_/¯)|(\$\$((?:\\.|[^$\n\\])+?)\$\$)|(\$(?![\s$])((?:\\.|[^$\n\\])*?(?:\\.|[^\s$\\]))\$(?![0-9A-Za-z]))"#
     private static let escaped = try! NSRegularExpression(pattern: #"\\([_*~`$])"#)
     /// The mention tokens, as the inline pattern reads them (groups 14–19 there).
     private static let mentionTokens = try! NSRegularExpression(pattern: #"<@group:([0-9a-f-]{36})>|<@([0-9a-f-]{36})>|<!(channel|here)>"#)
@@ -532,6 +535,29 @@ enum BodyTokenizer {
         parseLinedBlocks(body, canvas: canvas).map(\.block)
     }
 
+    /// A message body's blocks, parsed once per text (2026-11-16): a row's body is evaluated again on every change around
+    /// it (and an animated custom emoji's body 25 times a second), and each evaluation parsed and tokenized the body anew.
+    static func cachedBlocks(_ body: String) -> [BodyBlock] {
+        let key = body as NSString
+        if let hit = blockCache.object(forKey: key) { return hit.blocks }
+        let blocks = parseBlocks(body)
+        blockCache.setObject(ParsedBody(blocks), forKey: key, cost: key.length)
+        return blocks
+    }
+
+    private final class ParsedBody {
+        let blocks: [BodyBlock]
+        init(_ blocks: [BodyBlock]) { self.blocks = blocks }
+    }
+
+    /// The bodies on screen and around (NSCache is safe from any thread; it lets go under memory pressure).
+    private static let blockCache: NSCache<NSString, ParsedBody> = {
+        let cache = NSCache<NSString, ParsedBody>()
+        cache.countLimit = 600
+        cache.totalCostLimit = 4_000_000 // UTF-16 units of the bodies
+        return cache
+    }()
+
     /// The blocks with the line each starts on (0-based): a canvas's outline and section editing find its headings.
     static func parseLinedBlocks(_ body: String, canvas: Bool = false) -> [(block: BodyBlock, line: Int)] {
         let split = body.replacingOccurrences(of: "\r\n", with: "\n").replacingOccurrences(of: "\r", with: "\n").components(separatedBy: "\n")
@@ -830,7 +856,7 @@ struct MessageBodyView: View {
 
     private var blocks: some View {
         VStack(alignment: .leading, spacing: Self.blockSpacing) {
-            ForEach(Array((preparsed ?? BodyTokenizer.parseBlocks(text)).enumerated()), id: \.offset) { _, block in
+            ForEach(Array((preparsed ?? BodyTokenizer.cachedBlocks(text)).enumerated()), id: \.offset) { _, block in
                 blockView(block)
                     // M38: every block as wide as the row and as tall as its wrapped text at that width. A quote's
                     // text beside its bar was measured at one width and drawn at another: lines ran past the right

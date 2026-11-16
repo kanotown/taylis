@@ -9,10 +9,27 @@ enum Links {
     /// or the Japanese after them, so 「…/m/<id>」を見て is a message card, not a card of a broken URL); none in code or in
     /// emphasis. A body's message, drive and Open Graph cards (MessageLinkCards, DriveLink.ids).
     static func all(in body: String) -> [String] {
-        BodyTokenizer.tokenize(body).compactMap { token in
+        let key = body as NSString
+        if let hit = cache.object(forKey: key) { return hit.urls }
+        let urls = BodyTokenizer.tokenize(body).compactMap { token -> String? in
             if case .link(let url, _) = token { return url } else { return nil }
         }
+        cache.setObject(Found(urls), forKey: key, cost: key.length)
+        return urls
     }
+
+    /// Once per body (2026-11-16): a row asks for its links on every evaluation (its cards, its drive links).
+    private final class Found {
+        let urls: [String]
+        init(_ urls: [String]) { self.urls = urls }
+    }
+
+    private static let cache: NSCache<NSString, Found> = {
+        let cache = NSCache<NSString, Found>()
+        cache.countLimit = 600
+        cache.totalCostLimit = 4_000_000
+        return cache
+    }()
 }
 
 /// What a row shows under its body for its link (M11g). A card that came in after the row was laid out made the rows

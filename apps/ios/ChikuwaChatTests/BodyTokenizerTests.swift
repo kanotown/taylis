@@ -66,6 +66,57 @@ final class InlineFormatFixtureTests: XCTestCase {
         }
     }
 
+    private struct Timing: Decodable {
+        struct Case: Decodable {
+            let name: String
+            let unit: String
+            let count: Int
+            let max_ms: Double
+            enum CodingKeys: String, CodingKey { case name, unit, count = "repeat", max_ms }
+        }
+        let timing: [Case]
+    }
+
+    /// 2026-11-16 (a hostile-server review): `unit` repeated must tokenize within `max_ms` (the italic rule ran in
+    /// quadratic time: a body of `_a ` repeated took seconds to draw). The best of three runs, so a busy machine's pause
+    /// is not a failure. Two cases of this client's own: the math alternatives, timed slow on iOS by the review.
+    func testTheSharedTimingList() throws {
+        let url = URL(fileURLWithPath: #filePath).deletingLastPathComponent().deletingLastPathComponent().deletingLastPathComponent()
+            .appendingPathComponent("shared/inline-format.json")
+        let fixture = try JSONDecoder().decode(Timing.self, from: Data(contentsOf: url))
+        XCTAssertFalse(fixture.timing.isEmpty)
+        let own = [Timing.Case(name: "inline math openers without a closer", unit: "$a ", count: 6667, max_ms: 250),
+                   Timing.Case(name: "display math openers without a closer", unit: "$$a ", count: 5000, max_ms: 250)]
+        func best(_ run: () -> Void) -> Double {
+            (0..<3).map { _ in
+                let start = Date()
+                run()
+                return Date().timeIntervalSince(start) * 1000
+            }.min() ?? .infinity
+        }
+        for c in fixture.timing + own {
+            let line = String(repeating: c.unit, count: c.count)
+            let inline = best { _ = BodyTokenizer.tokenizeInline(line) }
+            XCTAssertLessThan(inline, c.max_ms, "\(c.name): tokenizeInline took \(Int(inline)) ms")
+            let whole = best { _ = BodyTokenizer.tokenize(line) }
+            XCTAssertLessThan(whole, c.max_ms, "\(c.name): tokenize took \(Int(whole)) ms")
+            let blocks = best { _ = BodyTokenizer.parseBlocks(line) }
+            XCTAssertLessThan(blocks, c.max_ms, "\(c.name): parseBlocks took \(Int(blocks)) ms")
+            let plain = best { _ = Timeline.plainText(line, limit: 200) }
+            XCTAssertLessThan(plain, c.max_ms, "\(c.name): plainText took \(Int(plain)) ms")
+        }
+    }
+
+    /// A body's blocks and links are read once per text (the row evaluates its body again and again).
+    func testBlocksAndLinksAreKeptPerBody() {
+        let body = "**太字** と https://example.com/a と _斜体_ " + UUID().uuidString
+        XCTAssertEqual(BodyTokenizer.cachedBlocks(body), BodyTokenizer.parseBlocks(body))
+        XCTAssertEqual(BodyTokenizer.cachedBlocks(body), BodyTokenizer.parseBlocks(body)) // from the cache
+        XCTAssertEqual(Links.all(in: body), ["https://example.com/a"])
+        XCTAssertEqual(Links.all(in: body), ["https://example.com/a"])
+        XCTAssertEqual(Links.all(in: body + " https://example.com/b"), ["https://example.com/a", "https://example.com/b"])
+    }
+
     private struct EmphasisMentions: Decodable {
         struct Case: Decodable { let name: String; let text: String; let pieces: [[String]] }
         let emphasis_mentions: [Case]
