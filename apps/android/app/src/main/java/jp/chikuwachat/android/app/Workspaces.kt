@@ -1,5 +1,6 @@
 package jp.chikuwachat.android.app
 
+import jp.chikuwachat.android.api.ServerInfoOut
 import jp.chikuwachat.android.platform.KeyValueStore
 import kotlinx.serialization.Serializable
 import kotlinx.serialization.builtins.ListSerializer
@@ -15,7 +16,10 @@ import okhttp3.HttpUrl.Companion.toHttpUrlOrNull
 data class Workspace(
     /** The list key: a normalized URL (an install older than workspaces keeps the string it logged in with). */
     val serverUrl: String,
-    /** GET /server; null until the server has been asked (push routing, duplicate check). */
+    /**
+     * GET /server; null until the server has been asked (push routing). The first value recorded stays: it is the
+     * server's own claim, never a reason to send this workspace's credentials elsewhere (WORKSPACES.md §5.1).
+     */
     val workspaceId: String? = null,
     /** GET /server; the host until known. */
     val name: String,
@@ -158,14 +162,73 @@ object Workspaces {
         return entries.toMutableList().apply { add(target, removeAt(index)) }
     }
 
-    /** The registered workspace a server is: the same workspace_id (another URL for it), else the same address. */
-    fun findRegistered(entries: List<Workspace>, workspaceId: String?, serverUrl: String): Workspace? =
-        workspaceId?.let { id -> entries.firstOrNull { it.workspaceId == id } } ?: entries.firstOrNull { sameServer(it.serverUrl, serverUrl) }
+    /**
+     * The registered workspace at a server address (WORKSPACES.md §5.1 step 3, 2026-11-16): the same normalized URL only.
+     * A `workspace_id` is the server's own claim: a server naming another one's id is not that workspace.
+     */
+    fun findRegistered(entries: List<Workspace>, serverUrl: String): Workspace? =
+        entries.firstOrNull { sameServer(it.serverUrl, serverUrl) }
+
+    /** Where a sign-in form goes. */
+    sealed interface SignIn {
+        /** Registered and signed in already: that workspace opens instead of signing in twice (one account per server). */
+        data class Open(val entry: Workspace) : SignIn
+
+        /** Sign in at this address: the URL entered, spelled as a registered entry of the same address spells it. */
+        data class At(val serverUrl: String) : SignIn
+    }
 
     /**
-     * Which workspace a push belongs to (WORKSPACES.md §7): its `workspace_id`; without a match (an older server,
-     * an id changed by a restore) the signed-in workspace whose local store has the channel, else the active one.
-     * Null (show nothing) when the workspace is signed out on this device.
+     * The password, the authenticator code, Google's start and an invite go to the URL entered ([normalized], or its https
+     * version when the M190 prompt chose it) and nowhere else: a registered entry of the same address lends only its
+     * spelling (it names the saved token and the local store), never its URL to a server that claims its workspace_id.
+     */
+    fun signInTarget(entries: List<Workspace>, normalized: String, adding: Boolean, activeKey: String?): SignIn {
+        val known = findRegistered(entries, normalized) ?: return SignIn.At(normalized)
+        if (!known.signedOut && (adding || known.serverUrl != activeKey)) return SignIn.Open(known)
+        return SignIn.At(known.serverUrl)
+    }
+
+    /**
+     * GET /server's answer for an entry's own server (never another entry's): the name and the icon follow it; the
+     * workspace_id first recorded stays (a server may claim another one's id later; WORKSPACES.md §5.1).
+     */
+    fun withServerInfo(entry: Workspace, info: ServerInfoOut): Workspace = entry.copy(
+        name = info.name.ifBlank { entry.name },
+        workspaceId = entry.workspaceId ?: info.workspaceId.ifBlank { null },
+        iconVersion = if (info.knowsIcon) info.iconVersion else entry.iconVersion,
+    )
+
+    /**
+     * The list after a sign-in at [serverUrl] (login form, Google, invite): its entry is renewed (or added at the end)
+     * with the account and [info] from that same server; the workspace_id first recorded stays; no other entry changes.
+     */
+    fun signedIn(
+        entries: List<Workspace>,
+        serverUrl: String,
+        username: String,
+        userId: String,
+        info: ServerInfoOut?,
+        session: String,
+    ): List<Workspace> {
+        val known = entries.firstOrNull { it.serverUrl == serverUrl }
+        val entry = Workspace(
+            serverUrl = serverUrl,
+            workspaceId = known?.workspaceId ?: info?.workspaceId?.ifBlank { null },
+            name = info?.name?.ifBlank { null } ?: known?.name ?: hostLabel(serverUrl),
+            username = username,
+            userId = userId,
+            iconVersion = if (info?.knowsIcon == true) info.iconVersion else known?.iconVersion,
+            session = session,
+        )
+        return if (known != null) entries.map { if (it.serverUrl == serverUrl) entry else it } else entries + entry
+    }
+
+    /**
+     * Which workspace a push belongs to (WORKSPACES.md §7): its `workspace_id` when exactly one entry has it; without a
+     * match (an older server, an id changed by a restore) the signed-in workspace whose local store has the channel, else
+     * the active one. Two or more entries with the id (a server claims another one's) cannot be told apart: the active
+     * one, so a tap does not switch. Null (show nothing) when the workspace is signed out on this device.
      */
     suspend fun route(
         entries: List<Workspace>,
@@ -174,10 +237,12 @@ object Workspaces {
         channelId: String?,
         hasChannel: suspend (Workspace, String) -> Boolean,
     ): Workspace? {
-        if (workspaceId != null) {
-            entries.firstOrNull { it.workspaceId == workspaceId }?.let { return if (it.signedOut) null else it }
-        }
         val signedIn = entries.filter { !it.signedOut }
+        if (workspaceId != null) {
+            val owners = entries.filter { it.workspaceId == workspaceId }
+            if (owners.size == 1) return owners.single().takeUnless { it.signedOut }
+            if (owners.size > 1) return signedIn.firstOrNull { it.serverUrl == activeKey }
+        }
         if (channelId != null) {
             for (entry in signedIn.sortedByDescending { it.serverUrl == activeKey }) {
                 if (hasChannel(entry, channelId)) return entry

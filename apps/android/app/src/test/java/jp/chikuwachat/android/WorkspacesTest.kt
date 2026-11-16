@@ -1,8 +1,11 @@
 package jp.chikuwachat.android
 
+import jp.chikuwachat.android.api.ServerInfoOut
 import jp.chikuwachat.android.app.Workspace
 import jp.chikuwachat.android.app.Workspaces
 import kotlinx.coroutines.runBlocking
+import kotlinx.serialization.json.JsonNull
+import kotlinx.serialization.json.JsonPrimitive
 import org.junit.Assert.assertEquals
 import org.junit.Assert.assertFalse
 import org.junit.Assert.assertNull
@@ -95,15 +98,55 @@ class WorkspacesTest {
         assertEquals(Workspaces.Saved(emptyList(), null), Workspaces.migrate(null, null, hasSession = false))
     }
 
-    @Test fun aRegisteredWorkspaceIsFoundByIdOrAddress() {
+    @Test fun aRegisteredWorkspaceIsFoundByItsAddressOnly() {
         val list = listOf(first, second)
-        // Another URL for the same deployment (same workspace_id): one account per server.
-        assertEquals(second, Workspaces.findRegistered(list, "w2", "https://chat.example.com"))
-        // An entry that predates GET /server (no id yet) is matched by its address.
-        val legacy = first.copy(workspaceId = null)
-        assertEquals(legacy, Workspaces.findRegistered(listOf(legacy, second), "w-new", "HTTP://10.0.2.2:8000/"))
-        assertNull(Workspaces.findRegistered(list, "w3", "https://other.example.com"))
-        assertNull(Workspaces.findRegistered(list, null, "https://other.example.com"))
+        assertEquals(first, Workspaces.findRegistered(list, "HTTP://10.0.2.2:8000/"))
+        assertEquals(first.copy(workspaceId = null), Workspaces.findRegistered(listOf(first.copy(workspaceId = null), second), "http://10.0.2.2:8000"))
+        // 2026-11-16: another URL is another workspace, whatever workspace_id its server claims.
+        assertNull(Workspaces.findRegistered(list, "https://chat.example.com"))
+        assertNull(Workspaces.findRegistered(list, "https://10.0.2.2:8000")) // the scheme too
+    }
+
+    private fun info(id: String, name: String, icon: String? = null) =
+        ServerInfoOut(product = Workspaces.PRODUCT, workspaceId = id, name = name, iconVersionJson = icon?.let { JsonPrimitive(it) } ?: JsonNull)
+
+    /**
+     * The exploit of the 2026-11-16 review: a hostile server A claims B's workspace_id; A signs out; the user adds B. The
+     * password, the code and Google's start used to go to A's URL (the entry with B's id). They go to B's URL, B becomes
+     * an entry of its own, and A's entry is untouched.
+     */
+    @Test fun aServerClaimingAnotherOnesIdNeverGetsItsCredentials() {
+        val b = "https://b.example.com"
+        val a = Workspace(serverUrl = "https://a.example.com", workspaceId = "id-of-b", name = "B (fake)", username = "alice", userId = "ua", session = "s0")
+        // A signs out (its entry stays so that signing back in is one step).
+        var list = listOf(a.copy(signedOut = true))
+        val signedOutA = list.single()
+        // Adding B (its GET /server answers id-of-b): the sign-in goes to B's own URL.
+        assertEquals(Workspaces.SignIn.At(b), Workspaces.signInTarget(list, b, adding = true, activeKey = a.serverUrl))
+        assertEquals(Workspaces.SignIn.At(b), Workspaces.signInTarget(list, b, adding = false, activeKey = a.serverUrl))
+        list = Workspaces.signedIn(list, b, "bob", "ub", info("id-of-b", "B"), "s1")
+        assertEquals(listOf(signedOutA, Workspace(serverUrl = b, workspaceId = "id-of-b", name = "B", username = "bob", userId = "ub", session = "s1")), list)
+        // Signing back in to A goes to A (its own address), never to B, and does not touch B's entry.
+        assertEquals(Workspaces.SignIn.At(a.serverUrl), Workspaces.signInTarget(list, "https://A.example.com/", adding = false, activeKey = a.serverUrl))
+        val again = Workspaces.signedIn(list, a.serverUrl, "alice", "ua", info("id-of-c", "C (fake)"), "s2")
+        assertEquals(list[1], again[1])
+        assertEquals("id-of-b", again[0].workspaceId) // the first id recorded stays
+        assertEquals("C (fake)", again[0].name) // A's own name, in A's own entry
+        // Typing B's address again while B is signed in opens B (one account per server).
+        assertEquals(Workspaces.SignIn.Open(list[1]), Workspaces.signInTarget(list, b, adding = true, activeKey = a.serverUrl))
+    }
+
+    @Test fun serverInfoCannotChangeAStoredWorkspaceId() {
+        val entry = first.copy(iconVersion = "1")
+        // Another id later (a hostile server, or a restore): the first one stays; the name and icon follow the server.
+        assertEquals(entry.copy(name = "改名", iconVersion = "2"), Workspaces.withServerInfo(entry, info("w-other", "改名", "2")))
+        // An entry that predates GET /server learns its id once.
+        assertEquals("w-new", Workspaces.withServerInfo(entry.copy(workspaceId = null), info("w-new", "A")).workspaceId)
+        assertNull(Workspaces.withServerInfo(entry.copy(workspaceId = null), info("", "A")).workspaceId)
+        // A blank name keeps the saved one; a server before M93 (no icon_version) keeps the saved icon.
+        val older = ServerInfoOut(product = Workspaces.PRODUCT, workspaceId = "w1", name = " ")
+        assertEquals(entry, Workspaces.withServerInfo(entry, older.copy(name = "")))
+        assertEquals("1", Workspaces.withServerInfo(entry, older).iconVersion)
     }
 
     @Test fun pushesGoToTheirWorkspace() = runBlocking {
@@ -126,5 +169,24 @@ class WorkspacesTest {
         assertNull(Workspaces.route(out, first.serverUrl, "w2", "c2", has))
         assertNull(Workspaces.route(out, second.serverUrl, null, "c404", has))
         assertNull(Workspaces.route(emptyList(), null, "w1", "c1", has))
+    }
+
+    /**
+     * 2026-11-16 (WORKSPACES.md §7): an id that two entries have (a server claims another one's) decides nothing: the push
+     * stays with the active workspace, so its tap does not switch, even when another one's store has the channel.
+     */
+    @Test fun aDuplicatedIdDoesNotSwitch() = runBlocking {
+        val impostor = second.copy(serverUrl = "https://evil.example.com", workspaceId = "w1", name = "Fake")
+        val third = Workspace(serverUrl = "https://c.example.com", workspaceId = "w3", name = "C", username = "c", userId = "u3")
+        val list = listOf(first, impostor, third)
+        val stores = mapOf(first.serverUrl to setOf("c1"), impostor.serverUrl to setOf("c1"), third.serverUrl to setOf("c3"))
+        val has: suspend (Workspace, String) -> Boolean = { entry, channel -> channel in stores[entry.serverUrl].orEmpty() }
+        assertEquals(third, Workspaces.route(list, third.serverUrl, "w1", "c1", has))
+        assertEquals(impostor, Workspaces.route(list, impostor.serverUrl, "w1", "c1", has))
+        assertEquals(first, Workspaces.route(list, first.serverUrl, "w1", null, has))
+        // The active one signed out: nothing is shown.
+        assertNull(Workspaces.route(list.map { if (it == third) it.copy(signedOut = true) else it }, third.serverUrl, "w1", "c1", has))
+        // A unique id still decides.
+        assertEquals(third, Workspaces.route(list, first.serverUrl, "w3", "c1", has))
     }
 }

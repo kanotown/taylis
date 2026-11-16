@@ -865,7 +865,10 @@ class AppController(private val app: Application) {
         switcherOpen = true
     }
 
-    /** The name and workspace id from GET /server, read again whenever a workspace opens (§4). */
+    /**
+     * The name and icon from GET /server, read again whenever a workspace opens (§4); the workspace id only when the entry
+     * has none yet (the first one recorded stays, WORKSPACES.md §5.1).
+     */
     private suspend fun refreshServerInfo(serverUrl: String) {
         val info = try {
             ApiClient(serverUrl, http).serverInfo()
@@ -875,9 +878,7 @@ class AppController(private val app: Application) {
             return // offline, or an older server: the saved name stays
         }
         if (info.product != Workspaces.PRODUCT) return
-        updateWorkspace(serverUrl) {
-            it.copy(name = info.name.ifBlank { it.name }, workspaceId = info.workspaceId, iconVersion = if (info.knowsIcon) info.iconVersion else it.iconVersion)
-        }
+        updateWorkspace(serverUrl) { Workspaces.withServerInfo(it, info) }
     }
 
     /** The marks of the workspaces that are not open (§6): when the app comes back and when the switcher opens. */
@@ -920,7 +921,7 @@ class AppController(private val app: Application) {
     /**
      * Login form (SYNC_PROTOCOL.md §7.2 first login, WORKSPACES.md §5.1): the URL is normalized and GET /server
      * checked; when adding, a server that is not ChikuwaChat is refused and an already registered workspace
-     * (same workspace_id) is switched to instead of signing in twice (one account per server).
+     * (the same address) is switched to instead of signing in twice (one account per server).
      */
     suspend fun login(server: String, username: String, password: String, totpCode: String? = null) =
         // In the controller's scope: the form goes away half-way (the workspace it opens replaces it).
@@ -963,13 +964,14 @@ class AppController(private val app: Application) {
     }
 
     /**
-     * The server a sign-in form goes to (password or Google): GET /server checked; when adding, a server that is not
-     * ChikuwaChat is refused. Null when the form stops: a failure in [error], or an already registered and signed-in
-     * workspace (same workspace_id) opened instead of signing in twice (one account per server).
+     * The server a sign-in form goes to (password or Google): the URL entered, never another workspace's (WORKSPACES.md
+     * §5.1 step 3); GET /server checked; when adding, a server that is not ChikuwaChat is refused. Null when the form
+     * stops: a failure in [error], or an already registered and signed-in workspace (the same address) opened instead of
+     * signing in twice (one account per server).
      */
     private suspend fun signInTarget(normalized: String): Pair<String, ServerInfoOut?>? {
         // A registered address keeps its spelling: it names the saved token and the local store.
-        var key = workspaces.firstOrNull { Workspaces.sameServer(it.serverUrl, normalized) }?.serverUrl ?: normalized
+        val key = Workspaces.findRegistered(workspaces, normalized)?.serverUrl ?: normalized
         val info = try {
             ApiClient(key, http).serverInfo().takeIf { it.product == Workspaces.PRODUCT }
         } catch (e: ApiException.Network) {
@@ -988,17 +990,18 @@ class AppController(private val app: Application) {
             error = NOT_CHIKUWA
             return null
         }
-        val known = info?.let { Workspaces.findRegistered(workspaces, it.workspaceId, key) }
-        if (known != null && !known.signedOut && (addingWorkspace || known.serverUrl != activeKey)) {
-            // Registered and signed in already: that workspace opens instead.
-            error = null
-            totpRequired = false
-            sessionLock.withLock { switchLocked(known.serverUrl) }
-            notice = L10n.str(R.string.app_controller_is_already_added, known.name)
-            return null
+        // Registered but signed out: signed in to again (at its own address; a workspace_id another entry has is no match).
+        return when (val target = Workspaces.signInTarget(workspaces, normalized, addingWorkspace, activeKey)) {
+            is Workspaces.SignIn.At -> target.serverUrl to info
+            is Workspaces.SignIn.Open -> {
+                // Registered and signed in already: that workspace opens instead.
+                error = null
+                totpRequired = false
+                sessionLock.withLock { switchLocked(target.entry.serverUrl) }
+                notice = L10n.str(R.string.app_controller_is_already_added, target.entry.name)
+                null
+            }
         }
-        if (known != null) key = known.serverUrl // registered but signed out: sign in to it again
-        return key to info
     }
 
     // --- Google sign-in (M48, docs/SSO.md §6) -----------------------------------------------------
@@ -1006,7 +1009,7 @@ class AppController(private val app: Application) {
     /** The login form's Google button for this address (null: none, also for a server before M48 or offline). */
     suspend fun googleSignInButton(server: String): GoogleButtonText? {
         val normalized = Workspaces.normalizeServerUrl(server) ?: return null
-        val key = workspaces.firstOrNull { Workspaces.sameServer(it.serverUrl, normalized) }?.serverUrl ?: normalized
+        val key = Workspaces.findRegistered(workspaces, normalized)?.serverUrl ?: normalized
         return Sso.googleButton(ApiClient(key, http))
     }
 
@@ -1120,16 +1123,8 @@ class AppController(private val app: Application) {
         dropAccountWork(serverUrl, keepUserId = me.id)
         clients[serverUrl] = client
         push.detach(serverUrl)
-        val entry = Workspace(
-            serverUrl = serverUrl,
-            workspaceId = info?.workspaceId ?: known?.workspaceId,
-            name = info?.name?.ifBlank { null } ?: known?.name ?: Workspaces.hostLabel(serverUrl),
-            username = username,
-            userId = me.id,
-            iconVersion = if (info?.knowsIcon == true) info.iconVersion else known?.iconVersion,
-            session = java.util.UUID.randomUUID().toString(),
-        )
-        workspaces = if (known != null) workspaces.map { if (it.serverUrl == serverUrl) entry else it } else workspaces + entry
+        // [info] is this same server's GET /server; the workspace id first recorded for the entry stays.
+        workspaces = Workspaces.signedIn(workspaces, serverUrl, username, me.id, info, java.util.UUID.randomUUID().toString())
         activeKey = serverUrl
         saveWorkspaces()
         addingWorkspace = false
@@ -1162,7 +1157,8 @@ class AppController(private val app: Application) {
 
     private suspend fun acceptInviteNow(server: String, token: String, username: String, displayName: String, password: String): String? {
         val normalized = Workspaces.normalizeServerUrl(server) ?: return L10n.str(R.string.app_controller_the_server_url_is_not_valid)
-        val key = workspaces.firstOrNull { Workspaces.sameServer(it.serverUrl, normalized) }?.serverUrl ?: normalized
+        // The address the link names (its registered spelling), never another workspace's (WORKSPACES.md §5.1 step 3).
+        val key = Workspaces.findRegistered(workspaces, normalized)?.serverUrl ?: normalized
         val api = makeApi(key, username)
         busy = true
         return try {
@@ -1491,8 +1487,8 @@ class AppController(private val app: Application) {
             ensureWorkspacesLoaded()
             // §11: signed out on this device (the server may not know it yet): nothing is shown.
             val target = routePush(message) ?: return@launch
-            // An entry that predates GET /server learns its id from the payload (routing, duplicate checks).
-            if (target.workspaceId == null && message.workspaceId != null) updateWorkspace(target.serverUrl) { it.copy(workspaceId = message.workspaceId) }
+            // An entry without a workspace id learns it from its own server's GET /server only, never from a push (any
+            // server can send one naming any id; WORKSPACES.md §5.1).
             // The widgets of a workspace the app is not live in (not started, or another one on screen): the push's own
             // number and conversation for 未読・メンション; a calendar or task push reads 今日の予定・締切 again. While it is
             // live, the engine catches up below and the store writes both.
