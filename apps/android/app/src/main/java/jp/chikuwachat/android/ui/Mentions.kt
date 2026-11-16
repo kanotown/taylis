@@ -15,7 +15,9 @@ import java.util.Locale
  */
 object Mentions {
     // After anything but an ASCII handle character, @ or <: 「まとめます。@kano」 is a mention, a@b.jp and <@uuid> are not.
-    private val HANDLE = Regex("""(^|[^A-Za-z0-9._@<-])@([A-Za-z0-9._-]+)""")
+    // M189: also after the `_` that opens italic (「_@kano 確認_」; not after a letter or digit, as italic: 「確認_@kano」 is not).
+    private val HANDLE = Regex("""(^|[^A-Za-z0-9._@<-])(_*)@([A-Za-z0-9._-]+)""")
+    private val WORD = Regex("""[\p{L}\p{N}]""")
     private val USER_TOKEN = Regex("""<@([0-9a-f-]{36})>""")
     private val ALL_TOKEN = Regex("""<!(channel|here)>""")
     private val GROUP_TOKEN = Regex("""<@group:([0-9a-f-]{36})>""")
@@ -24,18 +26,26 @@ object Mentions {
     /** `kind` (M12k): "group" notifies the members; "all" is @channel / @here. `ai` (M66): an AI bot (shown with 「AI」). */
     data class Candidate(val username: String, val label: String, val kind: String = "user", val ai: Boolean = false)
 
+    /**
+     * `@name` as the stored token (apps/shared/mention-encode.json). M189: the longest known name wins, so a `.`, `_` or
+     * `-` that ends the handle but is no one's (「@kano.」 ending a sentence, 「_確認 @kano_」 closing italic) stays after
+     * the token.
+     */
     fun encode(text: String, users: Collection<UserPublic>, groups: Collection<GroupOut> = emptyList()): String {
         val byName = HashMap<String, String>()
         users.forEach { byName[it.username.lowercase()] = "<@${it.id}>" }
         groups.forEach { byName[it.name.lowercase()] = "<@group:${it.id}>" } // names never collide (server)
+        fun token(name: String): String? = if (name == "channel" || name == "here") "<!$name>" else byName[name]
         return HANDLE.replace(text) { match ->
-            val lead = match.groupValues[1]
-            val name = match.groupValues[2].lowercase()
-            when {
-                name == "channel" || name == "here" -> "$lead<!$name>"
-                byName[name] != null -> lead + byName.getValue(name)
-                else -> match.value
+            val (lead, opens, name) = match.destructured
+            if (opens.isNotEmpty() && WORD.matches(lead)) return@replace match.value
+            var end = name.length
+            while (end > 0) {
+                token(name.substring(0, end).lowercase())?.let { return@replace lead + opens + it + name.substring(end) }
+                if (name[end - 1] !in "._-") break
+                end--
             }
+            match.value
         }
     }
 

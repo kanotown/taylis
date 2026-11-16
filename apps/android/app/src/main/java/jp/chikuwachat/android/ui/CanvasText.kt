@@ -365,29 +365,13 @@ object CanvasText {
         return null
     }
 
-    /** `@name` after anything but a letter, digit, `.`, `_`, `-` or `@` (an e-mail address stays text). */
-    private val CANVAS_HANDLE = Regex("""(^|[^A-Za-z0-9._@<-])@([A-Za-z0-9._-]+)""")
-
     /**
-     * The editor's `@username` back to the stored `<@uuid>` (§4.2). Unlike the composer's [Mentions.encode] (a mention
-     * after a space or "("), a handle right after Japanese text counts too: the editor shows every stored mention as
-     * `@username` (「…まとめます。@android2 さん」), and the composer's rule turned such a mention into plain text at the
-     * first save after any edit (M46, found on the emulator; the desktop's encodeMentions has the same rule).
+     * The editor's `@username` back to the stored `<@uuid>` (§4.2): the composer's [Mentions.encode]. A handle right after
+     * Japanese text counts too: the editor shows every stored mention as `@username` (「…まとめます。@android2 さん」), and
+     * an older rule turned such a mention into plain text at the first save after any edit (M46, found on the emulator).
      */
-    fun encodeMentions(text: String, users: Collection<UserPublic>, groups: Collection<GroupOut> = emptyList()): String {
-        val byName = HashMap<String, String>()
-        users.forEach { byName[it.username.lowercase()] = "<@${it.id}>" }
-        groups.forEach { byName[it.name.lowercase()] = "<@group:${it.id}>" }
-        return CANVAS_HANDLE.replace(text) { match ->
-            val lead = match.groupValues[1]
-            val name = match.groupValues[2].lowercase()
-            when {
-                name == "channel" || name == "here" -> "$lead<!$name>"
-                byName[name] != null -> lead + byName.getValue(name)
-                else -> match.value
-            }
-        }
-    }
+    fun encodeMentions(text: String, users: Collection<UserPublic>, groups: Collection<GroupOut> = emptyList()): String =
+        Mentions.encode(text, users, groups)
 
     /** Task counts as the server makes them for a list (the "3/8" beside a canvas). */
     fun taskProgress(total: Int, done: Int): String? = if (total > 0) "$done/$total" else null
