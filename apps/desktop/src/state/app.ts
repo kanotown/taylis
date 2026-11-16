@@ -436,6 +436,11 @@ export class AppController {
   /**
    * The server a login form names (WORKSPACES.md §5.1): normalized, checked with GET /server when adding a
    * workspace, and an already registered workspace is switched to instead. null = handled (error shown).
+   *
+   * Step 3 (2026-11-16): a registered workspace is found by its URL only, never by the `workspace_id` the server
+   * claims, and the password, the code, Google's start and an invite go to the URL typed (or its https form). Before,
+   * a server that claimed another workspace's id (and then signed this device out) had the next sign-in to that
+   * other workspace sent to itself: its password and two-factor code.
    */
   private async resolveServer(input: string): Promise<{ server: string; info: ServerInfoOut | null } | null> {
     const normalized = isWeb() ? location.origin : normalizeServerUrl(input);
@@ -444,7 +449,7 @@ export class AppController {
       return null;
     }
     // A registered address keeps its spelling: it names the saved credential and the local database.
-    let server = this.workspaces.find((e) => sameServer(e.serverUrl, normalized))?.serverUrl ?? normalized;
+    const server = this.workspaces.find((e) => sameServer(e.serverUrl, normalized))?.serverUrl ?? normalized;
     let info: ServerInfoOut | null = null;
     try {
       const answer: unknown = await new ApiClient(server).serverInfo();
@@ -460,13 +465,14 @@ export class AppController {
         this.setScreen("login", t("app.notTaylisServer"));
         return null;
       }
-      const known = this.workspaces.find((e) => (e.workspaceId !== null && e.workspaceId === info!.workspace_id) || sameServer(e.serverUrl, server));
+      // The same URL signed in: switch to it. Signed out, `server` is already its spelling: sign in to it again. The
+      // same `workspace_id` at another URL is another entry (a moved server's old one is the user's to remove).
+      const known = this.workspaces.find((e) => sameServer(e.serverUrl, server));
       if (known && this.sessions.has(known.serverUrl)) {
         await this.switchWorkspace(known.serverUrl);
         this.setNotice(t("app.workspaceKnown", { name: known.name }));
         return null;
       }
-      if (known) server = known.serverUrl; // registered but signed out: sign in to it again
     }
     return { server, info };
   }
@@ -2303,7 +2309,11 @@ export class AppController {
     this.saveWorkspaces();
   }
 
-  /** A new sign-in (login form or invite): the workspace joins the list, or its entry is renewed. */
+  /**
+   * A new sign-in (login form or invite): the workspace joins the list, or its entry is renewed. `info` is GET /server
+   * of `api`'s own URL (the callers ask the server they signed in to), so one server's name never lands in another's
+   * entry; an entry keeps the first `workspace_id` it recorded (WORKSPACES.md §5.1 step 3: the id is the server's claim).
+   */
   private async enterNewSession(api: ApiClient, username: string, me: UserMe, info: ServerInfoOut | null): Promise<void> {
     const serverUrl = api.baseUrl;
     const previous = this.sessions.get(serverUrl);
@@ -2311,7 +2321,7 @@ export class AppController {
     const known = this.workspaces.find((e) => e.serverUrl === serverUrl);
     const entry: WorkspaceEntry = {
       serverUrl,
-      workspaceId: info?.workspace_id ?? known?.workspaceId ?? null,
+      workspaceId: known?.workspaceId ?? info?.workspace_id ?? null,
       name: info?.name ?? known?.name ?? hostLabel(serverUrl),
       username,
       userId: me.id,
@@ -2393,16 +2403,22 @@ export class AppController {
     void this.refreshServerInfo(session);
   }
 
-  /** The workspace's name and id as the server says now (§4: read again whenever it opens). */
+  /**
+   * The workspace's name and icon as the server says now (§4: read again whenever it opens). Its `workspace_id` is
+   * recorded only while the entry has none: a later, different one is the server's claim and never replaces the first
+   * (WORKSPACES.md §5.1 step 3; a server that took another workspace's id could have its sign-ins sent to itself).
+   */
   private async refreshServerInfo(session: Session): Promise<void> {
     try {
       const answer: unknown = await session.api.serverInfo();
       if (!isServerInfo(answer)) return;
       const entry = this.workspaces.find((e) => e.serverUrl === session.serverUrl);
+      if (!entry) return;
       // M93: a server before it has no `icon_version` (keep what we have: none).
-      const iconVersion = answer.icon_version !== undefined ? answer.icon_version : (entry?.iconVersion ?? null);
-      if (!entry || (entry.name === answer.name && entry.workspaceId === answer.workspace_id && (entry.iconVersion ?? null) === iconVersion)) return;
-      this.patchEntry(session.serverUrl, { name: answer.name, workspaceId: answer.workspace_id, iconVersion });
+      const iconVersion = answer.icon_version !== undefined ? answer.icon_version : (entry.iconVersion ?? null);
+      const workspaceId = entry.workspaceId ?? answer.workspace_id;
+      if (entry.name === answer.name && entry.workspaceId === workspaceId && (entry.iconVersion ?? null) === iconVersion) return;
+      this.patchEntry(session.serverUrl, { name: answer.name, workspaceId, iconVersion });
       if (this.active === session) setTitleBase(answer.name);
       this.emit();
     } catch {

@@ -106,6 +106,25 @@ describe("notification clicks", () => {
     expect(fetched).toBeInstanceOf(Blob);
   });
 
+  it("two workspaces claiming one workspace_id (WORKSPACES.md §7): a click goes to the workspace that showed it, never by the id", async () => {
+    const { controller, deps } = twoWorkspaces();
+    controller.workspaces = controller.workspaces.map((e) => ({ ...e, workspaceId: "0190aaaa-bbbb-7ccc-8ddd-eeeeffff0000" }));
+    const server = new FakeServer();
+    const alice = server.addUser("alice");
+    const channel = server.createChannel("general", alice.id);
+    const message = server.post(channel.id, alice.id, "hello").message;
+    const revealedIn: Array<string | null> = [];
+    vi.spyOn(controller, "revealMessage").mockImplementation(async () => {
+      revealedIn.push(controller.activeServer);
+      return true;
+    });
+    deps.onNotify!(message, { ...channel, type: "public" } as unknown as ChannelState);
+    await vi.waitFor(() => expect(shown).toHaveLength(1));
+    shown[0]!.onClick!();
+    await vi.waitFor(() => expect(revealedIn).toEqual([B]));
+    expect(controller.activeServer).toBe(B);
+  });
+
   it("the open workspace's notification opens at once; a signed-out workspace's does nothing", async () => {
     const { controller } = twoWorkspaces();
     const opened: Array<string | null> = [];

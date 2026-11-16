@@ -3,7 +3,10 @@
 export interface WorkspaceEntry {
   /** The list key: a normalized URL (older installs keep the string they logged in with). */
   serverUrl: string;
-  /** GET /server; null until the server has been asked (routing notifications, duplicate check). */
+  /**
+   * GET /server; null until the server has been asked. The first value recorded is kept (the server's own claim:
+   * another server may claim the same one), and entries are never matched by it (WORKSPACES.md §5.1 step 3).
+   */
   workspaceId: string | null;
   /** GET /server; the host until known. */
   name: string;

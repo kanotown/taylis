@@ -99,9 +99,10 @@ describe.skipIf(!URL1 || !URL2)("workspaces on two live servers", () => {
     expect(app.activeServer).toBe(two);
     await until(() => app.isSignedIn(one) && app.isSignedIn(two));
 
-    // The same server under another spelling is switched to, not added again (§5.1).
+    // The same URL in another spelling is switched to, not added again (§5.1; entries are matched by URL only since
+    // 2026-11-16, so another host name for the same server would be another entry).
     app.beginAddWorkspace();
-    await app.login(URL1!.replace("127.0.0.1", "localhost"), "dtuser1", PASS1);
+    await app.login(`${URL1!.replace(/\/+$/, "")}/`, "dtuser1", PASS1);
     expect(app.workspaces).toHaveLength(2);
     expect(app.activeServer).toBe(one);
     expect(app.notice).toContain("登録済み");
