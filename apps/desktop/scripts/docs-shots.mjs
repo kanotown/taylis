@@ -14,8 +14,11 @@
 //   APP_USER  the account the shots are taken as (default review, the demo's ordinary member)
 //   ADMIN_USER / ADMIN_PASS  optional: also the admin screens, as that account (default user tanaka)
 //   README_USER / README_PASS  optional: also docs/images/chat.png (a channel and its thread, the README's first picture)
-//              and docs/images/desktop.png (the attendance board), 1600×1000 PNGs in the app's default look (the Taylis
-//              theme's brown sidebar, light content), as that account (default yamamoto)
+//              and docs/images/desktop.png (the attendance board), 2208×1380 PNGs in the app's default look (the Taylis
+//              theme's brown sidebar, light content), as that account (default yamamoto): a 1104×690 CSS-pixel window
+//              (like 1325×828 at the app's 120 % text size, as the documentation's shots) at 2 device pixels per CSS
+//              pixel, so the text reads well when GitHub shows the picture at the README's 75 % width. With oxipng
+//              installed they are optimised (lossless).
 //   CDP_PORT  headless Chrome's DevTools port (default 9444)
 //   ONLY      comma-separated shot names to take (default: all)
 //
@@ -49,7 +52,7 @@ const WIDE = { width: 1280, height: 760, scale: 2 };
 const NORMAL = { width: 1080, height: 680, scale: 2.4 };
 const TALL = { width: 1080, height: 860, scale: 2.4 };
 const TALLER = { width: 1080, height: 960, scale: 2.4 };
-const README = { width: 1600, height: 1000, scale: 1 };
+const README = { width: 1104, height: 690, scale: 2 };
 const SIDEBAR = "nav[aria-label='チャンネルとDM']";
 const RAIL = "nav[aria-label='場所']";
 
@@ -194,6 +197,8 @@ async function shot(name, clip = null, { png = null } = {}) {
   const data = Buffer.from((await send("Page.captureScreenshot", params)).data, "base64");
   if (png) {
     writeFileSync(png, data);
+    // Lossless optimisation when oxipng is installed (Chrome's PNGs are loosely compressed).
+    spawnSync("oxipng", ["-q", "-o", "4", "--strip", "safe", png]);
     console.log("shot", png);
     return;
   }
@@ -568,7 +573,10 @@ def("web-edit-message", async () => {
     const list = document.querySelector("[data-edit-completions]");
     const rs = [edit, list].filter(Boolean).map((e) => e.getBoundingClientRect());
     let top = Math.max(0, Math.min(...rs.map((r) => r.top)) - 10);
-    const bottom = Math.min(innerHeight, Math.max(...rs.map((r) => r.bottom)) + 10);
+    // Down to the edit form's buttons (キャンセル / 保存), not the post's replies row under it (2026-11-17).
+    const save = [...edit.querySelectorAll("button")].find((b) => b.textContent.trim() === "保存");
+    const formBottom = save ? save.getBoundingClientRect().bottom + 8 : edit.getBoundingClientRect().bottom + 10;
+    const bottom = Math.min(innerHeight, Math.max(formBottom, ...rs.slice(1).map((r) => r.bottom + 10)));
     // Not through a line of text (a name, the day's pill) behind the candidates: from the top of what the edge crosses.
     for (let i = 0; i < 4; i++) {
       const crossed = [...document.querySelectorAll("main *")].filter((e) => !e.children.length && e.textContent.trim()).map((e) => e.getBoundingClientRect()).filter((r) => r.height && r.height < 80 && r.top < top && r.bottom > top);
@@ -918,26 +926,42 @@ def(
 
 /**
  * The README's pictures look like the app out of the box (2026-11-16): the Taylis theme with its brown sidebar and the
- * light content area, so a light sidebar (「サイドバー」→ 明るい色) left by an earlier run is undone.
+ * light content area, so a light sidebar (「サイドバー」→ 明るい色) left by an earlier run is undone. In their small window
+ * (2026-11-17) the sidebar and the thread pane are dragged a little narrower (220 and 340 CSS px instead of 260 and 400),
+ * so the conversation keeps a readable width beside an open thread.
  */
-async function defaultTheme() {
-  if ((await run(`document.documentElement.dataset.sidebar ?? ""`)) !== "light") return;
-  await run(`(localStorage.removeItem("chikuwa.prefs.sidebar"), true)`);
+async function readmeLook() {
+  const ready = await run(`document.documentElement.dataset.sidebar !== "light" && localStorage.getItem("chikuwa.prefs.sidebarWidth") === "220" && localStorage.getItem("chikuwa.prefs.paneWidth") === "340"`);
+  if (ready) return;
+  await run(`(localStorage.removeItem("chikuwa.prefs.sidebar"), localStorage.setItem("chikuwa.prefs.sidebarWidth", "220"), localStorage.setItem("chikuwa.prefs.paneWidth", "340"), true)`);
   await send("Page.reload");
   await waitFor(`document.querySelector(${JSON.stringify(SIDEBAR)}) !== null`, 30000);
   await sleep(2000);
+}
+
+/** The sidebar at its top, no focus ring or tooltip left on the rail, the pointer out of the way. */
+async function readmeTidy() {
+  await run(`(document.querySelectorAll(${JSON.stringify(SIDEBAR)} + " *").forEach((e) => { if (e.scrollTop) e.scrollTop = 0; }), document.activeElement?.blur(), true)`);
+  await mouse(5, 5, false);
+  await sleep(600);
 }
 
 def(
   "readme-chat",
   async () => {
     // The README's first picture (2026-11-16): a lively channel with its thread open (the graph, reactions, five replies).
+    // The thread pane from its 「5 件の返信」 (the root's graph is in the conversation beside it); the conversation is
+    // scrolled up to that post, so its 「最新のメッセージへ」 button is hidden for the picture.
     await viewport(README);
-    await defaultTheme();
+    await readmeLook();
     await openThread("研究ミーティング", "5 件の返信");
-    await run(`(document.querySelectorAll(${JSON.stringify(SIDEBAR)} + " *").forEach((e) => { if (e.scrollTop) e.scrollTop = 0; }), true)`);
-    await mouse(5, 5, false);
-    await sleep(600);
+    await run(`(() => {
+      const label = [...document.querySelectorAll("aside *, [role=complementary] *, div")].find((e) => !e.children.length && e.textContent.trim() === "5 件の返信" && e.getBoundingClientRect().left > innerWidth * 0.55);
+      label?.scrollIntoView({ block: "start" });
+      for (const b of document.querySelectorAll("main button")) if (b.textContent.includes("最新のメッセージへ")) b.style.visibility = "hidden";
+      return true;
+    })()`);
+    await readmeTidy();
     await shot("readme-chat", null, { png: README_CHAT_IMAGE });
   },
   "readme",
@@ -946,13 +970,16 @@ def(
 def(
   "readme-desktop",
   async () => {
-    // The research-lab section's picture: the attendance board.
+    // The research-lab section's picture: the attendance board, scrolled to 「自分の状態」 so everyone on the board shows.
     await viewport(README);
-    await defaultTheme();
+    await readmeLook();
     await place("在室状況");
-    await run(`(document.querySelectorAll(${JSON.stringify(SIDEBAR)} + " *").forEach((e) => { if (e.scrollTop) e.scrollTop = 0; }), true)`);
-    await mouse(5, 5, false);
-    await sleep(600);
+    await run(`(() => {
+      const label = [...document.querySelectorAll("main *")].find((e) => !e.children.length && e.textContent.trim() === "自分の状態");
+      label?.scrollIntoView({ block: "start" });
+      return true;
+    })()`);
+    await readmeTidy();
     await shot("readme-desktop", null, { png: README_IMAGE });
   },
   "readme",
