@@ -103,7 +103,7 @@ docker compose -f docker-compose.yml -f docker-compose.prod.yml exec app python 
 | --- | --- | --- |
 | ブラウザ | React（サーバが配信） | `https://<CHAT_DOMAIN>/` |
 | デスクトップ | Tauri 2 + React | Windows と macOS。[リリース](https://github.com/kanotown/taylis/releases/latest)から入れ、アプリ内で更新 |
-| iOS | SwiftUI | APNs でプッシュ。Xcode でビルド（[docs/DEVELOPMENT.md](docs/DEVELOPMENT.md)） |
+| iOS | SwiftUI | [TestFlight の公開ベータ版](https://testflight.apple.com/join/sZhBEUy1)（App Store での配信は準備中）。APNs でプッシュ。Xcode でビルド（[docs/DEVELOPMENT.md](docs/DEVELOPMENT.md)） |
 | Android | Jetpack Compose | [Google Play](https://play.google.com/store/apps/details?id=jp.chikuwachat.android)。FCM でプッシュ。Gradle でビルド |
 
 どのアプリも、同じ API（[openapi/openapi.json](openapi/openapi.json)）でサーバとやり取りします。

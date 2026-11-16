@@ -12,7 +12,7 @@ devices. You need your organisation's server URL and an account (or an invitatio
 | --- | --- |
 | Windows / macOS (desktop app) | Download the installer from [the GitHub releases](https://github.com/kanotown/taylis/releases/latest) |
 | Browser | Nothing to install: open your server's URL |
-| iPhone / iPad | Coming soon (App Store) |
+| iPhone / iPad | [Beta on TestFlight](https://testflight.apple.com/join/sZhBEUy1) (App Store release in preparation) |
 | Android | [Google Play](https://play.google.com/store/apps/details?id=jp.chikuwachat.android) |
 
 ## Desktop app

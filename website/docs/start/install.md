@@ -12,7 +12,7 @@ Taylis はパソコンでもスマートフォンでも使えます。どのア�
 | --- | --- | --- |
 | Windows / macOS（デスクトップ版） | [GitHub のリリース](https://github.com/kanotown/taylis/releases/latest) からインストーラをダウンロード | 毎日使うパソコン。通知がいちばん確実です |
 | ブラウザ版 | インストールは不要。サーバの URL をブラウザで開く | 共用のパソコン、ちょっと見るとき |
-| iPhone / iPad | 準備中（App Store での配信を準備しています） | 外出先、プッシュ通知 |
+| iPhone / iPad | [TestFlight のベータ版](https://testflight.apple.com/join/sZhBEUy1)（App Store での配信は準備中。[入れ方](#testflight)） | 外出先、プッシュ通知 |
 | Android | [Google Play](https://play.google.com/store/apps/details?id=jp.chikuwachat.android) | 外出先、プッシュ通知 |
 
 ## デスクトップ版（Windows / macOS）
@@ -46,7 +46,7 @@ Taylis はパソコンでもスマートフォンでも使えます。どのア�
 
 ## スマートフォン（iPhone・iPad・Android）
 
-ストアでの配信を準備しています。配信が始まったら、ストアから入れてサーバの URL でログインします。
+Android は Google Play から、iPhone・iPad は今のところ TestFlight のベータ版（下）から入れ、サーバの URL でログインします。
 
 <div class="screens" markdown>
 ![iPhone のホーム。未読のある会話とタイルが並ぶ（デモのデータ）](../assets/screens/ios-home.jpg){ .phone }
@@ -58,6 +58,20 @@ Taylis はパソコンでもスマートフォンでも使えます。どのア�
 - 画面の下に「ホーム」「DM」「アクティビティ」「検索」「自分」の 5 つのタブがあります。設定は「自分」の中です。
 - iPad と Android のタブレットでは、一覧・会話・スレッドを横に並べた広い画面になります。
 - 初めてログインしたときに通知の許可を求められたら、「許可」を選んでください。
+
+### iPhone・iPad のベータ版（TestFlight） { #testflight }
+
+App Store での配信を準備しているあいだは、Apple の **TestFlight**（ベータ版を配る Apple の仕組み）で配っています。
+
+1. App Store から「TestFlight」アプリを入れます。
+2. iPhone・iPad で [ベータ版の参加リンク](https://testflight.apple.com/join/sZhBEUy1) を開き、表示に従ってテストに参加してインストールします。
+3. Taylis を開き、サーバの URL・ユーザー名・パスワードでログインします。
+
+- **ベータ版です**。新しいビルドは TestFlight から更新します（TestFlight の自動アップデートをオンにしておくと楽です）。
+  1 つのビルドは配ってから 90 日で使えなくなるので、それまでに新しいビルドに更新してください。
+- 参加できる人数には上限があります。参加できないときは、しばらくしてから試してください。
+- 不具合や気になる点は、TestFlight アプリの「フィードバックを送信」から送れます（スクリーンショットを撮ると、そこからも
+  送れます）。送った内容は開発者に届きます。
 
 !!! note "自分たちで立てたサーバとストア版のアプリ"
     ストア版のアプリは、どの Taylis サーバにもログインできます。ただしプッシュ通知はアプリを配る人の鍵で送るため、
