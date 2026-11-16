@@ -740,7 +740,7 @@ export class AppController {
         last = now;
         this.updateDownload(item.id, { loaded, total: total || item.total });
       });
-      const saved = await saveDownload(attachment.filename, blob, options.open ? { ask: false } : {});
+      const saved = await saveDownload(attachment.filename, blob, options.open ? { ask: false, source: api.baseUrl } : { source: api.baseUrl });
       if (!saved) return this.dismissDownload(item.id);
       this.finishDownload(item.id, saved.path, saved.inDownloads);
       if (options.open && saved.path) await this.openDownload(this.downloads.find((d) => d.id === item.id) ?? null);
@@ -754,7 +754,8 @@ export class AppController {
   async saveFile(filename: string, blob: Blob): Promise<void> {
     const item = this.startDownload(filename, blob.size);
     try {
-      const saved = await saveDownload(filename, blob);
+      // Made here, but of the server's data (a CSV a spreadsheet reads): marked as from the internet all the same.
+      const saved = await saveDownload(filename, blob, { source: this.api?.baseUrl ?? null });
       if (!saved) return this.dismissDownload(item.id);
       this.finishDownload(item.id, saved.path, saved.inDownloads);
     } catch (error) {
@@ -791,7 +792,7 @@ export class AppController {
         if (now - last < 150 && loaded < total) return;
         last = now;
         this.updateDownload(entry.id, { loaded, total });
-      }, options.open ? { ask: false } : {});
+      }, options.open ? { ask: false, source: api.baseUrl } : { source: api.baseUrl });
       if (!saved) return this.dismissDownload(entry.id);
       this.finishDownload(entry.id, saved.path, saved.inDownloads);
       if (options.open && saved.path) await this.openDownload(this.downloads.find((d) => d.id === entry.id) ?? null);
@@ -830,7 +831,7 @@ export class AppController {
         if (now - last < 150 && loaded < total) return;
         last = now;
         this.updateDownload(entry.id, { loaded, total });
-      });
+      }, { source: api.baseUrl });
       if (!saved) return this.dismissDownload(entry.id);
       this.finishDownload(entry.id, saved.path, saved.inDownloads);
     } catch (error) {
@@ -881,9 +882,13 @@ export class AppController {
     }
   }
 
-  /** 「開く」: the saved file in the system's app for it. */
+  /**
+   * 「開く」: the saved file in the system's app for it. A kind not on the allowlist (platform/download.ts
+   * OPENABLE_EXTENSIONS: a program, a script, anything else a server could name) is only shown in Finder / Explorer.
+   */
   async openDownload(item: DownloadItem | null): Promise<void> {
-    if (!item?.path || !item.openable) return;
+    if (!item?.path) return;
+    if (!item.openable) return this.revealDownload(item);
     try {
       await openDownloaded(item.path);
     } catch (error) {

@@ -41,10 +41,12 @@ const RESERVED_WINDOWS = /^(con|prn|aux|nul|com[0-9]|lpt[0-9])(\..*)?$/i;
  * A file name that is safe as the last part of a path on macOS and Windows: no separators or characters Windows refuses,
  * no control characters, no leading dots (a hidden file) or trailing dots / spaces (Windows drops them), not a device
  * name (「CON.txt」), at most 200 characters (the extension kept). The server's name is the uploader's, so never trusted.
+ * Unicode format characters (category Cf: the bidi controls U+202A–U+202E and U+2066–U+2069, U+200B–U+200F, U+FEFF …)
+ * are dropped (2026-11-16): 「report<U+202E>fdp.exe」 shows as 「reportexe.pdf」 in Finder and Explorer.
  */
 export function safeFileName(name: string): string {
   // eslint-disable-next-line no-control-regex
-  let clean = name.replace(/[\\/:*?"<>|\u0000-\u001f\u007f]+/g, "_").replace(/^[.\s]+/, "").replace(/[.\s]+$/, "");
+  let clean = name.replace(/\p{Cf}+/gu, "").replace(/[\\/:*?"<>|\u0000-\u001f\u007f]+/g, "_").replace(/^[.\s]+/, "").replace(/[.\s]+$/, "");
   if (!clean) clean = "download";
   if (RESERVED_WINDOWS.test(clean)) clean = `_${clean}`;
   if (clean.length > 200) {
@@ -93,9 +95,10 @@ export async function freePath(dir: string, name: string, exists: (path: string)
 
 /**
  * Saves `blob` as `filename`. Desktop app: into Downloads under a free name, or where the save dialog says when
- * `ask` (default: the setting); null when the dialog was cancelled. Browser: the browser's download.
+ * `ask` (default: the setting); null when the dialog was cancelled. Browser: the browser's download. `source`: the
+ * server it came from, written into the file's mark of the internet (markDownloaded).
  */
-export async function saveDownload(filename: string, blob: Blob, options: { ask?: boolean } = {}): Promise<SavedFile | null> {
+export async function saveDownload(filename: string, blob: Blob, options: { ask?: boolean; source?: string | null } = {}): Promise<SavedFile | null> {
   if (isTauri()) {
     const name = safeFileName(filename);
     const ask = options.ask ?? readAskDownloadLocation();
@@ -116,6 +119,7 @@ export async function saveDownload(filename: string, blob: Blob, options: { ask?
     } finally {
       releasePath(path);
     }
+    await markDownloaded(path, options.source ?? null);
     return { path, inDownloads: !ask || isInside(path, dir) };
   }
   const url = URL.createObjectURL(blob);
@@ -134,19 +138,58 @@ function isInside(path: string, dir: string): boolean {
   return norm(path).startsWith(norm(base) + (windows ? "\\" : "/"));
 }
 
-/** Extensions the app never opens itself (a program, a script, a shortcut, an installer): 「フォルダを開く」 only. */
-const RUNNABLE = new Set([
-  "app", "applescript", "bat", "cmd", "com", "command", "cpl", "dmg", "exe", "hta", "inf", "jar", "js", "jse", "lnk", "msc",
-  "msi", "msix", "msp", "pif", "pkg", "ps1", "psm1", "reg", "scr", "sh", "terminal", "url", "vb", "vbe", "vbs", "workflow",
-  "ws", "wsf", "wsh", "zsh", "bash", "py", "pl", "rb", "appref-ms", "webloc", "inetloc", "fileloc",
-]);
+/**
+ * The kinds 「開く」 hands to the system's default app (2026-11-16: an allowlist; before, a list of programs and
+ * scripts that was never complete — a hostile server names the file, and Windows runs .hta, .chm, .scf, .library-ms …
+ * by their extension): documents, pictures, sound, video, plain text and common archives. Anything else is only shown
+ * in Finder / Explorer. The same list is the opener's scope in src-tauri/capabilities/default.json (`allow-open-path`,
+ * case-insensitive patterns; tests/downloads.test.tsx keeps the two the same), so a script could not open more.
+ * Not here on purpose: web pages, SVG and XML (a browser opens them with a local file's rights) and Office files with
+ * macros (.docm …).
+ */
+export const OPENABLE_EXTENSIONS: readonly string[] = [
+  // documents
+  "pdf", "doc", "docx", "xls", "xlsx", "ppt", "pptx", "odt", "ods", "odp", "rtf", "pages", "numbers", "key",
+  // plain text
+  "txt", "csv", "tsv", "md", "markdown", "json", "log",
+  // pictures
+  "png", "jpg", "jpeg", "gif", "webp", "heic", "heif", "bmp", "tif", "tiff", "avif",
+  // sound
+  "mp3", "m4a", "aac", "wav", "flac", "ogg", "oga", "opus",
+  // video
+  "mp4", "m4v", "mov", "webm", "mkv", "avi",
+  // archives (what they hold keeps the mark of the internet: Windows and Archive Utility pass it on)
+  "zip", "7z", "tar", "gz", "tgz",
+];
+const OPENABLE = new Set(OPENABLE_EXTENSIONS);
 
-/** Whether 「開く」 may hand this file to the system's default app (not for anything that would run). */
+/** Whether 「開く」 may hand this file to the system's default app (an allowlisted kind; anything else is revealed only). */
 export function canOpenDownloaded(path: string): boolean {
   const name = path.split(/[\\/]/).pop() ?? "";
   const dot = name.lastIndexOf(".");
   if (dot <= 0) return false;
-  return !RUNNABLE.has(name.slice(dot + 1).toLowerCase());
+  return OPENABLE.has(name.slice(dot + 1).toLowerCase());
+}
+
+/** An extension as the opener's scope matches it in any case: "pdf" → "$DOWNLOAD/**\/*.[pP][dD][fF]". */
+export function openableScopePattern(extension: string): string {
+  const letters = [...extension].map((ch) => (/[a-z]/.test(ch) ? `[${ch}${ch.toUpperCase()}]` : ch)).join("");
+  return `$DOWNLOAD/**/*.${letters}`;
+}
+
+/**
+ * Marks a saved file as downloaded from the internet (2026-11-16): Windows' mark of the web (the `Zone.Identifier`
+ * stream, ZoneId=3: SmartScreen, Office's Protected View) and macOS' quarantine (Gatekeeper; Archive Utility passes
+ * it on to what it unpacks), written by the Rust side (src-tauri/src/downloads.rs). Best effort: a disk without
+ * streams or extended attributes (FAT, some network shares) keeps the file unmarked, and the download still counts.
+ */
+export async function markDownloaded(path: string, source: string | null): Promise<void> {
+  try {
+    const { invoke } = await import("@tauri-apps/api/core");
+    await invoke("download_mark", { path, source });
+  } catch (err) {
+    console.warn("could not mark the download as from the internet", err);
+  }
 }
 
 /** Shows the saved file selected in Finder / Explorer. */
@@ -155,7 +198,7 @@ export async function revealDownloaded(path: string): Promise<void> {
   await revealItemInDir(path);
 }
 
-/** Opens the saved file in the system's default app (the capability allows paths under Downloads only). */
+/** Opens the saved file in the system's default app (the capability allows the allowlisted kinds under Downloads only). */
 export async function openDownloaded(path: string): Promise<void> {
   if (!canOpenDownloaded(path)) throw new Error("not openable");
   const { openPath } = await import("@tauri-apps/plugin-opener");

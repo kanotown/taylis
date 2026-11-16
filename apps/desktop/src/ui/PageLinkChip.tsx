@@ -54,6 +54,10 @@ export function FileLinkChip({ controller, attachmentId, label }: { controller: 
     return () => { live = false; };
   }, [controller, attachmentId]);
   const name = label || meta?.filename || t("docs.file");
+  // 2026-11-16: the label is whatever the page's writer typed (「report.pdf」 over a program); the chip also names the
+  // file that downloads, as it will be saved, when the two differ.
+  const real = meta?.filename ?? null;
+  const relabelled = real !== null && !!label && label.trim() !== real;
   if (meta === null) {
     return (
       <span data-file-link={attachmentId} className={cn(CHIP, "bg-panel text-muted")}>
@@ -75,7 +79,14 @@ export function FileLinkChip({ controller, attachmentId, label }: { controller: 
       }}
     >
       <Paperclip size={13} className="shrink-0 text-muted" aria-hidden="true" />
-      <FileName name={name} />
+      {relabelled ? (
+        <>
+          <span data-file-link-label="" className="min-w-0 truncate">{label}</span>
+          <FileName name={real} className="text-muted" />
+        </>
+      ) : (
+        <FileName name={real ?? name} />
+      )}
     </button>
   );
 }

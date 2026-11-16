@@ -10,12 +10,14 @@
 //! `notification-clicked` with the notification's id.
 //! Closing the window keeps the app running (the Dock on macOS, the notification area on Windows) unless the reader
 //! turned that off; quitting is ⌘Q / the tray's 「終了」 (background.rs).
+//! A saved download is marked as from the internet (downloads.rs: Windows' Zone.Identifier, macOS' quarantine).
 
 use keyring::{Entry, Error as KeyringError};
 use tauri::{AppHandle, Manager};
 use tauri_plugin_deep_link::DeepLinkExt;
 
 mod background;
+mod downloads;
 #[cfg(target_os = "macos")]
 mod mac_notify;
 #[cfg(any(target_os = "macos", windows))]
@@ -215,6 +217,7 @@ pub fn run() {
             native_notification_send,
             native_notification_clear,
             computer_name,
+            downloads::download_mark,
             background::background_get,
             background::background_set,
             background::shell_labels_set

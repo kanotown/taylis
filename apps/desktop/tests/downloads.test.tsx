@@ -1,12 +1,19 @@
 // @vitest-environment jsdom
-/** Downloads (docs/PREVIEWS.md §9): where the desktop app saves, the names it picks, the toast and its buttons. */
+/**
+ * Downloads (docs/PREVIEWS.md §9): where the desktop app saves, the names it picks, the toast and its buttons. Since
+ * 2026-11-16 (a hostile-server review): 「開く」 only for an allowlist of kinds (the capability's scope too), the mark
+ * of the internet on every saved file, no format characters in a saved name, and a page's file chip names its file.
+ */
+import { readFileSync } from "node:fs";
+import { join } from "node:path";
 import { act, cleanup, fireEvent, render, screen } from "@testing-library/react";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 
 import type { ApiClient } from "../src/api/client";
 import type { AttachmentOut } from "../src/api/types";
-import { canOpenDownloaded, freePath, releasePath, numberedName, readAskDownloadLocation, safeFileName, saveDownload, writeAskDownloadLocation } from "../src/platform/download";
+import { canOpenDownloaded, freePath, OPENABLE_EXTENSIONS, openableScopePattern, releasePath, numberedName, readAskDownloadLocation, safeFileName, saveDownload, writeAskDownloadLocation } from "../src/platform/download";
 import { AppController, type DownloadItem } from "../src/state/app";
+import { FileLinkChip } from "../src/ui/PageLinkChip";
 import { DOWNLOAD_TOAST_MS, DownloadToasts } from "../src/ui/Toast";
 import { DownloadLocationCard } from "../src/ui/Settings";
 
@@ -33,6 +40,9 @@ vi.mock("@tauri-apps/plugin-opener", () => ({
   revealItemInDir: (path: string) => revealItemInDir(path),
   openPath: (path: string) => openPath(path),
 }));
+// The Rust side's mark of the internet (src-tauri/src/downloads.rs).
+const invoke = vi.fn(async (_command: string, _args?: unknown): Promise<unknown> => null);
+vi.mock("@tauri-apps/api/core", () => ({ invoke: (command: string, args?: unknown) => invoke(command, args) }));
 
 const inTauri = () => Object.assign(window, { __TAURI_INTERNALS__: {} });
 const inBrowser = () => { delete (window as unknown as { __TAURI_INTERNALS__?: unknown }).__TAURI_INTERNALS__; };
@@ -48,6 +58,7 @@ beforeEach(() => {
   save.mockReset();
   revealItemInDir.mockClear();
   openPath.mockClear();
+  invoke.mockClear();
   localStorage.clear();
 });
 afterEach(() => {
@@ -96,6 +107,35 @@ describe("names", () => {
     expect(canOpenDownloaded("C:\\Users\\me\\Downloads\\photo.JPG")).toBe(true);
     for (const name of ["setup.exe", "run.BAT", "x.command", "x.sh", "App.app", "x.ps1", "noextension"]) expect(canOpenDownloaded(`/d/${name}`)).toBe(false);
   });
+
+  it("opens only the allowlisted kinds (2026-11-16): whatever else a server names is only revealed", () => {
+    for (const name of ["a.pdf", "a.DOCX", "a.xlsx", "a.pptx", "a.odt", "a.txt", "a.csv", "a.md", "a.json", "a.png", "a.HEIC", "a.mp3", "a.m4a", "a.mp4", "a.MOV", "a.zip", "a.7z", "a.tar", "a.gz", "a.tgz", "報告書 (1).pdf"]) {
+      expect(canOpenDownloaded(`C:\\Users\\me\\Downloads\\${name}`), name).toBe(true);
+    }
+    // Windows runs or trusts these by their extension; a browser opens web pages with a local file's rights.
+    for (const name of ["a.hta", "a.chm", "a.scf", "a.library-ms", "a.settingcontent-ms", "a.url", "a.lnk", "a.msix", "a.appx", "a.iso", "a.img", "a.vhd", "a.html", "a.htm", "a.svg", "a.xml", "a.docm", "a.xlsm", "a.pdf.exe", "a.jse", "a.wsf", "a.pif", "a.cpl", ".pdf", "pdf"]) {
+      expect(canOpenDownloaded(`C:\\Users\\me\\Downloads\\${name}`), name).toBe(false);
+    }
+  });
+
+  it("the opener's scope in the capability is the same allowlist, in any case (a script cannot open more)", () => {
+    const capability = JSON.parse(readFileSync(join(process.cwd(), "src-tauri", "capabilities", "default.json"), "utf8")) as { permissions: Array<string | { identifier: string; allow?: Array<{ path?: string }>; deny?: unknown }> };
+    const opener = capability.permissions.find((p) => typeof p === "object" && p.identifier === "opener:allow-open-path") as { allow: Array<{ path: string }>; deny?: unknown };
+    expect(opener.allow.map((entry) => entry.path)).toEqual(OPENABLE_EXTENSIONS.map(openableScopePattern));
+    expect(opener.deny).toBeUndefined();
+    expect(openableScopePattern("pdf")).toBe("$DOWNLOAD/**/*.[pP][dD][fF]");
+    expect(openableScopePattern("7z")).toBe("$DOWNLOAD/**/*.7[zZ]");
+    // Nothing broader than Downloads' allowlisted files.
+    expect(capability.permissions.filter((p) => typeof p === "object" && p.identifier.startsWith("opener:allow-open-path"))).toHaveLength(1);
+  });
+
+  it("drops Unicode format characters: a right-to-left override cannot make a program look like a PDF", () => {
+    expect(safeFileName("report\u202Efdp.exe")).toBe("reportfdp.exe");
+    expect(safeFileName("in\u2066voice\u2069.pdf")).toBe("invoice.pdf");
+    expect(safeFileName("\uFEFFa\u200Bb\u200E\u200F.txt")).toBe("ab.txt");
+    expect(safeFileName("\u202E")).toBe("download");
+    expect(safeFileName("写真 2026.jpg")).toBe("写真 2026.jpg");
+  });
 });
 
 describe("saveDownload", () => {
@@ -119,6 +159,18 @@ describe("saveDownload", () => {
     expect(await saveDownload("報告書.pdf", new Blob(["%PDF"]))).toBeNull();
     // `ask: false` (the viewers' 「開く」) skips the dialog whatever the setting.
     expect((await saveDownload("報告書.pdf", new Blob(["%PDF"]), { ask: false }))?.inDownloads).toBe(true);
+  });
+
+  it("marks the written file as from the internet, naming the server (Zone.Identifier / quarantine)", async () => {
+    inTauri();
+    const saved = await saveDownload("報告書.pdf", new Blob(["%PDF"]), { source: "https://chat.example.com" });
+    expect(invoke).toHaveBeenCalledWith("download_mark", { path: saved!.path, source: "https://chat.example.com" });
+    // A disk that cannot hold the mark keeps the download.
+    invoke.mockRejectedValueOnce(new Error("no streams on FAT"));
+    const warn = vi.spyOn(console, "warn").mockImplementation(() => {});
+    expect((await saveDownload("b.pdf", new Blob(["%PDF"])))?.path).toBe("/Users/me/Downloads/b.pdf");
+    expect(invoke).toHaveBeenLastCalledWith("download_mark", { path: "/Users/me/Downloads/b.pdf", source: null });
+    warn.mockRestore();
   });
 
   it("browser: the browser's own download", async () => {
@@ -180,6 +232,19 @@ describe("the controller and the toast", () => {
     expect(openPath).toHaveBeenLastCalledWith(item.path);
   });
 
+  it("the viewers' 開く on a kind not allowlisted only shows it in its folder; the mark names the server", async () => {
+    inTauri();
+    const controller = new AppController();
+    controller.api = Object.assign(streamingApi(Promise.resolve()), { baseUrl: "https://chat.example.com" });
+    await controller.downloadAttachment({ ...pdf, filename: "invoice.hta" }, { open: true });
+    expect(openPath).not.toHaveBeenCalled();
+    expect(revealItemInDir).toHaveBeenCalledWith("/Users/me/Downloads/invoice.hta");
+    expect(invoke).toHaveBeenCalledWith("download_mark", { path: "/Users/me/Downloads/invoice.hta", source: "https://chat.example.com" });
+    // The mark comes before anything opens it.
+    await controller.downloadAttachment(pdf, { open: true });
+    expect(invoke.mock.invocationCallOrder.at(-1)!).toBeLessThan(openPath.mock.invocationCallOrder[0]!);
+  });
+
   it("offers no 開く for a program, and only the line in a browser", async () => {
     inTauri();
     const controller = new AppController();
@@ -238,4 +303,35 @@ it("「保存先を毎回選ぶ」 is off until switched on, on this device", ()
   fireEvent.click(toggle);
   expect(readAskDownloadLocation()).toBe(true);
   expect(screen.getByText("ダウンロードのたびに保存先を尋ねます")).toBeTruthy();
+});
+
+describe("a page's file chip (`[label](attachment:<id>)`, M121)", () => {
+  function chip(label: string | undefined, filename: string) {
+    const downloadAttachment = vi.fn(async (_attachment: AttachmentOut) => {});
+    const controller = { attachmentMeta: async () => ({ ...pdf, filename }), downloadAttachment } as unknown as AppController;
+    render(<FileLinkChip controller={controller} attachmentId="a1" label={label} />);
+    return downloadAttachment;
+  }
+
+  it("names the file that downloads when the label says something else (2026-11-16)", async () => {
+    const download = chip("report.pdf", "setup.exe");
+    await act(async () => {});
+    const button = document.querySelector("[data-file-link]")!;
+    expect(button.textContent).toContain("report.pdf");
+    expect(button.textContent).toContain("setup.exe");
+    expect(screen.getByTitle("setup.exe")).toBeTruthy();
+    fireEvent.click(button);
+    expect(download).toHaveBeenCalledWith(expect.objectContaining({ filename: "setup.exe" }));
+  });
+
+  it("shows the name once when the label is the file's name, or there is no label", async () => {
+    chip("報告書.pdf", "報告書.pdf");
+    await act(async () => {});
+    expect(document.querySelector("[data-file-link-label]")).toBeNull();
+    expect(document.querySelector("[data-file-link]")!.textContent).toBe("報告書.pdf");
+    cleanup();
+    chip(undefined, "data.csv");
+    await act(async () => {});
+    expect(document.querySelector("[data-file-link]")!.textContent).toBe("data.csv");
+  });
 });

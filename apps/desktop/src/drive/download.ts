@@ -8,7 +8,7 @@
  * - The browser follows a download ticket's URL with its own download (<a href download>): it streams to disk, shows
  *   its own progress, and resumes a broken download with a Range request (the ticket stays valid while used).
  */
-import { freePath, readAskDownloadLocation, releasePath, safeFileName, type SavedFile } from "../platform/download";
+import { freePath, markDownloaded, readAskDownloadLocation, releasePath, safeFileName, type SavedFile } from "../platform/download";
 
 export type DownloadRoute = "stream-to-file" | "browser";
 
@@ -98,9 +98,10 @@ async function fileSink(path: string, replace: boolean): Promise<ChunkSink> {
 
 /**
  * The desktop app: `response`'s body written to a file named `filename` (Downloads under a free name, or the save
- * dialog's choice when `ask`). null when the dialog was cancelled.
+ * dialog's choice when `ask`). null when the dialog was cancelled. `source`: the server, for the file's mark of the
+ * internet (platform/download.ts markDownloaded).
  */
-export async function saveStreamToFile(filename: string, response: Response, onProgress: (loaded: number) => void, options: { ask?: boolean } = {}): Promise<SavedFile | null> {
+export async function saveStreamToFile(filename: string, response: Response, onProgress: (loaded: number) => void, options: { ask?: boolean; source?: string | null } = {}): Promise<SavedFile | null> {
   const name = safeFileName(filename);
   const ask = options.ask ?? readAskDownloadLocation();
   const [{ downloadDir, join }, { exists }] = await Promise.all([import("@tauri-apps/api/path"), import("@tauri-apps/plugin-fs")]);
@@ -124,6 +125,7 @@ export async function saveStreamToFile(filename: string, response: Response, onP
   } finally {
     releasePath(path);
   }
+  await markDownloaded(path, options.source ?? null);
   const base = dir.replace(/[\\/]+$/, "");
   const windows = /^[a-z]:/i.test(base);
   const norm = (value: string) => (windows ? value.toLowerCase().replace(/\//g, "\\") : value);

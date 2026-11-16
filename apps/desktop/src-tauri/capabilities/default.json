@@ -1,7 +1,7 @@
 {
   "$schema": "../gen/schemas/desktop-schema.json",
   "identifier": "default",
-  "description": "Main window: dragging the window by its top bar (macOS overlay title bar; on Windows our top bar is the whole title bar, with its own minimise / maximise / close buttons),local SQLite store, OS notifications, the unread badge, external links in the system browser, the text size (webview zoom), saving a download into the Downloads folder under a free name (or where the user picked in the save dialog), the drive (M161): a large download written chunk by chunk into a file there (removed when it fails), and the files and folders picked in the open dialog read in parts for an upload (the dialog adds them to the scope; persisted-scope keeps them after a restart so the upload resumes), showing a saved download in Finder / Explorer and opening one saved in Downloads in its app (never a program or script: those are denied here and in platform/download.ts), the credential-store commands, the `chikuwachat://` link that launched the app (Google sign-in), and in-app updates (check, download and install, then relaunch), and the window full screen for an album's slideshow (AL2).",
+  "description": "Main window: dragging the window by its top bar (macOS overlay title bar; on Windows our top bar is the whole title bar, with its own minimise / maximise / close buttons),local SQLite store, OS notifications, the unread badge, external links in the system browser, the text size (webview zoom), saving a download into the Downloads folder under a free name (or where the user picked in the save dialog), the drive (M161): a large download written chunk by chunk into a file there (removed when it fails), and the files and folders picked in the open dialog read in parts for an upload (the dialog adds them to the scope; persisted-scope keeps them after a restart so the upload resumes), showing a saved download in Finder / Explorer and opening one saved in Downloads in its app (only the kinds allowlisted here and in platform/download.ts OPENABLE_EXTENSIONS: documents, pictures, sound, video, plain text and archives, in any case; anything else is only revealed), the credential-store commands, the `chikuwachat://` link that launched the app (Google sign-in), and in-app updates (check, download and install, then relaunch), and the window full screen for an album's slideshow (AL2).",
   "windows": [
     "main"
   ],
@@ -36,57 +36,157 @@
       "identifier": "opener:allow-open-path",
       "allow": [
         {
-          "path": "$DOWNLOAD/**"
-        }
-      ],
-      "deny": [
-        {
-          "path": "$DOWNLOAD/**/*.exe"
+          "path": "$DOWNLOAD/**/*.[pP][dD][fF]"
         },
         {
-          "path": "$DOWNLOAD/**/*.msi"
+          "path": "$DOWNLOAD/**/*.[dD][oO][cC]"
         },
         {
-          "path": "$DOWNLOAD/**/*.bat"
+          "path": "$DOWNLOAD/**/*.[dD][oO][cC][xX]"
         },
         {
-          "path": "$DOWNLOAD/**/*.cmd"
+          "path": "$DOWNLOAD/**/*.[xX][lL][sS]"
         },
         {
-          "path": "$DOWNLOAD/**/*.com"
+          "path": "$DOWNLOAD/**/*.[xX][lL][sS][xX]"
         },
         {
-          "path": "$DOWNLOAD/**/*.scr"
+          "path": "$DOWNLOAD/**/*.[pP][pP][tT]"
         },
         {
-          "path": "$DOWNLOAD/**/*.ps1"
+          "path": "$DOWNLOAD/**/*.[pP][pP][tT][xX]"
         },
         {
-          "path": "$DOWNLOAD/**/*.vbs"
+          "path": "$DOWNLOAD/**/*.[oO][dD][tT]"
         },
         {
-          "path": "$DOWNLOAD/**/*.js"
+          "path": "$DOWNLOAD/**/*.[oO][dD][sS]"
         },
         {
-          "path": "$DOWNLOAD/**/*.jar"
+          "path": "$DOWNLOAD/**/*.[oO][dD][pP]"
         },
         {
-          "path": "$DOWNLOAD/**/*.lnk"
+          "path": "$DOWNLOAD/**/*.[rR][tT][fF]"
         },
         {
-          "path": "$DOWNLOAD/**/*.app"
+          "path": "$DOWNLOAD/**/*.[pP][aA][gG][eE][sS]"
         },
         {
-          "path": "$DOWNLOAD/**/*.command"
+          "path": "$DOWNLOAD/**/*.[nN][uU][mM][bB][eE][rR][sS]"
         },
         {
-          "path": "$DOWNLOAD/**/*.sh"
+          "path": "$DOWNLOAD/**/*.[kK][eE][yY]"
         },
         {
-          "path": "$DOWNLOAD/**/*.pkg"
+          "path": "$DOWNLOAD/**/*.[tT][xX][tT]"
         },
         {
-          "path": "$DOWNLOAD/**/*.dmg"
+          "path": "$DOWNLOAD/**/*.[cC][sS][vV]"
+        },
+        {
+          "path": "$DOWNLOAD/**/*.[tT][sS][vV]"
+        },
+        {
+          "path": "$DOWNLOAD/**/*.[mM][dD]"
+        },
+        {
+          "path": "$DOWNLOAD/**/*.[mM][aA][rR][kK][dD][oO][wW][nN]"
+        },
+        {
+          "path": "$DOWNLOAD/**/*.[jJ][sS][oO][nN]"
+        },
+        {
+          "path": "$DOWNLOAD/**/*.[lL][oO][gG]"
+        },
+        {
+          "path": "$DOWNLOAD/**/*.[pP][nN][gG]"
+        },
+        {
+          "path": "$DOWNLOAD/**/*.[jJ][pP][gG]"
+        },
+        {
+          "path": "$DOWNLOAD/**/*.[jJ][pP][eE][gG]"
+        },
+        {
+          "path": "$DOWNLOAD/**/*.[gG][iI][fF]"
+        },
+        {
+          "path": "$DOWNLOAD/**/*.[wW][eE][bB][pP]"
+        },
+        {
+          "path": "$DOWNLOAD/**/*.[hH][eE][iI][cC]"
+        },
+        {
+          "path": "$DOWNLOAD/**/*.[hH][eE][iI][fF]"
+        },
+        {
+          "path": "$DOWNLOAD/**/*.[bB][mM][pP]"
+        },
+        {
+          "path": "$DOWNLOAD/**/*.[tT][iI][fF]"
+        },
+        {
+          "path": "$DOWNLOAD/**/*.[tT][iI][fF][fF]"
+        },
+        {
+          "path": "$DOWNLOAD/**/*.[aA][vV][iI][fF]"
+        },
+        {
+          "path": "$DOWNLOAD/**/*.[mM][pP]3"
+        },
+        {
+          "path": "$DOWNLOAD/**/*.[mM]4[aA]"
+        },
+        {
+          "path": "$DOWNLOAD/**/*.[aA][aA][cC]"
+        },
+        {
+          "path": "$DOWNLOAD/**/*.[wW][aA][vV]"
+        },
+        {
+          "path": "$DOWNLOAD/**/*.[fF][lL][aA][cC]"
+        },
+        {
+          "path": "$DOWNLOAD/**/*.[oO][gG][gG]"
+        },
+        {
+          "path": "$DOWNLOAD/**/*.[oO][gG][aA]"
+        },
+        {
+          "path": "$DOWNLOAD/**/*.[oO][pP][uU][sS]"
+        },
+        {
+          "path": "$DOWNLOAD/**/*.[mM][pP]4"
+        },
+        {
+          "path": "$DOWNLOAD/**/*.[mM]4[vV]"
+        },
+        {
+          "path": "$DOWNLOAD/**/*.[mM][oO][vV]"
+        },
+        {
+          "path": "$DOWNLOAD/**/*.[wW][eE][bB][mM]"
+        },
+        {
+          "path": "$DOWNLOAD/**/*.[mM][kK][vV]"
+        },
+        {
+          "path": "$DOWNLOAD/**/*.[aA][vV][iI]"
+        },
+        {
+          "path": "$DOWNLOAD/**/*.[zZ][iI][pP]"
+        },
+        {
+          "path": "$DOWNLOAD/**/*.7[zZ]"
+        },
+        {
+          "path": "$DOWNLOAD/**/*.[tT][aA][rR]"
+        },
+        {
+          "path": "$DOWNLOAD/**/*.[gG][zZ]"
+        },
+        {
+          "path": "$DOWNLOAD/**/*.[tT][gG][zZ]"
         }
       ]
     },
