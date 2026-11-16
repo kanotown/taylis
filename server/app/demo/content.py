@@ -108,7 +108,7 @@ CAST: tuple[Person, ...] = (
 )
 
 # The account for reviewers (App Store review, visitors): a regular member, M1, supervised by 鈴木.
-REVIEW_DISPLAY_NAME = "Review User"
+REVIEW_DISPLAY_NAME = "小林 ちくわ"  # the username stays `review` (store review notes)
 REVIEW = Person(
     "review",
     REVIEW_DISPLAY_NAME,
@@ -116,7 +116,7 @@ REVIEW = Person(
     "student",
     grade="M1",
     supervisor="suzuki",
-    reading="れびゅー",
+    reading="こばやし ちくわ",
     research_topic="関連研究のサーベイと再現実験",
 )
 
@@ -305,7 +305,7 @@ POSTS: tuple[Post, ...] = (
         "meeting",
         "review",
         (-12, "10:05"),
-        "M1 の Review です。後期は関連研究のサーベイと、小さな再現実験から始めます。"
+        "M1 の小林です。後期は関連研究のサーベイと、小さな再現実験から始めます。"
         "よろしくお願いします！",
         reactions={"👋": ("tanaka", "suzuki", "yamamoto", "ito"), ":thanks:": ("watanabe",)},
     ),
@@ -663,7 +663,7 @@ POSTS: tuple[Post, ...] = (
         "dm_suzuki_review",
         "suzuki",
         (-2, "18:05"),
-        "Review さん、来週の TA の件ですが、火曜 3 限をお願いできますか？",
+        "小林さん、来週の TA の件ですが、火曜 3 限をお願いできますか？",
     ),
     Post("dm_suzuki_review", "review", (-2, "18:20"), "はい、大丈夫です！"),
     Post(
@@ -752,7 +752,7 @@ FILES: dict[str, FileSpec] = {
         "輪講担当表.docx",
         "docx",
         "輪講 担当表（後期）",
-        (("{d+7} 渡辺", "{d+14} 高橋", "{d+21} 中村", "{d+28} 山本", "{d+35} Review"),),
+        (("{d+7} 渡辺", "{d+14} 高橋", "{d+21} 中村", "{d+28} 山本", "{d+35} 小林"),),
     ),
 }
 
