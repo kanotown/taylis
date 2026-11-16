@@ -254,12 +254,31 @@ fun bodyInline(
     val mathColor = MaterialTheme.colorScheme.onSurface
     val mutedColor = MaterialTheme.colorScheme.onSurfaceVariant
     fun inline(tokens: List<BodyToken>): AnnotatedString = buildAnnotatedString {
+        fun AnnotatedString.Builder.mention(token: BodyToken) {
+            val style = SpanStyle(color = linkColor, fontWeight = FontWeight.Medium)
+            when (token) {
+                is BodyToken.Mention -> {
+                    val user = users[token.userId]
+                    // Only the mention's own span takes the tap: the rest of the row keeps its tap and long press.
+                    if (user != null && onOpenUser != null) {
+                        withLink(LinkAnnotation.Clickable("user:" + user.id, TextLinkStyles(style)) { onOpenUser(user.id) }) { append("@" + user.displayName) }
+                    } else withStyle(style) { append("@" + (user?.displayName ?: "unknown")) }
+                }
+                is BodyToken.MentionGroup -> withStyle(style) { append("@" + (groups[token.groupId]?.name ?: L10n.str(R.string.common_group))) }
+                is BodyToken.MentionAll -> withStyle(style) { append("@" + token.target) }
+                else -> {}
+            }
+        }
+        /** M188: emphasis' text with its mentions drawn as mentions, inside the emphasis' style. */
+        fun AnnotatedString.Builder.emphasis(text: String) {
+            for (piece in emphasisPieces(text)) if (piece is BodyToken.Text) appendWithEmoji(piece.text) else mention(piece)
+        }
         for (token in tokens) {
             when (token) {
                 is BodyToken.Text -> appendWithEmoji(token.text)
-                is BodyToken.Bold -> withStyle(SpanStyle(fontWeight = FontWeight.Bold)) { appendWithEmoji(token.text) }
-                is BodyToken.Italic -> withStyle(SpanStyle(fontStyle = FontStyle.Italic)) { appendWithEmoji(token.text) }
-                is BodyToken.Strike -> withStyle(SpanStyle(textDecoration = TextDecoration.LineThrough)) { appendWithEmoji(token.text) }
+                is BodyToken.Bold -> withStyle(SpanStyle(fontWeight = FontWeight.Bold)) { emphasis(token.text) }
+                is BodyToken.Italic -> withStyle(SpanStyle(fontStyle = FontStyle.Italic)) { emphasis(token.text) }
+                is BodyToken.Strike -> withStyle(SpanStyle(textDecoration = TextDecoration.LineThrough)) { emphasis(token.text) }
                 // Thin spaces either side so the background does not touch the letters (as on iOS).
                 is BodyToken.Code -> withStyle(SpanStyle(fontFamily = CodeFont, fontSize = 0.9.em, background = codeBackground)) { append(" " + token.text + " ") }
                 is BodyToken.CodeBlock -> withStyle(SpanStyle(fontFamily = CodeFont)) { append(token.text) }
@@ -312,16 +331,7 @@ fun bodyInline(
                     LinkAnnotation.Url(token.url, TextLinkStyles(SpanStyle(color = linkColor, textDecoration = TextDecoration.Underline))),
                 ) { append(token.label ?: token.url) }
                 }
-                is BodyToken.Mention -> {
-                    val user = users[token.userId]
-                    val style = SpanStyle(color = linkColor, fontWeight = FontWeight.Medium)
-                    // Only the mention's own span takes the tap: the rest of the row keeps its tap and long press.
-                    if (user != null && onOpenUser != null) {
-                        withLink(LinkAnnotation.Clickable("user:" + user.id, TextLinkStyles(style)) { onOpenUser(user.id) }) { append("@" + user.displayName) }
-                    } else withStyle(style) { append("@" + (user?.displayName ?: "unknown")) }
-                }
-                is BodyToken.MentionGroup -> withStyle(SpanStyle(color = linkColor, fontWeight = FontWeight.Medium)) { append("@" + (groups[token.groupId]?.name ?: L10n.str(R.string.common_group))) }
-                is BodyToken.MentionAll -> withStyle(SpanStyle(color = linkColor, fontWeight = FontWeight.Medium)) { append("@" + token.target) }
+                is BodyToken.Mention, is BodyToken.MentionGroup, is BodyToken.MentionAll -> mention(token)
                 is BodyToken.Math -> {
                     val source = if (token.display) "\$\$" + token.tex + "\$\$" else "\$" + token.tex + "\$"
                     val rendered = MathRender.render(context, token.tex, mathFontPx, display = false, fontDescentPx = mathDescentPx)

@@ -84,12 +84,22 @@ object TopicText {
             }
             text(value.substring(last))
         }
+        fun named(value: String): String = emphasisPieces(value).joinToString("") { piece ->
+            when (piece) {
+                is BodyToken.Mention -> "@" + (nameOf(piece.userId) ?: "unknown")
+                is BodyToken.MentionGroup -> "@group"
+                is BodyToken.MentionAll -> "@" + piece.target
+                is BodyToken.Text -> piece.text
+                else -> ""
+            }
+        }
         for (token in tokenizeInline(topic.replace(LINE_BREAK, " "))) {
             when (token) {
                 is BodyToken.Text -> withMailto(token.text)
-                is BodyToken.Bold -> out.add(TopicToken.Bold(token.text))
-                is BodyToken.Italic -> out.add(TopicToken.Italic(token.text))
-                is BodyToken.Strike -> out.add(TopicToken.Strike(token.text))
+                // M188: a mention inside emphasis is named too (it showed as `<@…>`).
+                is BodyToken.Bold -> out.add(TopicToken.Bold(named(token.text)))
+                is BodyToken.Italic -> out.add(TopicToken.Italic(named(token.text)))
+                is BodyToken.Strike -> out.add(TopicToken.Strike(named(token.text)))
                 is BodyToken.Code -> out.add(TopicToken.Code(token.text))
                 is BodyToken.CodeBlock -> text(token.text)
                 is BodyToken.Link -> if (allowed(token.url)) out.add(TopicToken.Link(token.url, token.label)) else text(token.label ?: token.url)

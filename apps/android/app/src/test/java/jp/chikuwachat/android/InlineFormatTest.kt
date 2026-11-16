@@ -2,9 +2,13 @@ package jp.chikuwachat.android
 
 import jp.chikuwachat.android.api.Codec
 import jp.chikuwachat.android.ui.BodyToken
+import jp.chikuwachat.android.ui.TopicText
+import jp.chikuwachat.android.ui.TopicToken
+import jp.chikuwachat.android.ui.emphasisPieces
 import jp.chikuwachat.android.ui.plainText
 import jp.chikuwachat.android.ui.tokenizeBody
 import jp.chikuwachat.android.ui.tokenizeInline
+import jp.chikuwachat.android.ui.visibleText
 import kotlinx.serialization.json.JsonArray
 import kotlinx.serialization.json.JsonPrimitive
 import kotlinx.serialization.json.jsonArray
@@ -54,5 +58,21 @@ class InlineFormatTest {
             assertEquals("$name (whole body)", c["tokens"], simple(tokenizeBody(line)))
             assertEquals("$name (plain)", c["plain"]!!.jsonPrimitive.content, plainText(line))
         }
+    }
+
+    /** M188: a mention inside bold, italic or strike is a piece of its own, drawn as the mention. */
+    @Test
+    fun theSharedEmphasisMentions() {
+        val file = File("../../shared/inline-format.json")
+        val cases = Codec.plain.parseToJsonElement(file.readText()).jsonObject["emphasis_mentions"]!!.jsonArray
+        assertTrue(cases.isNotEmpty())
+        for (case in cases) {
+            val c = case.jsonObject
+            assertEquals(c["name"]!!.jsonPrimitive.content, c["pieces"], simple(emphasisPieces(c["text"]!!.jsonPrimitive.content)))
+        }
+        // The outline's text and a channel topic name them too.
+        val id = "01a0f811-c836-755b-925c-0d71f4c5cd22"
+        assertEquals("確認 @ さん", visibleText(tokenizeInline("**確認 <@$id> さん**")))
+        assertEquals(listOf(TopicToken.Bold("確認 @山田 太郎")), TopicText.tokens("**確認 <@$id>**") { "山田 太郎" })
     }
 }

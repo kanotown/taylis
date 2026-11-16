@@ -673,14 +673,41 @@ fun paragraphLayout(lines: List<List<BodyToken>>): ParagraphLayout {
     return ParagraphLayout(gapBefore = blank(lines.first()), gapAfter = blank(lines.last()), groups = groups)
 }
 
+/** The mention tokens, as the inline pattern reads them. */
+private val MENTION_TOKENS = Regex("""<@group:([0-9a-f-]{36})>|<@([0-9a-f-]{36})>|<!(channel|here)>""")
+
+/**
+ * M188 (apps/shared/inline-format.json `emphasis_mentions`): the text of a bold, italic or strike token as text and
+ * mention pieces. Emphasis holds text; a mention inside it is still drawn as the mention (it showed as `<@…>`).
+ */
+fun emphasisPieces(text: String): List<BodyToken> {
+    val pieces = ArrayList<BodyToken>()
+    var last = 0
+    for (match in MENTION_TOKENS.findAll(text)) {
+        if (match.range.first > last) pieces.add(BodyToken.Text(text.substring(last, match.range.first)))
+        val (group, user, all) = match.destructured
+        pieces.add(
+            when {
+                group.isNotEmpty() -> BodyToken.MentionGroup(group)
+                user.isNotEmpty() -> BodyToken.Mention(user)
+                else -> BodyToken.MentionAll(all)
+            },
+        )
+        last = match.range.last + 1
+    }
+    if (last < text.length || pieces.isEmpty()) pieces.add(BodyToken.Text(text.substring(last)))
+    return pieces
+}
+
 /** What a reader sees of inline tokens as text: a link shows its label, emphasis markers are gone (tests, the outline). */
 fun visibleText(tokens: List<BodyToken>): String = buildString {
     for (token in tokens) {
         when (token) {
             is BodyToken.Text -> append(token.text)
-            is BodyToken.Bold -> append(token.text)
-            is BodyToken.Italic -> append(token.text)
-            is BodyToken.Strike -> append(token.text)
+            // M188: a mention inside emphasis reads as one outside does.
+            is BodyToken.Bold -> append(visibleText(emphasisPieces(token.text)))
+            is BodyToken.Italic -> append(visibleText(emphasisPieces(token.text)))
+            is BodyToken.Strike -> append(visibleText(emphasisPieces(token.text)))
             is BodyToken.Code -> append(token.text)
             is BodyToken.CodeBlock -> append(token.text)
             is BodyToken.Link -> append(token.label ?: token.url)
