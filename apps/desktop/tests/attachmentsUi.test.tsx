@@ -96,7 +96,7 @@ it("keeps the full image viewer open while retrying a failed original", async ()
   fetch.mockResolvedValue(new Blob());
   fireEvent.click(within(screen.getByRole("dialog")).getByRole("button", { name: "再試行" }));
   await within(screen.getByRole("dialog")).findByRole("img");
-  expect(fetch).toHaveBeenLastCalledWith("/api/v1/attachments/a/content");
+  expect(fetch).toHaveBeenLastCalledWith("/api/v1/attachments/a/content", undefined, expect.any(Number)); // read up to the file's size (2026-11-16)
   expect(screen.getByRole("dialog")).toBeTruthy();
 });
 

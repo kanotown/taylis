@@ -1,6 +1,7 @@
 import { ChevronLeft, ChevronRight, Download, FileText, Loader2, MoveHorizontal, ZoomIn, ZoomOut } from "lucide-react";
 import { type KeyboardEvent as ReactKeyboardEvent, type ReactNode, useCallback, useEffect, useLayoutEffect, useRef, useState } from "react";
 
+import { blobLimitFor } from "../api/client";
 import type { AttachmentOut } from "../api/types";
 import type { AppController } from "../state/app";
 import { formatSize, keepOpenForToasts, ViewerFileButtons } from "./Attachments";
@@ -187,7 +188,8 @@ export function PdfViewer(props: PdfViewerProps) {
     if (hold) return;
     void (async () => {
       try {
-        const read = load ?? (api ? async () => (await api.fetchBlob(`/api/v1/attachments/${attachment.id}/preview/pdf`)).arrayBuffer() : null);
+        // The server's PDF of the file: a converted Office file may be larger than the file itself (room for four times).
+        const read = load ?? (api ? async () => (await api.fetchBlob(`/api/v1/attachments/${attachment.id}/preview/pdf`, undefined, blobLimitFor(attachment.size_bytes, 4))).arrayBuffer() : null);
         if (!read) throw new Error("No session");
         const [bytes, { openPdf }] = await Promise.all([read(), import("./pdfLoader")]);
         const opened = await openPdf(bytes);

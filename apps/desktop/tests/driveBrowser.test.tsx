@@ -166,7 +166,7 @@ describe("a click on a file (§27)", () => {
     await screen.findByTitle("論文.pdf");
     fireEvent.click(document.querySelector('[data-drive-item="p"]')!, { detail: 1 });
     await waitFor(() => expect(document.querySelectorAll("[data-pdf-page]")).toHaveLength(1));
-    expect(fetchBlob).toHaveBeenCalledWith("/api/v1/drive/items/p/content");
+    expect(fetchBlob).toHaveBeenCalledWith("/api/v1/drive/items/p/content", undefined, expect.any(Number)); // a byte limit (2026-11-16)
     expect(requestDrivePreview).toHaveBeenCalledWith("p"); // its thumbnail is made meanwhile
     expect(controller.downloadDriveFile).not.toHaveBeenCalled();
   });
@@ -185,7 +185,7 @@ describe("a click on a file (§27)", () => {
     expect(fetchBlob).not.toHaveBeenCalled();
     hub.applyEvent("drive.changed", { location_id: "loc", folder_ids: ["root"], seq: 1 });
     await waitFor(() => expect(document.querySelectorAll("[data-pdf-page]")).toHaveLength(1));
-    expect(fetchBlob).toHaveBeenCalledWith("/api/v1/attachments/a-w/preview/pdf");
+    expect(fetchBlob).toHaveBeenCalledWith("/api/v1/attachments/a-w/preview/pdf", undefined, expect.any(Number));
     expect(controller.downloadDriveFile).not.toHaveBeenCalled();
   });
 

@@ -1,8 +1,8 @@
 import type { Box } from "./attachmentLayout";
 
-/** What the video code needs from the API client: the authenticated GET that images use too. */
+/** What the video code needs from the API client: the authenticated GET that images use too (with its byte limit). */
 export interface BlobSource {
-  fetchBlob(path: string): Promise<Blob>;
+  fetchBlob(path: string, onProgress?: undefined, maxBytes?: number): Promise<Blob>;
 }
 
 interface Entry {
@@ -26,8 +26,11 @@ export interface VideoHandle {
   release: () => void;
 }
 
-/** Audio (2026-10-28, docs/PREVIEWS.md §13) is fetched the same way (useMediaSource): `<audio>` cannot send the bearer token either. */
-export function acquireVideo(api: BlobSource, attachmentId: string): VideoHandle {
+/**
+ * Audio (2026-10-28, docs/PREVIEWS.md §13) is fetched the same way (useMediaSource): `<audio>` cannot send the bearer token
+ * either. `maxBytes`: what is read at most (2026-11-16: blobLimitFor the attachment's size; fetchBlob's default without).
+ */
+export function acquireVideo(api: BlobSource, attachmentId: string, maxBytes?: number): VideoHandle {
   let entry = entries.get(attachmentId);
   if (entry && entry.api !== api) {
     drop(attachmentId, entry); // another session: never reuse its bytes
@@ -35,7 +38,7 @@ export function acquireVideo(api: BlobSource, attachmentId: string): VideoHandle
   }
   if (!entry) {
     const created: Entry = { api, url: null, refs: 0, timer: null, promise: Promise.resolve("") };
-    created.promise = api.fetchBlob(`/api/v1/attachments/${attachmentId}/content`).then(
+    created.promise = api.fetchBlob(`/api/v1/attachments/${attachmentId}/content`, undefined, maxBytes).then(
       (blob) => {
         const url = URL.createObjectURL(blob);
         if (entries.get(attachmentId) === created) created.url = url;

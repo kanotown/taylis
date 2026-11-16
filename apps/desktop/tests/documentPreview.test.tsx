@@ -95,7 +95,7 @@ it("opens every page in the viewer, with zoom, download and a retry after a fail
   const download = vi.fn();
   render(<AttachmentList attachments={[ready]} controller={controller(fetch, download)} />);
   fireEvent.click(screen.getByRole("button", { name: "議事録.docx のプレビューを開く" }));
-  expect(fetch).toHaveBeenCalledWith("/api/v1/attachments/d/preview/pdf");
+  expect(fetch).toHaveBeenCalledWith("/api/v1/attachments/d/preview/pdf", undefined, expect.any(Number)); // a byte limit (2026-11-16)
   expect(await screen.findByText("プレビューを読み込めませんでした")).toBeTruthy();
   fireEvent.click(screen.getByRole("button", { name: "再試行" }));
   await waitFor(() => expect(document.querySelectorAll("[data-pdf-page]")).toHaveLength(3));

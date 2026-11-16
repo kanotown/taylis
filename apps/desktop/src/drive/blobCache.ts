@@ -5,7 +5,7 @@
  * closed).
  */
 export interface BlobFetcher {
-  fetchBlob(path: string): Promise<Blob>;
+  fetchBlob(path: string, onProgress?: undefined, maxBytes?: number): Promise<Blob>;
 }
 
 interface Held {
@@ -23,8 +23,11 @@ export class BlobCache {
     private readonly urls: Pick<typeof URL, "createObjectURL" | "revokeObjectURL"> = URL,
   ) {}
 
-  /** The picture at `path` (one fetch however often asked; a failure is not kept, so asking again retries). */
-  get(path: string): Promise<string> {
+  /**
+   * The picture at `path` (one fetch however often asked; a failure is not kept, so asking again retries). `maxBytes`:
+   * read no more (2026-11-16; fetchBlob's default for pictures, blobLimitFor the size of an original asked for).
+   */
+  get(path: string, maxBytes?: number): Promise<string> {
     const found = this.held.get(path);
     if (found) {
       // The most recently asked last: the first one is the next to go.
@@ -33,7 +36,7 @@ export class BlobCache {
       return found.promise;
     }
     const entry: Held = { url: null, promise: Promise.resolve("") };
-    entry.promise = this.api.fetchBlob(path).then(
+    entry.promise = this.api.fetchBlob(path, undefined, maxBytes).then(
       (blob) => {
         const url = this.urls.createObjectURL(blob);
         if (this.cleared || this.held.get(path) !== entry) {

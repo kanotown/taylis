@@ -1,5 +1,6 @@
 import { type CSSProperties, useEffect, useState } from "react";
 
+import { SMALL_IMAGE_MAX_BYTES } from "../api/blobLimits";
 import type { CustomEmojiOut, EmojiPackImportOut, EmojiPackOut, TextEmojiColor } from "../api/types";
 import { TEXT_EMOJI_COLOR_NAMES, TEXT_EMOJI_COLORS, TEXT_EMOJI_LABEL_MAX, textEmojiColors } from "./textEmoji";
 import type { AppController } from "../state/app";
@@ -56,7 +57,7 @@ function emojiRef(controller: AppController, emoji: CustomEmojiOut): ImageRef {
 
 /** The image's object URL (memory, then this device's store, then the network once); null if it failed. */
 export function loadCustomEmojiUrl(controller: AppController, emoji: CustomEmojiOut): Promise<string | null> {
-  return loadImageUrl((path) => controller.api!.fetchBlob(path), emojiRef(controller, emoji));
+  return loadImageUrl((path) => controller.api!.fetchBlob(path, undefined, SMALL_IMAGE_MAX_BYTES), emojiRef(controller, emoji));
 }
 
 /** An object URL for `ref`: state is keyed, so a reused component never shows another image (or an older version). */
@@ -68,7 +69,7 @@ function useImageUrl(controller: AppController, ref: ImageRef | null): string | 
     if (!ref || !key || cachedImageUrl(ref) || !controller.api) return;
     let live = true;
     const api = controller.api;
-    void loadImageUrl((path) => api.fetchBlob(path), ref).then((next) => { if (live) setLoaded({ key, url: next }); });
+    void loadImageUrl((path) => api.fetchBlob(path, undefined, SMALL_IMAGE_MAX_BYTES), ref).then((next) => { if (live) setLoaded({ key, url: next }); });
     return () => { live = false; };
   }, [key, controller.api]);
   return url;

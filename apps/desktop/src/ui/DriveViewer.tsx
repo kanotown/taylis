@@ -12,6 +12,7 @@
  */
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 
+import { blobLimitFor } from "../api/client";
 import type { DriveItemOut, DrivePreviewOut } from "../api/types";
 import type { AppController } from "../state/app";
 import { ticketUrl } from "../drive/download";
@@ -125,7 +126,7 @@ function DriveDocument({ controller, item, onClose, page }: { controller: AppCon
 
   const load = useCallback(async () => {
     if (!api) throw new Error("No session");
-    return (await api.fetchBlob(`/api/v1/drive/items/${item.id}/content`)).arrayBuffer();
+    return (await api.fetchBlob(`/api/v1/drive/items/${item.id}/content`, undefined, blobLimitFor(item.size_bytes))).arrayBuffer();
   }, [api, item.id]);
   const attachment = useMemo(() => asAttachment(live), [live]);
   if (!attachment) return null;

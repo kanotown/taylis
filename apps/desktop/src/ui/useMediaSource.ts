@@ -1,5 +1,6 @@
 import { useEffect, useRef, useState } from "react";
 
+import { blobLimitFor } from "../api/blobLimits";
 import type { AttachmentOut } from "../api/types";
 import type { AppController } from "../state/app";
 import { acquireVideo } from "./videoSource";
@@ -35,7 +36,8 @@ export function useMediaSource(controller: AppController, attachment: Attachment
         cancelled = true;
       };
     }
-    const handle = acquireVideo(api, attachment.id);
+    // Held in memory whole: no more than the file said it is (twice, at least the inline limit).
+    const handle = acquireVideo(api, attachment.id, blobLimitFor(attachment.size_bytes));
     handle.promise.then(
       (url) => { if (!cancelled) setState({ key, api, url, failed: false }); },
       () => { if (!cancelled) setState({ key, api, url: null, failed: true }); },

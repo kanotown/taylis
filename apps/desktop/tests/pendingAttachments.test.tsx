@@ -39,12 +39,12 @@ describe("uploads waiting in the composer (testers, 2026-09-29: thumbnails like 
     // M38: a video plays in the viewer instead of downloading.
     fireEvent.click(screen.getByRole("button", { name: "IMG_0001.MOV を再生" }));
     expect(await screen.findByText("動画のプレビュー")).toBeTruthy();
-    await waitFor(() => expect(fetchBlob).toHaveBeenCalledWith("/api/v1/attachments/a2/content"));
+    await waitFor(() => expect(fetchBlob).toHaveBeenCalledWith("/api/v1/attachments/a2/content", undefined, expect.any(Number)));
     expect(downloadAttachment).toHaveBeenCalledTimes(1);
     fireEvent.click(screen.getByRole("button", { name: "閉じる" }));
 
     fireEvent.click(screen.getByRole("button", { name: "photo.jpg をプレビュー" }));
     expect(await screen.findByText("写真のプレビュー")).toBeTruthy();
-    await waitFor(() => expect(fetchBlob).toHaveBeenCalledWith("/api/v1/attachments/a1/content"));
+    await waitFor(() => expect(fetchBlob).toHaveBeenCalledWith("/api/v1/attachments/a1/content", undefined, expect.any(Number)));
   });
 });

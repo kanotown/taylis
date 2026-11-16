@@ -15,6 +15,7 @@ import { ChevronLeft, ChevronRight, Download, Image as ImageIcon, ImageUp, Info,
 import { type PointerEvent, useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { createPortal } from "react-dom";
 
+import { blobLimitFor } from "../api/blobLimits";
 import type { DriveItemOut } from "../api/types";
 import type { AppController } from "../state/app";
 import { hasLocation, isVideo, mediaTime, neighbours, type SlideshowSettings, slideDuration, slideshowItems, slideshowOrder, swipeStep, viewerSources } from "../drive/albums";
@@ -43,7 +44,8 @@ function usePicture(cache: BlobCache, item: DriveItemOut, original: boolean): { 
     setState({ key, url: null, failed: false });
     const fallback = sources.fallback;
     const first = wantsOriginal && sources.original ? sources.original : sources.display;
-    cache.get(first).then(
+    // An original asked for may be larger than a picture drawn by itself: up to what the file says it is (2026-11-16).
+    cache.get(first, first === sources.display ? undefined : blobLimitFor(item.size_bytes)).then(
       (url) => { if (!cancelled) setState({ key, url, failed: false }); },
       () => {
         if (cancelled || wantsOriginal) {

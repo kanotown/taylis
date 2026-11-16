@@ -1,3 +1,4 @@
+import { INLINE_MEDIA_MAX_BYTES, readBlobLimited, ResponseTooLargeError, SMALL_IMAGE_MAX_BYTES } from "./blobLimits";
 import { ApiError, isRetryable, NetworkError } from "./errors";
 import { acceptLanguage } from "../i18n";
 import type { ActionAdminOut, ActionCreate, ActionInvocationOut, ActionInvokeOut, ActionListOut, ActionSettingsOut, ActionSettingsUpdate, ActionStatusListOut, ActionStatusOut, ActionUpdate } from "./types";
@@ -58,6 +59,7 @@ export const PART_TIMEOUT_MS = 600_000;
 export const REFRESH_GRACE_MS = 30_000;
 export const REFRESH_TIMEOUT_MS = 10_000;
 export const REFRESH_RETRY_MS: readonly number[] = [1_000, 2_000, 4_000, 8_000];
+export { blobLimitFor, INLINE_MEDIA_MAX_BYTES, ResponseTooLargeError, SMALL_IMAGE_MAX_BYTES } from "./blobLimits";
 
 /** Thin HTTP client: bearer auth, single-flight refresh on token_expired, structured errors. */
 export class ApiClient {
@@ -1856,8 +1858,9 @@ export class ApiClient {
     const response = await this.rawFetch(`${this.baseUrl}/api/v1/server/icon?v=${encodeURIComponent(version)}`, {});
     if (!response.ok) throw await this.errorFromResponse(response);
     try {
-      return await response.blob();
+      return await readBlobLimited(response, SMALL_IMAGE_MAX_BYTES);
     } catch (err) {
+      if (err instanceof ResponseTooLargeError) throw err;
       throw new NetworkError(err);
     }
   }
@@ -1889,9 +1892,10 @@ export class ApiClient {
 
   /**
    * Authenticated GET returning the raw body (thumbnails, downloads). `onProgress` (downloads, docs/PREVIEWS.md §9): called with the bytes read so far as the body streams in, and the
-   * total from Content-Length (0 when the server sent none).
+   * total from Content-Length (0 when the server sent none). `maxBytes`: read no more (ResponseTooLargeError):
+   * INLINE_MEDIA_MAX_BYTES unless the caller says otherwise (SMALL_IMAGE_MAX_BYTES, blobLimitFor a declared size).
    */
-  async fetchBlob(path: string, onProgress?: (loaded: number, total: number) => void): Promise<Blob> {
+  async fetchBlob(path: string, onProgress?: (loaded: number, total: number) => void, maxBytes = INLINE_MEDIA_MAX_BYTES): Promise<Blob> {
     if (!this.accessToken && this.refreshToken) await this.refresh();
     const send = async (): Promise<Response> =>
       this.rawFetch(`${this.baseUrl}${path}`, { headers: this.accessToken ? { Authorization: `Bearer ${this.accessToken}` } : {} });
@@ -1902,21 +1906,9 @@ export class ApiClient {
     }
     if (!response.ok) throw await this.errorFromResponse(response);
     try {
-      if (!onProgress || !response.body) return await response.blob();
-      const total = Number(response.headers.get("Content-Length")) || 0;
-      const reader = response.body.getReader();
-      const chunks: Uint8Array[] = [];
-      let loaded = 0;
-      onProgress(0, total);
-      for (;;) {
-        const { done, value } = await reader.read();
-        if (done) break;
-        chunks.push(value);
-        loaded += value.byteLength;
-        onProgress(loaded, total);
-      }
-      return new Blob(chunks as BlobPart[], { type: response.headers.get("Content-Type") ?? "" });
+      return await readBlobLimited(response, maxBytes, onProgress);
     } catch (err) {
+      if (err instanceof ResponseTooLargeError) throw err;
       throw new NetworkError(err);
     }
   }

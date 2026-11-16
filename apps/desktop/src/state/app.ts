@@ -1,5 +1,5 @@
 /** Application controller: login, session restore, and the sync engine lifecycle. */
-import { ApiClient, type DeviceInfo } from "../api/client";
+import { ApiClient, blobLimitFor, type DeviceInfo, SMALL_IMAGE_MAX_BYTES } from "../api/client";
 import { dndActive } from "../ui/dnd";
 import { calendarAlarmText } from "../sync/calendar";
 import { taskNoticeText } from "../ui/tasks";
@@ -739,7 +739,7 @@ export class AppController {
         if (now - last < 150 && loaded < (total || item.total)) return;
         last = now;
         this.updateDownload(item.id, { loaded, total: total || item.total });
-      });
+      }, blobLimitFor(attachment.size_bytes)); // in memory until written: no more than the file said it is (twice)
       const saved = await saveDownload(attachment.filename, blob, options.open ? { ask: false, source: api.baseUrl } : { source: api.baseUrl });
       if (!saved) return this.dismissDownload(item.id);
       this.finishDownload(item.id, saved.path, saved.inDownloads);
@@ -2408,7 +2408,7 @@ export class AppController {
     this.editing = null;
     this.openChannelRequest = null;
     this.totpRequired = false;
-    configureAvatars((path) => session.api.fetchBlob(path), session.serverUrl); // M14a: another workspace starts an empty cache
+    configureAvatars((path) => session.api.fetchBlob(path, undefined, SMALL_IMAGE_MAX_BYTES), session.serverUrl); // M14a: another workspace starts an empty cache
     noteVersions(session.store.users.values());
     this.saveWorkspaces();
     setTitleBase(this.workspaceName);
@@ -2627,7 +2627,7 @@ export class AppController {
             userId: message.sender_id,
             name: sender,
             version: store.users.get(message.sender_id)?.avatar_updated_at ?? null,
-            fetchBlob: (path: string) => session.api.fetchBlob(path),
+            fetchBlob: (path: string) => session.api.fetchBlob(path, undefined, SMALL_IMAGE_MAX_BYTES),
             conversationId: channel.id,
             groupName: conversation,
             text: alone,

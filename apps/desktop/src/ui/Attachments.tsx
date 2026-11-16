@@ -1,6 +1,7 @@
 import { Download, ExternalLink, FileText, Film, FolderInput, HardDriveDownload, Image as ImageIcon, Images, Loader2, Music, Play, X } from "lucide-react";
 import { type FocusEvent, lazy, type PointerEvent, type ReactNode, Suspense, useCallback, useEffect, useMemo, useRef, useState, useSyncExternalStore } from "react";
 
+import { blobLimitFor } from "../api/blobLimits";
 import type { AttachmentOut } from "../api/types";
 import type { AppController } from "../state/app";
 import { DocumentCard } from "./DocumentPreview";
@@ -136,7 +137,8 @@ export function useAttachmentImage(controller: AppController, attachment: Attach
     void (async () => {
       try {
         if (!api) throw new Error("No session");
-        const blob = await api.fetchBlob(`/api/v1/attachments/${attachment.id}/${kind}`);
+        // The original is read up to what the file says it is; a thumbnail up to fetchBlob's default (2026-11-16).
+        const blob = await (kind === "content" ? api.fetchBlob(`/api/v1/attachments/${attachment.id}/content`, undefined, blobLimitFor(attachment.size_bytes)) : api.fetchBlob(`/api/v1/attachments/${attachment.id}/${kind}`));
         if (cancelled) return;
         objectUrl = URL.createObjectURL(blob);
         setState({ key, api, url: objectUrl, failed: false });
@@ -187,7 +189,7 @@ export function useViewerPicture(controller: AppController, attachment: Attachme
     void (async () => {
       try {
         if (!api) throw new Error("No session");
-        const blob = await api.fetchBlob(`/api/v1/attachments/${attachment.id}/${kind}`);
+        const blob = await (kind === "content" ? api.fetchBlob(`/api/v1/attachments/${attachment.id}/content`, undefined, blobLimitFor(attachment.size_bytes)) : api.fetchBlob(`/api/v1/attachments/${attachment.id}/${kind}`));
         if (cancelled) return;
         objectUrl = URL.createObjectURL(blob);
         setState({ key: stepKey, url: objectUrl });

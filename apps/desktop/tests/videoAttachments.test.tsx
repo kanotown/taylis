@@ -89,7 +89,7 @@ describe("video source cache", () => {
     expect(await tile.promise).toBe("blob:media-1");
     expect(await viewer.promise).toBe("blob:media-1");
     expect(fetchBlob).toHaveBeenCalledTimes(1);
-    expect(fetchBlob).toHaveBeenCalledWith("/api/v1/attachments/v/content");
+    expect(fetchBlob).toHaveBeenCalledWith("/api/v1/attachments/v/content", undefined, undefined);
     tile.release();
     tile.release(); // idempotent
     vi.advanceTimersByTime(VIDEO_RELEASE_DELAY_MS);
@@ -167,7 +167,7 @@ describe("in a message", () => {
     expect(tile.querySelector("video")).toBeNull();
     fireEvent.click(tile);
     await vi.waitFor(() => expect(screen.getByRole("dialog").querySelector("video[data-video-player]")).toBeTruthy());
-    expect(fetchBlob).toHaveBeenCalledWith("/api/v1/attachments/v/content");
+    expect(fetchBlob).toHaveBeenCalledWith("/api/v1/attachments/v/content", undefined, expect.any(Number));
   });
 
   it("offers the download when the app cannot play the clip or fetch it", async () => {
@@ -208,7 +208,7 @@ describe("in a message", () => {
     expect(poster.getAttribute("src")).toMatch(/^blob:media-/);
     expect(tile.querySelector("video")).toBeNull();
     expect(fetchBlob).toHaveBeenCalledWith("/api/v1/attachments/v/thumbnail");
-    expect(fetchBlob).not.toHaveBeenCalledWith("/api/v1/attachments/v/content");
+    expect((fetchBlob.mock.calls as unknown as string[][]).map((call) => call[0])).not.toContain("/api/v1/attachments/v/content");
     expect(tile.querySelector("[data-video-badge]")?.textContent).toBe("0:42 · 1.9 MB");
 
     // Opened: now the clip is fetched, with the poster on the player until it plays.
@@ -219,7 +219,7 @@ describe("in a message", () => {
       if (!element) throw new Error("no player yet");
       return element;
     });
-    expect(fetchBlob).toHaveBeenCalledWith("/api/v1/attachments/v/content");
+    expect(fetchBlob).toHaveBeenCalledWith("/api/v1/attachments/v/content", undefined, expect.any(Number));
     await vi.waitFor(() => expect(player.getAttribute("poster")).toMatch(/^blob:media-/));
     expect(within(dialog).getByText(/1080×1920/)).toBeTruthy();
   });
@@ -235,7 +235,7 @@ describe("in a message", () => {
     await vi.waitFor(() => {
       if (!tile.querySelector("video")) throw new Error("no frame yet");
     });
-    expect(fetchBlob).toHaveBeenCalledWith("/api/v1/attachments/v/content");
+    expect(fetchBlob).toHaveBeenCalledWith("/api/v1/attachments/v/content", undefined, expect.any(Number));
   });
 
   it("keeps photos, videos and files in their own rows", () => {

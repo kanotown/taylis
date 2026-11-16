@@ -92,7 +92,7 @@ describe("in a message", () => {
 
     fireEvent.click(within(row).getByRole("button", { name: "再生" }));
     await vi.waitFor(() => expect(audioOf(row).getAttribute("src")).toBe("blob:media-1"));
-    expect(fetchBlob).toHaveBeenCalledWith("/api/v1/attachments/s/content");
+    expect(fetchBlob).toHaveBeenCalledWith("/api/v1/attachments/s/content", undefined, expect.any(Number)); // a byte limit (2026-11-16)
     expect(HTMLMediaElement.prototype.play).toHaveBeenCalled();
     expect(row.dataset.state).toBe("playing");
     // The length and the position, once known.
