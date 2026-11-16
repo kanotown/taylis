@@ -1273,7 +1273,7 @@ class AppController(private val app: Application) {
         // The session ended (4003, refused token): the client signs out, which ends this workspace (clientSignedOut).
         engine.onSignedOut = { scope.launch { if (this@AppController.engine === engine) api.signOut() } }
         engine.isActive = { appForeground }
-        engine.onRead = { channelId -> notifier.clear(channelId) }
+        engine.onRead = { channelId -> notifier.clear(workspaceUrl, channelId) } // this workspace's only (WORKSPACES.md §7)
         engine.onPostedHere = { channelId -> if (this@AppController.engine === engine) postedFromHere(channelId) }
         // M12e: a reminder that fires while the app is open (the push is suppressed then) still shows up,
         // as its own notification (the channel's next message must not replace it, nor a read clear it).
@@ -1495,7 +1495,7 @@ class AppController(private val app: Application) {
             if (!(target.serverUrl == activeKey && api != null)) pushReachedWidgets(target.serverUrl, message)
             val key = message.notificationKey
             // §15: each test alerts again (an update of the one still on screen would be silent: setOnlyAlertOnce).
-            if (message.isTest && key != null) notifier.clear(key)
+            if (message.isTest && key != null) notifier.clear(target.serverUrl, key)
             if (target.serverUrl == activeKey && api != null) {
                 // The conversation being read is never announced; while the socket is live everything else arrives
                 // over it (and alerts from there).

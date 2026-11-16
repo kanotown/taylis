@@ -4,6 +4,7 @@ import androidx.core.app.Person
 import jp.chikuwachat.android.platform.ConversationLine
 import jp.chikuwachat.android.platform.ConversationNote
 import jp.chikuwachat.android.platform.ConversationStyle
+import jp.chikuwachat.android.platform.Notifier
 import jp.chikuwachat.android.platform.PushMessage
 import org.junit.Assert.assertEquals
 import org.junit.Assert.assertFalse
@@ -140,5 +141,18 @@ class ConversationNotificationTest {
             for ((a, b) in got.zip(rgb)) assertTrue("$id: $got vs $rgb", abs(a - b) <= 1)
         }
         assertTrue(ConversationNote.isGroup("public") && !ConversationNote.isGroup("dm") && !ConversationNote.isGroup(null))
+    }
+
+    /**
+     * 2026-11-16 (WORKSPACES.md §7): a notification's tag names its workspace, so the same channel id in two workspaces (or
+     * a server choosing another one's ids) neither replaces nor clears the other's.
+     */
+    @Test fun tagsAreNamespacedByWorkspace() {
+        val a = Notifier.tagOf("https://a.example.com", "c1")
+        val b = Notifier.tagOf("https://b.example.com", "c1")
+        assertEquals("https://a.example.com|c1", a)
+        assertNotEquals(a, b)
+        assertNotEquals(Notifier.tagOf("https://a.example.com", "reminder:r1"), Notifier.tagOf("https://b.example.com", "reminder:r1"))
+        assertEquals("c1", Notifier.tagOf(null, "c1"))
     }
 }

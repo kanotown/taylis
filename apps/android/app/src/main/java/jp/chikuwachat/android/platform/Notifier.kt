@@ -40,9 +40,9 @@ class Notifier(private val context: Context) {
             context.checkSelfPermission(Manifest.permission.POST_NOTIFICATIONS) == PackageManager.PERMISSION_GRANTED
 
     /**
-     * `key` names the notification: the channel id for messages (the newest message replaces the previous
-     * one; a read clears it), "reminder:<id>" for a reminder so it stands on its own. The socket and FCM may
-     * both post the same message: the replacement does not ring a second time.
+     * `key` names the notification within its workspace ([tagOf]): the channel id for messages (the newest message
+     * replaces the previous one; a read clears it), "reminder:<id>" for a reminder so it stands on its own. The socket and
+     * FCM may both post the same message: the replacement does not ring a second time.
      */
     fun notifyMessage(
         /** M52: null for an alarm of my own calendar (no conversation); `eventId` then says what the tap opens. */
@@ -82,7 +82,7 @@ class Notifier(private val context: Context) {
         // The launcher badge (PUSH_NOTIFICATIONS.md §4.2 is iOS; here the standard notification number, which some launchers
         // show on the icon and Pixel's turns into a dot): nothing beyond the platform API, so no ShortcutBadger.
         if (badge != null && badge > 0) builder.setNumber(badge)
-        manager.notify(key, NOTIFICATION_ID, builder.build())
+        manager.notify(tagOf(workspace, key), NOTIFICATION_ID, builder.build())
     }
 
     /** The messages each conversation's notification lists while it is on screen ("workspace|key" → lines, pictures). */
@@ -102,7 +102,8 @@ class Notifier(private val context: Context) {
     ) {
         if (!permitted) return
         val slot = (workspace ?: "") + "|" + key
-        val shown = runCatching { manager.activeNotifications.any { it.tag == key && it.id == NOTIFICATION_ID } }.getOrDefault(false)
+        val tag = tagOf(workspace, key)
+        val shown = runCatching { manager.activeNotifications.any { it.tag == tag && it.id == NOTIFICATION_ID } }.getOrDefault(false)
         val previous = if (shown) lines[slot].orEmpty() else emptyList()
         val updated = ConversationStyle.append(previous, ConversationLine(messageId, note.senderId, note.senderName, body, System.currentTimeMillis()))
         if (shown && updated === previous) return // already listed (the socket's copy, then FCM's)
@@ -146,7 +147,7 @@ class Notifier(private val context: Context) {
         if (subText != null) builder.setSubText(subText)
         if (workspace != null) builder.addExtras(Bundle().apply { putString(EXTRA_WORKSPACE, workspace) })
         if (badge != null && badge > 0) builder.setNumber(badge)
-        manager.notify(key, NOTIFICATION_ID, builder.build())
+        manager.notify(tag, NOTIFICATION_ID, builder.build())
     }
 
     private fun contentIntent(
@@ -177,10 +178,22 @@ class Notifier(private val context: Context) {
         return PendingIntent.getActivity(context, request, intent, PendingIntent.FLAG_UPDATE_CURRENT or PendingIntent.FLAG_IMMUTABLE)
     }
 
-    /** The conversation was read (here or elsewhere): its message notification goes; reminders stay. */
-    fun clear(channelId: String) {
-        manager.cancel(channelId, NOTIFICATION_ID)
-        lines.keys.filter { it.endsWith("|$channelId") }.forEach { lines.remove(it); icons.remove(it) }
+    /**
+     * The conversation was read (here or elsewhere): its message notification goes; reminders stay. Only [workspace]'s
+     * (WORKSPACES.md §7): a read in one workspace never clears another's notification of a channel with the same id.
+     */
+    fun clear(workspace: String?, key: String) {
+        manager.cancel(tagOf(workspace, key), NOTIFICATION_ID)
+        // Posted before the tags named their workspace (2026-11-16): the key alone, cleared when it is this workspace's.
+        if (workspace != null) {
+            runCatching { manager.activeNotifications }.getOrNull()?.forEach { shown ->
+                val owner = shown.notification.extras?.getString(EXTRA_WORKSPACE)
+                if (shown.tag == key && shown.id == NOTIFICATION_ID && (owner == null || owner == workspace)) manager.cancel(key, NOTIFICATION_ID)
+            }
+        }
+        val slot = (workspace ?: "") + "|" + key
+        lines.remove(slot)
+        icons.remove(slot)
     }
 
     /** Signed out (SYNC_PROTOCOL.md §11): nothing of the old account stays on screen. */
@@ -248,7 +261,14 @@ class Notifier(private val context: Context) {
         const val EXTRA_LOAN_ID = "loan_id"
         /** The workspace's server URL (the list key, WORKSPACES.md §4). */
         const val EXTRA_WORKSPACE = "workspace"
-        /** Notifications are told apart by their tag (the key); the id is the same for all. */
+        /** Notifications are told apart by their tag ([tagOf]); the id is the same for all. */
         private const val NOTIFICATION_ID = 1
+
+        /**
+         * A notification's tag: `workspace|key` (2026-11-16, WORKSPACES.md §7), so two workspaces' notifications of the
+         * same channel id (or a server choosing another one's ids) never replace or clear each other; the key alone for a
+         * notification of no workspace.
+         */
+        fun tagOf(workspace: String?, key: String): String = if (workspace == null) key else "$workspace|$key"
     }
 }
