@@ -1343,6 +1343,7 @@
     <string name="sidebar_dialogs_sort_recent">按最近活动</string>
     <string name="sidebar_dialogs_section_name">分区名称</string>
     <string name="sidebar_dialogs_up_to_2_letters_or_digits">最多 2 个英文字母或数字，或 1 个汉字</string>
+    <string name="sso_answer_from_another_server">响应来自其他服务器，已中止登录</string>
     <string name="sso_etc">%1$s 等</string>
     <string name="sso_sign_in_with_google">使用 Google 登录</string>
     <string name="sso_sign_in_with_your_account">使用 %1$s 账户登录</string>

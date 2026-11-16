@@ -42,14 +42,18 @@ object Sso {
     fun startUrl(serverUrl: String, challenge: String): String =
         serverUrl.trimEnd('/') + "/api/v1/auth/sso/google/start?platform=$PLATFORM&challenge=$challenge"
 
+    /** [issuer]: the answering server's `iss` (its PUBLIC_BASE_URL; docs/SSO.md §3 step 6), null when it sent none. */
     sealed interface Callback {
-        data class Ticket(val ticket: String) : Callback
-        data class Failure(val code: String) : Callback
+        val issuer: String?
+
+        data class Ticket(val ticket: String, override val issuer: String? = null) : Callback
+        data class Failure(val code: String, override val issuer: String? = null) : Callback
     }
 
     /**
-     * `chikuwachat://sso?ticket=…` or `chikuwachat://sso?sso_error=<code>`; null for anything else (another link of the
-     * scheme, or a return without either). A ticket that cannot be one is a failure (`invalid_ticket`), not sent.
+     * `chikuwachat://sso?ticket=…` or `chikuwachat://sso?sso_error=<code>` (each with `&iss=<server>`); null for anything
+     * else (another link of the scheme, or a return without either). A ticket that cannot be one is a failure
+     * (`invalid_ticket`), not sent.
      */
     fun parseCallback(url: String?): Callback? {
         if (url == null) return null
@@ -60,10 +64,41 @@ object Sso {
             val value = part.substringAfter('=', "")
             decode(name) to decode(value)
         }
-        query["sso_error"]?.let { code -> return Callback.Failure(if (CODE.matches(code)) code else "provider_error") }
+        val issuer = query["iss"]?.takeIf { it.isNotEmpty() }
+        query["sso_error"]?.let { code -> return Callback.Failure(if (CODE.matches(code)) code else "provider_error", issuer) }
         val ticket = query["ticket"] ?: return null
-        return if (TICKET.matches(ticket)) Callback.Ticket(ticket) else Callback.Failure("invalid_ticket")
+        return if (TICKET.matches(ticket)) Callback.Ticket(ticket, issuer) else Callback.Failure("invalid_ticket", issuer)
     }
+
+    /**
+     * 2026-11-16 (docs/SSO.md §3 step 6, RFC 9207): whether an answer's `iss` is the server the sign-in started on. Both
+     * are compared normalized (lower-case scheme and host, no default port, no trailing `/`); a missing or non-http(s)
+     * issuer never matches. A hostile server could otherwise redirect its start to another server's and receive that
+     * server's ticket, which the app would then exchange with the hostile one.
+     */
+    fun issuerMatches(issuer: String?, serverUrl: String): Boolean {
+        val text = issuer?.trim() ?: return false
+        if (!text.startsWith("https://", ignoreCase = true) && !text.startsWith("http://", ignoreCase = true)) return false
+        val expected = Workspaces.normalizeServerUrl(serverUrl) ?: return false
+        return Workspaces.normalizeServerUrl(text) == expected
+    }
+
+    /** What the browser's answer does to the pending sign-in: a ticket to exchange with its server, or a text to show. */
+    sealed interface Answer {
+        data class Exchange(val ticket: String) : Answer
+        data class Refused(val text: String) : Answer
+    }
+
+    /** An answer whose issuer is not [pending]'s server is refused before anything else (no exchange, its error unread). */
+    fun answer(callback: Callback, pending: PendingSso): Answer =
+        if (!issuerMatches(callback.issuer, pending.serverUrl)) {
+            Answer.Refused(L10n.str(R.string.sso_answer_from_another_server))
+        } else {
+            when (callback) {
+                is Callback.Failure -> Answer.Refused(errorText(callback.code))
+                is Callback.Ticket -> Answer.Exchange(callback.ticket)
+            }
+        }
 
     private fun decode(text: String): String = runCatching { URLDecoder.decode(text, "UTF-8") }.getOrDefault("")
 

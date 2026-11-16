@@ -1051,16 +1051,18 @@ class AppController(private val app: Application) {
     /**
      * `chikuwachat://sso?ticket=…` (or `?sso_error=`) from the browser (MainActivity). Ignored unless a sign-in is pending:
      * a replayed or foreign link finds none. The pending verifier is used once, whatever the outcome; the ticket is
-     * exchanged with the server the sign-in started on (not the workspace on screen).
+     * exchanged with the server the sign-in started on (not the workspace on screen), and only when the answer names
+     * that server as its issuer (2026-11-16, docs/SSO.md §3 step 6): another server's answer, or one without `iss`,
+     * ends the sign-in without an exchange.
      */
     fun handleSsoCallback(url: String?) {
         val callback = Sso.parseCallback(url) ?: return
         scope.launch {
             bootDone.await()
             val pending = ssoPending.take() ?: return@launch
-            when (callback) {
-                is Sso.Callback.Failure -> error = Sso.errorText(callback.code)
-                is Sso.Callback.Ticket -> exchangeSsoTicket(pending, callback.ticket)
+            when (val answer = Sso.answer(callback, pending)) {
+                is Sso.Answer.Refused -> error = answer.text
+                is Sso.Answer.Exchange -> exchangeSsoTicket(pending, answer.ticket)
             }
         }
     }

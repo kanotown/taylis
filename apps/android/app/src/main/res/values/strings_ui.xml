@@ -1343,6 +1343,7 @@
     <string name="sidebar_dialogs_sort_recent">最近の活動順</string>
     <string name="sidebar_dialogs_section_name">セクション名</string>
     <string name="sidebar_dialogs_up_to_2_letters_or_digits">英数字 2 文字まで、または日本語 1 文字</string>
+    <string name="sso_answer_from_another_server">別のサーバからの応答なので、ログインを中止しました</string>
     <string name="sso_etc">%1$s など</string>
     <string name="sso_sign_in_with_google">Google でログイン</string>
     <string name="sso_sign_in_with_your_account">%1$s のアカウントでログイン</string>

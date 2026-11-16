@@ -5,6 +5,7 @@ import jp.chikuwachat.android.api.Codec
 import jp.chikuwachat.android.api.ErrorMessages
 import jp.chikuwachat.android.api.UserMe
 import jp.chikuwachat.android.app.GoogleButtonText
+import jp.chikuwachat.android.app.PendingSso
 import jp.chikuwachat.android.app.PendingSsoStore
 import jp.chikuwachat.android.app.Sso
 import kotlinx.coroutines.runBlocking
@@ -86,6 +87,56 @@ class SsoTest {
         assertNull(Sso.parseCallback("chikuwachat://other?ticket=abc"))
         assertNull(Sso.parseCallback("https://sso?ticket=abc"))
         assertNull(Sso.parseCallback("not a url"))
+    }
+
+    // --- the issuer (2026-11-16, docs/SSO.md §3 step 6) -----------------------------------------
+
+    @Test fun parsesTheIssuer() {
+        assertEquals(
+            Sso.Callback.Ticket("abc", "https://chat.example.ac.jp"),
+            Sso.parseCallback("chikuwachat://sso?ticket=abc&iss=https%3A%2F%2Fchat.example.ac.jp"),
+        )
+        assertEquals(
+            Sso.Callback.Failure("cancelled", "https://chat.example.ac.jp"),
+            Sso.parseCallback("chikuwachat://sso?sso_error=cancelled&iss=https%3A%2F%2Fchat.example.ac.jp"),
+        )
+        assertNull(Sso.parseCallback("chikuwachat://sso?ticket=abc&iss=")!!.issuer)
+    }
+
+    @Test fun theIssuerIsComparedNormalized() {
+        assertTrue(Sso.issuerMatches("https://chat.example.ac.jp", "https://chat.example.ac.jp"))
+        assertTrue(Sso.issuerMatches("HTTPS://Chat.Example.ac.jp:443/", "https://chat.example.ac.jp"))
+        assertTrue(Sso.issuerMatches("https://example.ac.jp/chat", "HTTPS://EXAMPLE.ac.jp/chat/"))
+        assertTrue(Sso.issuerMatches("http://10.0.2.2:8000", "http://10.0.2.2:8000/"))
+        // Another server, scheme, port or path; none; not a URL.
+        assertFalse(Sso.issuerMatches("https://evil.example.com", "https://chat.example.ac.jp"))
+        assertFalse(Sso.issuerMatches("http://chat.example.ac.jp", "https://chat.example.ac.jp"))
+        assertFalse(Sso.issuerMatches("https://chat.example.ac.jp:8443", "https://chat.example.ac.jp"))
+        assertFalse(Sso.issuerMatches("https://chat.example.ac.jp/other", "https://chat.example.ac.jp"))
+        assertFalse(Sso.issuerMatches(null, "https://chat.example.ac.jp"))
+        assertFalse(Sso.issuerMatches("", "https://chat.example.ac.jp"))
+        assertFalse(Sso.issuerMatches("chat.example.ac.jp", "https://chat.example.ac.jp")) // no scheme: not an issuer
+        assertFalse(Sso.issuerMatches("https://user@chat.example.ac.jp", "https://chat.example.ac.jp"))
+    }
+
+    /**
+     * The mix-up: a hostile server A redirects its start to server B's; B's ticket comes back naming B. The app started
+     * with A, so nothing is exchanged (the exchange would hand B's session to A); an answer without `iss` neither.
+     */
+    @Test fun anAnswerFromAnotherServerIsRefused() {
+        val pending = PendingSso("https://a.example.com", "verifier", 0)
+        val refused = Sso.Answer.Refused("別のサーバからの応答なので、ログインを中止しました")
+        assertEquals(refused, Sso.answer(Sso.parseCallback("chikuwachat://sso?ticket=abc&iss=https%3A%2F%2Fb.example.com")!!, pending))
+        assertEquals(refused, Sso.answer(Sso.parseCallback("chikuwachat://sso?ticket=abc")!!, pending))
+        assertEquals(refused, Sso.answer(Sso.parseCallback("chikuwachat://sso?sso_error=expired&iss=https%3A%2F%2Fb.example.com")!!, pending))
+        // The server the sign-in started on.
+        assertEquals(Sso.Answer.Exchange("abc"), Sso.answer(Sso.parseCallback("chikuwachat://sso?ticket=abc&iss=https%3A%2F%2Fa.example.com")!!, pending))
+        assertEquals(
+            Sso.Answer.Refused(ErrorMessages.byCode.getValue("expired")),
+            Sso.answer(Sso.parseCallback("chikuwachat://sso?sso_error=expired&iss=https%3A%2F%2Fa.example.com%2F")!!, pending),
+        )
+        // A workspace saved with an older spelling of the same server.
+        assertEquals(Sso.Answer.Exchange("abc"), Sso.answer(Sso.parseCallback("chikuwachat://sso?ticket=abc&iss=https%3A%2F%2Fa.example.com")!!, PendingSso("HTTPS://A.example.com/", "v", 0)))
     }
 
     @Test fun errorCodesHaveJapaneseTexts() {

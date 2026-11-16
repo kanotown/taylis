@@ -1348,6 +1348,7 @@
     <string name="sidebar_dialogs_sort_recent">By recent activity</string>
     <string name="sidebar_dialogs_section_name">Section name</string>
     <string name="sidebar_dialogs_up_to_2_letters_or_digits">Up to 2 letters or digits, or 1 CJK character</string>
+    <string name="sso_answer_from_another_server">The answer came from a different server, so the sign-in was stopped</string>
     <string name="sso_etc">%1$s etc.</string>
     <string name="sso_sign_in_with_google">Sign in with Google</string>
     <string name="sso_sign_in_with_your_account">Sign in with your %1$s account</string>
