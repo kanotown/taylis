@@ -164,6 +164,9 @@ DEFAULT_CHANNELS = ("general", "meeting", "chat")
 
 # Times channels (`times-<username>`): made by their owners; the supervisors join.
 TIMES_OWNERS = ("watanabe", "takahashi", "review")
+# The review account's Times channel is named after its display name's reading, like the others
+# (`times-<username>` would show `times-review` in every screenshot taken as review).
+REVIEW_TIMES_NAME = "times-amaguri"
 
 # DMs: key -> the people in it (the first one opens it).
 DMS: dict[str, tuple[str, ...]] = {

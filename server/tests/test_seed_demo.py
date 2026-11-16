@@ -78,6 +78,15 @@ async def test_seed_demo_end_to_end(
             "WHERE u.username = 'review' AND c.type IN ('public', 'private')",
         )
         assert joined == len(content.CHANNELS) + 1  # + its times
+        # Shown as 甘栗 ちくわ, and its Times channel named after that, not `times-review`.
+        shown = await _scalar(db, "SELECT display_name FROM users WHERE username = 'review'")
+        assert shown == content.REVIEW_DISPLAY_NAME
+        times = await _scalar(
+            db,
+            "SELECT c.name FROM channels c JOIN users u ON u.id = c.created_by "
+            "WHERE u.username = 'review' AND c.name LIKE 'times-%'",
+        )
+        assert times == content.REVIEW_TIMES_NAME
         grade = await _scalar(
             db,
             "SELECT p.grade FROM lab_profiles p JOIN users u ON u.id = p.user_id "

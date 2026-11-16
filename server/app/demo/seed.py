@@ -361,6 +361,9 @@ class _Seeder:
         for owner in c.TIMES_OWNERS:
             username = self.review.username if owner == "review" else owner
             channel = await self.api(username, "POST", "/times")
+            if owner == "review":
+                rename = {"name": c.REVIEW_TIMES_NAME}
+                await self.api(username, "PATCH", f"/channels/{channel['id']}", json=rename)
             self.channels[f"times:{owner}"] = channel["id"]
         for key, people in c.DMS.items():
             names = [self.review.username if p == "review" else p for p in people]
