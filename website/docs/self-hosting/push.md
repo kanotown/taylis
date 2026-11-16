@@ -11,7 +11,9 @@ description: iOS（APNs）と Android（FCM）のプッシュ通知をサーバ�
 
 !!! warning "プッシュはアプリの持ち主の鍵で送ります"
     APNs と FCM の通知は、**アプリを配っている人の** 鍵（Apple の Team と Firebase のプロジェクト）でしか送れません。
-    今のところ、自分で立てたサーバから公式のストア版のアプリにプッシュを送る仕組みはありません（準備中）。
+    自分で立てたサーバから公式のアプリ（App Store・TestFlight・Google Play で配っているもの）にプッシュを送る仕組みは、
+    提供していません（公式のアプリでも、アプリを開いている間は通知が出ます。デスクトップ版とブラウザ版の通知はプッシュを
+    使わないので、どのサーバでも届きます）。
     自分のサーバでプッシュを使うには、自分の Apple Developer Program と Firebase のプロジェクトで iOS / Android の
     アプリをビルドし、その鍵をサーバに置きます。改変したアプリを配るときは、名前とアイコンを変える必要があります
     （[ライセンス](../license.md)、[docs/DEVELOPMENT.md の「フォークでのビルド」](https://github.com/kanotown/taylis/blob/main/docs/DEVELOPMENT.md)）。

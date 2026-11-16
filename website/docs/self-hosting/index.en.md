@@ -18,7 +18,9 @@ setup is designed for several dozen users and millions of messages.
 | Ports | TCP 80 and 443 (also used to obtain the certificate); UDP 443 for HTTP/3 |
 | Disk | Room for attachments (several GB if you import a large workspace) and backups |
 
-Push notifications additionally need an Apple Developer Program membership (iOS) and a Firebase project (Android).
+Push notifications on phones need your own build of the apps, with an Apple Developer Program membership (iOS) and a
+Firebase project (Android): the official apps from the stores and TestFlight do not receive push from a self-hosted
+server (they notify while open, and the desktop and browser clients notify from any server).
 
 ## Components
 
