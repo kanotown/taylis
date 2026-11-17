@@ -128,6 +128,7 @@ struct AckStatusView: View {
             .task(id: message.acks.count) { await load() }
         }
         .presentationDetents([.medium, .large])
+        .presentationBackground(Color(.systemGroupedBackground))  // solid, not iOS 26's glass (MOBILE_POLISH.md C4)
     }
 
     private func load() async {

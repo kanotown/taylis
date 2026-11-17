@@ -2397,6 +2397,7 @@ struct ComposerView: View {
                 }
             }
             .presentationDetents([.medium])
+            .presentationBackground(Color(.systemGroupedBackground))  // solid, not iOS 26's glass (MOBILE_POLISH.md C4)
         }
         // M37 (6): chosen from 「新しいメッセージ」: the input takes the keyboard once the push has settled.
         .task(id: controller?.composerFocus == focusKey) {

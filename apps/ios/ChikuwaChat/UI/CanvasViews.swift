@@ -628,6 +628,7 @@ private struct CanvasListSheet: View {
             .refreshable { await controller.engine?.canvases.loadList(channel.id) }
         }
         .presentationDetents([.medium, .large])
+        .presentationBackground(Color(.systemGroupedBackground))  // solid, not iOS 26's glass (MOBILE_POLISH.md C4)
     }
 
     private func row(_ canvas: CanvasMeta) -> some View {
@@ -799,6 +800,7 @@ private struct CanvasTrashSheet: View {
             .task { rows = await controller.trashedCanvases(channelId: channel.id) ?? [] }
         }
         .presentationDetents([.medium, .large])
+        .presentationBackground(Color(.systemGroupedBackground))  // solid, not iOS 26's glass (MOBILE_POLISH.md C4)
     }
 }
 

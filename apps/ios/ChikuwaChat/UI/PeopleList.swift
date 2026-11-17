@@ -46,6 +46,7 @@ struct ReactorsSheet: View {
             .toolbar { ToolbarItem(placement: .cancellationAction) { Button("閉じる") { dismiss() } } }
         }
         .presentationDetents([.medium, .large])
+        .presentationBackground(Color(.systemGroupedBackground))  // solid, not iOS 26's glass (MOBILE_POLISH.md C4)
     }
 
     /// A custom emoji is its picture in its own box (held blank until it loads), as on the chips.

@@ -892,6 +892,7 @@ struct WikiCellEditor: View {
                 }
         }
         .presentationDetents(prop.type == "text" || prop.type == "url" || prop.type == "number" ? [.medium, .large] : [.large])
+        .presentationBackground(Color(.systemGroupedBackground))  // solid, not iOS 26's glass (MOBILE_POLISH.md C4)
         .onAppear(perform: prepare)
     }
 

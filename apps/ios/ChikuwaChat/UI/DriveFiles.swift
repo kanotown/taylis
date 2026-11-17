@@ -243,6 +243,7 @@ struct DriveDownloadSheet: View {
             }
         }
         .presentationDetents([.medium])
+        .presentationBackground(Color(.systemBackground))  // solid, not iOS 26's glass (MOBILE_POLISH.md C4)
         .interactiveDismissDisabled(isRunning)
         .task { download.start(request, controller: controller) }
         .onChange(of: download.state) { _, state in

@@ -58,6 +58,7 @@ struct DriveUploadQuestionView: View {
         }
         .padding(20)
         .presentationDetents([.height(question.remaining > 0 ? 330 : 280)])
+        .presentationBackground(Color(.systemBackground))  // solid, not iOS 26's glass (MOBILE_POLISH.md C4)
         .interactiveDismissDisabled()
     }
 }

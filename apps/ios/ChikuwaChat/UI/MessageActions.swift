@@ -222,6 +222,7 @@ struct DeleteMessageWithFilesSheet: View {
             }
         }
         .presentationDetents([.medium])
+        .presentationBackground(Color(.systemGroupedBackground))  // solid, not iOS 26's glass (MOBILE_POLISH.md C4)
         .task { await load() }
     }
 

@@ -337,6 +337,7 @@ struct WikiNewPageSheet: View {
             }
         }
         .presentationDetents([.medium, .large])
+        .presentationBackground(Color(.systemGroupedBackground))  // solid, not iOS 26's glass (MOBILE_POLISH.md C4)
     }
 
     private func create() async {
@@ -466,6 +467,7 @@ struct WikiApplyTemplateSheet: View {
             }
         }
         .presentationDetents([.medium, .large])
+        .presentationBackground(Color(.systemGroupedBackground))  // solid, not iOS 26's glass (MOBILE_POLISH.md C4)
     }
 
     private func apply() async {
@@ -1039,6 +1041,7 @@ struct WikiRenameSheet: View {
             }
         }
         .presentationDetents([.medium])
+        .presentationBackground(Color(.systemGroupedBackground))  // solid, not iOS 26's glass (MOBILE_POLISH.md C4)
         .onAppear {
             title = item.title
             icon = item.icon ?? ""
