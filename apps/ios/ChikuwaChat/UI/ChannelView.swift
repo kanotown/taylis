@@ -1421,9 +1421,6 @@ struct MessageRow: View {
     }
 }
 
-/// Chips in lines as wide as the row, as many lines as they need. The reactions were an HStack: with many of them it
-/// was wider than the screen, the chips squeezed empty and the 「＋」 past the edge, and the list laid every row out as
-/// wide as that one, so text near it was cut off at the right (testers, 2026-09-29).
 /// A reaction chip's content line: as high as the 16 pt emoji box and the count's `.caption` line, whatever it holds,
 /// so the 「＋☺」 chip after the reactions is exactly as high as they are (2026-10-05: its symbols were ~13 pt high and
 /// it sat shorter, at the top of the row).
@@ -1462,8 +1459,33 @@ struct AddReactionChipLabel: View {
     }
 }
 
+/// Chips in lines as wide as the row, as many lines as they need. The reactions were an HStack: with many of them it
+/// was wider than the screen, the chips squeezed empty and the 「＋」 past the edge, and the list laid every row out as
+/// wide as that one, so text near it was cut off at the right (testers, 2026-09-29).
+///
+/// It has no alignment guides of its own (2026-11-17, a frozen app): without `explicitAlignment`, Layout's default
+/// merges the subviews' guides, which places every chip again and asks each chip's stacks in turn. A message row asks
+/// for `.top` (its HStack) and the conversation's LazyVStack for `.leading`, so every measuring of a row with reactions
+/// laid all its chips out once more per question. Nothing aligns to a guide inside the chips (a baseline would): the
+/// defaults (top, leading) are what the merge gave. The chips' sizes are measured once per layout (`Cache`), not again
+/// for each proposal and for the placement.
 struct ChipsLayout: Layout {
     var spacing: CGFloat = 6
+
+    struct Cache {
+        /// Each chip's own (ideal) size; nil until asked, and again after the chips change (`updateCache`).
+        var sizes: [CGSize]?
+    }
+
+    func makeCache(subviews: Subviews) -> Cache { Cache() }
+
+    func updateCache(_ cache: inout Cache, subviews: Subviews) { cache.sizes = nil }
+
+    func explicitAlignment(of guide: HorizontalAlignment, in bounds: CGRect, proposal: ProposedViewSize, subviews: Subviews,
+                           cache: inout Cache) -> CGFloat? { nil }
+
+    func explicitAlignment(of guide: VerticalAlignment, in bounds: CGRect, proposal: ProposedViewSize, subviews: Subviews,
+                           cache: inout Cache) -> CGFloat? { nil }
 
     /// Where each chip goes, from the top leading corner: a chip that does not fit after the others starts a line.
     static func frames(_ sizes: [CGSize], width: CGFloat, spacing: CGFloat) -> [CGRect] {
@@ -1482,17 +1504,20 @@ struct ChipsLayout: Layout {
         return frames
     }
 
-    private func frames(_ subviews: Subviews, width: CGFloat?) -> [CGRect] {
-        Self.frames(subviews.map { $0.sizeThatFits(.unspecified) }, width: width ?? .infinity, spacing: spacing)
+    /// No width (a view asked for its ideal size, ViewThatFits) or an unlimited one: all the chips on one line.
+    private func frames(_ subviews: Subviews, width: CGFloat?, cache: inout Cache) -> [CGRect] {
+        let sizes = cache.sizes ?? subviews.map { $0.sizeThatFits(.unspecified) }
+        cache.sizes = sizes
+        return Self.frames(sizes, width: width ?? .infinity, spacing: spacing)
     }
 
-    func sizeThatFits(proposal: ProposedViewSize, subviews: Subviews, cache: inout ()) -> CGSize {
-        let frames = frames(subviews, width: proposal.width)
+    func sizeThatFits(proposal: ProposedViewSize, subviews: Subviews, cache: inout Cache) -> CGSize {
+        let frames = frames(subviews, width: proposal.width, cache: &cache)
         return CGSize(width: frames.map(\.maxX).max() ?? 0, height: frames.map(\.maxY).max() ?? 0)
     }
 
-    func placeSubviews(in bounds: CGRect, proposal: ProposedViewSize, subviews: Subviews, cache: inout ()) {
-        for (subview, frame) in zip(subviews, frames(subviews, width: bounds.width)) {
+    func placeSubviews(in bounds: CGRect, proposal: ProposedViewSize, subviews: Subviews, cache: inout Cache) {
+        for (subview, frame) in zip(subviews, frames(subviews, width: bounds.width, cache: &cache)) {
             subview.place(at: CGPoint(x: bounds.minX + frame.minX, y: bounds.minY + frame.minY), proposal: ProposedViewSize(frame.size))
         }
     }

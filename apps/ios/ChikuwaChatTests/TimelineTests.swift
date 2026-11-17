@@ -151,6 +151,78 @@ final class TimelineTests: XCTestCase {
         XCTAssertEqual(ChipsLayout.frames([chip, CGSize(width: 260, height: 22)], width: 200, spacing: 6).map(\.minY), [0, 28])
     }
 
+    /// Seven 40 pt chips and the 44 pt 「＋」, 22 pt high; the first one `first` wide (the cache test).
+    private func chips(first: CGFloat = 40) -> some View {
+        ChipsLayout(spacing: 6) {
+            Color.red.frame(width: first, height: 22)
+            ForEach(0..<6, id: \.self) { _ in Color.red.frame(width: 40, height: 22) }
+            Color.blue.frame(width: 44, height: 22)
+        }
+    }
+
+    /// The layout's size for any width it is offered: none or an unlimited one (ViewThatFits, a sideways scroll view) is
+    /// one line, as the chips' own sizes add up; a width wraps them; a zero width puts each on a line of its own.
+    @MainActor
+    func testChipsSizeForAnyOfferedWidth() {
+        let host = UIHostingController(rootView: chips())
+        let tall = CGFloat.infinity
+        let oneLine: CGFloat = 7 * 40 + 44 + 7 * 6
+        XCTAssertEqual(host.sizeThatFits(in: CGSize(width: tall, height: tall)), CGSize(width: oneLine, height: 22))
+        XCTAssertEqual(host.sizeThatFits(in: CGSize(width: 200, height: tall)), CGSize(width: 182, height: 50))
+        let stacked: CGFloat = 8 * 22 + 7 * 6
+        XCTAssertEqual(host.sizeThatFits(in: CGSize(width: 0, height: tall)), CGSize(width: 44, height: stacked))
+    }
+
+    /// The chips' sizes are kept between the layout's calls (ChipsLayout.Cache): a chip that changes, or a new text size,
+    /// is measured again.
+    @MainActor
+    func testAChangedChipIsMeasuredAgain() {
+        let host = UIHostingController(rootView: AnyView(chips()))
+        let offer = CGSize(width: 2000, height: CGFloat.infinity)
+        let before: CGFloat = 7 * 40 + 44 + 7 * 6
+        XCTAssertEqual(host.sizeThatFits(in: offer).width, before)
+        host.rootView = AnyView(chips(first: 90))
+        XCTAssertEqual(host.sizeThatFits(in: offer).width, before + 50)
+
+        func counts(_ size: DynamicTypeSize) -> AnyView {
+            AnyView(ChipsLayout(spacing: 6) { Text("👍 2"); Text("🎉 12") }.environment(\.dynamicTypeSize, size))
+        }
+        let text = UIHostingController(rootView: counts(.large))
+        let small = text.sizeThatFits(in: offer)
+        text.rootView = counts(.accessibility3)
+        let large = text.sizeThatFits(in: offer)
+        XCTAssertGreaterThan(large.width, small.width + 20, "\(large) vs \(small)")
+        XCTAssertGreaterThan(large.height, small.height, "\(large) vs \(small)")
+    }
+
+    /// 2026-11-17 (the iPad froze at 100 % CPU in a conversation with reactions): the chips have no alignment guides of
+    /// their own. Layout's default merges the subviews' guides, which placed every chip once more for each guide a row
+    /// asked about (its HStack `.top`, the LazyVStack `.leading`) and asked each chip's stacks in turn; its text baseline
+    /// came out of the chips that way. Now every guide is the plain default.
+    @MainActor
+    func testChipsHaveNoGuidesOfTheirOwn() {
+        var seen: [GuideProbe.Guides] = []
+        let view = GuideProbe(report: { seen.append($0) }) {
+            ChipsLayout(spacing: 6) {
+                Text("👍 2")
+                Text("🎉 1")
+            }
+        }
+        let window = UIWindow(frame: CGRect(x: 0, y: 0, width: 320, height: 200))
+        let host = UIHostingController(rootView: view)
+        window.rootViewController = host
+        window.makeKeyAndVisible()
+        host.view.frame = window.bounds
+        host.view.layoutIfNeeded()
+        window.isHidden = true
+        XCTAssertFalse(seen.isEmpty, "never laid out")
+        for guides in seen {
+            XCTAssertNil(guides.leading)
+            XCTAssertNil(guides.top)
+            XCTAssertNil(guides.firstBaseline)
+        }
+    }
+
     /// 2026-10-05: the 「＋☺」 chip after the reactions was a little shorter than they were. Both are bordered mini buttons
     /// around a ReactionChipLine, so they are exactly as high, at any text size.
     @MainActor
@@ -180,5 +252,28 @@ final class TimelineTests: XCTestCase {
         var tokyo = Calendar(identifier: .gregorian)
         tokyo.timeZone = TimeZone(identifier: "Asia/Tokyo")!
         XCTAssertEqual(Timeline.fullLabel("2026-10-01T05:30:00Z", calendar: tokyo), "2026年10月1日 (木) 14:30")
+    }
+}
+
+/// A parent that writes down the explicit guides its one subview answers with as it places it.
+private struct GuideProbe: Layout {
+    struct Guides {
+        let leading: CGFloat?
+        let top: CGFloat?
+        let firstBaseline: CGFloat?
+    }
+
+    let report: (Guides) -> Void
+
+    func sizeThatFits(proposal: ProposedViewSize, subviews: Subviews, cache: inout ()) -> CGSize {
+        subviews.first?.sizeThatFits(proposal) ?? .zero
+    }
+
+    func placeSubviews(in bounds: CGRect, proposal: ProposedViewSize, subviews: Subviews, cache: inout ()) {
+        guard let subview = subviews.first else { return }
+        let dimensions = subview.dimensions(in: proposal)
+        report(Guides(leading: dimensions[explicit: HorizontalAlignment.leading], top: dimensions[explicit: VerticalAlignment.top],
+                      firstBaseline: dimensions[explicit: VerticalAlignment.firstTextBaseline]))
+        subview.place(at: bounds.origin, proposal: proposal)
     }
 }
