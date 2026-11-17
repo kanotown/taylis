@@ -42,6 +42,7 @@ import { createPortal } from "react-dom";
 
 import type { PageRef } from "../api/types";
 import { ATTACHMENT_MAX_BYTES, forEachPicked, isPickBusy, refusePicked, takePicked } from "../platform/pickedFiles";
+import { withUploadNames } from "../platform/uploadNames";
 import { isImeKeyEvent } from "./ime";
 import type { DocEditorLinks } from "./CanvasEditor";
 import { parseTable, sameTable, serializeTable, type Table } from "./canvasTable";
@@ -680,7 +681,9 @@ export default function PageEditor({ env, saver, links, initialLine = null, hand
 
   async function insertImages(list: readonly File[], picked?: { release: () => void }) {
     const release = picked?.release ?? (() => {});
-    const images = list.filter((file) => file.type.startsWith("image/"));
+    const pictures = list.filter((file) => file.type.startsWith("image/"));
+    // A pasted or dropped 「image.png」 gets a time name (platform/uploadNames.ts); picked ones keep theirs.
+    const images = picked ? pictures : withUploadNames(pictures);
     if (images.length === 0) {
       release();
       if (list.length > 0) env.showError(t("canvasEditor.imagesOnly"));

@@ -184,6 +184,17 @@ describe("the inline editor's files", () => {
     expect(controller.setError).toHaveBeenCalledWith("添付は10件までです");
   });
 
+  it("a pasted image.png goes up under a time name (apps/shared/upload-names.json)", async () => {
+    const { upload, editor } = setUp("paste", []);
+    const screenshot = new File([new Uint8Array([1, 2, 3])], "image.png", { type: "image/png" });
+    await act(async () => { paste(editor, [screenshot]); });
+    expect(upload).toHaveBeenCalledOnce();
+    const [sent, name] = upload.mock.calls[0]!;
+    expect(name).toMatch(/^image_\d{8}_\d{6}(_\d+)?\.png$/);
+    expect((sent as File).name).toBe(name);
+    expect(sent.type).toBe("image/png");
+  });
+
   it("takes files dropped on the box (not the composer)", async () => {
     const { upload, box } = setUp("drop", []);
     const dropped = new File(["x"], "dropped.txt");

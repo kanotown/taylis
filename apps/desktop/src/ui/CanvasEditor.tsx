@@ -8,6 +8,7 @@
  * paste back into a canvas editor (the line moved keeps its task).
  */
 import { ATTACHMENT_MAX_BYTES, forEachPicked, isPickBusy, refusePicked, takePicked } from "../platform/pickedFiles";
+import { withUploadNames } from "../platform/uploadNames";
 import { AtSign, Bold, Code, Heading1, Heading2, Heading3, Heading4, ImagePlus, Italic, Link as LinkIcon, List, ListChecks, ListOrdered, Loader2, Minus, Strikethrough, Table as TableIcon, TextQuote } from "lucide-react";
 import { type ClipboardEvent, type CSSProperties, type KeyboardEvent, type MutableRefObject, useEffect, useLayoutEffect, useRef, useState, useSyncExternalStore } from "react";
 
@@ -222,7 +223,9 @@ export function CanvasEditor({ controller, saver, className, style, autoFocus = 
    *  input cleared after the last; the count and sizes are checked before any byte is read, review v0.1.30 #5). */
   const insertImages = async (list: readonly File[], picked?: { release: () => void }) => {
     const release = picked?.release ?? (() => {});
-    const images = list.filter((file) => file.type.startsWith("image/"));
+    const pictures = list.filter((file) => file.type.startsWith("image/"));
+    // A pasted or dropped 「image.png」 gets a time name (platform/uploadNames.ts); picked ones keep theirs.
+    const images = picked ? pictures : withUploadNames(pictures);
     if (images.length === 0) {
       release();
       if (list.length > 0) controller.setError(t("canvasEditor.imagesOnly"));

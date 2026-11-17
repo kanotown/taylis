@@ -13,6 +13,7 @@ import { describeError, NetworkError } from "../api/errors";
 import type { AppController } from "../state/app";
 import { postedView } from "../drive/channelFiles";
 import { ATTACHMENT_MAX_BYTES, forEachPicked, isPickBusy, refusePicked, takePicked } from "../platform/pickedFiles";
+import { withUploadNames } from "../platform/uploadNames";
 import { isFileDrag } from "../platform/fileDrops";
 import { PendingTile } from "./Attachments";
 import { type EditFile, editFileRoom, editFilesUploading, startEditFiles } from "./editFileList";
@@ -51,7 +52,9 @@ export function useEditFiles(controller: AppController, attachments: readonly At
       controller.setError(error);
     }
   };
-  const add = async (all: File[], picked?: { release: () => void }) => {
+  const add = async (given: File[], picked?: { release: () => void }) => {
+    // Pasted and dropped files without a real name get a time name (platform/uploadNames.ts); picked ones keep theirs.
+    const all = picked ? given : withUploadNames(given);
     const release = picked?.release ?? (() => {});
     if (!controller.api || all.length === 0) { release(); return; }
     // The composer's limits and wording (「添付は10件までです」, 「〈名前〉は大きすぎます」); the message's own files count.

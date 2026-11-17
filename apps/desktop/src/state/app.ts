@@ -38,6 +38,7 @@ import { clearNotifications, notify } from "../platform/notify";
 import type { ReportCategory, ReportReason, TestNotificationOut } from "../api/types";
 import { secretStore } from "../platform/secrets";
 import { SqlitePersistence } from "../platform/sqlite";
+import { withUploadName } from "../platform/uploadNames";
 import { readFallback, type CloseReadMark } from "../sync/dmCloses";
 import { SyncEngine } from "../sync/engine";
 import { Store } from "../sync/store";
@@ -3244,7 +3245,8 @@ export class AppController {
   async uploadCanvasImage(file: File): Promise<AttachmentOut | null> {
     if (!this.api) return null;
     try {
-      const uploaded = await this.api.uploadAttachment(file, file.name || "image.png");
+      // Pasted and dropped files were named already (platform/uploadNames.ts); a time name for one that still has none.
+      const uploaded = await this.api.uploadAttachment(file, file.name || withUploadName(file).name);
       this.attachmentMetas.set(uploaded.id, Promise.resolve(uploaded));
       return uploaded;
     } catch (error) {

@@ -189,6 +189,8 @@ describe("Markdown mode (the text area)", () => {
     type("");
     expect(fireEvent.paste(box(), { clipboardData: clipboard({}, [snapshot()]) })).toBe(false);
     await waitFor(() => expect(w.uploadAttachment).toHaveBeenCalledOnce());
+    // The clipboard's 「image.png」 goes up under a time name (apps/shared/upload-names.json).
+    expect(w.uploadAttachment.mock.calls[0]![0].name).toMatch(/^image_\d{8}_\d{6}(_\d+)?\.png$/);
     fireEvent.keyDown(box(), { key: "V", code: "KeyV", metaKey: true, shiftKey: true });
     expect(fireEvent.paste(box(), { clipboardData: clipboard({ "text/html": EXCEL_HTML, "text/plain": EXCEL_TSV }, [snapshot()]) })).toBe(true); // the browser pastes the text
     expect(w.uploadAttachment).toHaveBeenCalledOnce();

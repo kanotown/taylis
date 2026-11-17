@@ -1,4 +1,5 @@
 import { ATTACHMENT_MAX_BYTES, ATTACHMENT_MAX_COUNT, forEachPicked, formatMegabytes, isPickBusy, refusePicked, takePicked } from "../platform/pickedFiles";
+import { withUploadNames } from "../platform/uploadNames";
 import { AtSign, CalendarDays, CaseSensitive, Check, CheckCheck, ChevronDown, Ellipsis, Eye, EyeOff, Flag, HardDrive, Image, Info, LayoutTemplate, Link as LinkIcon, Loader2, Paperclip, Plus, SendHorizontal, Smile, Vote, X, Zap } from "lucide-react";
 import { type KeyboardEvent, type ReactNode, type RefObject, Suspense, useCallback, useEffect, useLayoutEffect, useRef, useState } from "react";
 
@@ -284,8 +285,10 @@ export function Composer({
   /** Uploads picked, dropped or pasted files. The count and each size are checked before any byte is read (review
    *  v0.1.30 #5); a picker's files (`picked`) are then copied into memory one at a time, each uploaded before the
    *  next is read, and the input is cleared after the last (platform/pickedFiles.ts). The upload counter (which holds
-   *  back sending) rises at once. */
-  const pickFiles = async (all: File[], picked?: { release: () => void }) => {
+   *  back sending) rises at once. Pasted and dropped files without a real name (「image.png」) get a time name
+   *  (platform/uploadNames.ts); picked ones keep theirs. */
+  const pickFiles = async (given: File[], picked?: { release: () => void }) => {
+    const all = picked ? given : withUploadNames(given);
     const api = controller.api;
     const whole = picked?.release ?? (() => {});
     if (!api || all.length === 0) { whole(); return; }
