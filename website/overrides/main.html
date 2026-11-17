@@ -1,0 +1,31 @@
+{#- Link cards (Open Graph / X) for every page: the site had none, so a post linking it showed no preview
+    (2026-11-17). One picture for all pages (assets/social.jpg, 1200×630: the SNS hero cropped). -#}
+{% extends "base.html" %}
+
+{% block extrahead %}
+  {%- set description = (page.meta.description if page and page.meta and page.meta.description else config.site_description) -%}
+  {%- set page_title = (page.meta.title if page and page.meta and page.meta.title else (page.title if page and page.title else "")) | striptags -%}
+  {#- The home page of each language (the English one is not `is_homepage`) is titled like the site itself. -#}
+  {%- if (page and page.is_homepage) or not page_title or page_title == config.site_name -%}
+    {%- set card_title = config.site_name ~ " — " ~ config.site_description -%}
+  {%- else -%}
+    {%- set card_title = page_title ~ " - " ~ config.site_name -%}
+  {%- endif -%}
+  {%- set card_image = config.site_url ~ "assets/social.jpg" -%}
+  <meta property="og:type" content="website">
+  <meta property="og:site_name" content="{{ config.site_name }}">
+  <meta property="og:title" content="{{ card_title | striptags }}">
+  <meta property="og:description" content="{{ description | striptags }}">
+  {%- if page and page.canonical_url %}
+  <meta property="og:url" content="{{ page.canonical_url }}">
+  {%- endif %}
+  <meta property="og:image" content="{{ card_image }}">
+  <meta property="og:image:width" content="1200">
+  <meta property="og:image:height" content="630">
+  <meta property="og:image:alt" content="Taylis：研究室のためのセルフホスト型チャット。デスクトップ版と iPhone の画面（デモのデータ）">
+  <meta property="og:locale" content="{{ 'en_US' if config.theme.language == 'en' else 'ja_JP' }}">
+  <meta name="twitter:card" content="summary_large_image">
+  <meta name="twitter:title" content="{{ card_title | striptags }}">
+  <meta name="twitter:description" content="{{ description | striptags }}">
+  <meta name="twitter:image" content="{{ card_image }}">
+{% endblock %}

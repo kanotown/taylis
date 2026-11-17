@@ -14,6 +14,7 @@ copyright: >-
 
 theme:
   name: material
+  custom_dir: overrides  # link cards (Open Graph / X): overrides/main.html
   language: ja
   logo: assets/logo.png
   favicon: assets/favicon.png
