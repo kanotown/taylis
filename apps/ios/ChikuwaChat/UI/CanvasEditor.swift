@@ -137,7 +137,7 @@ struct CanvasEditor: View {
                         controller.error = tr("写真を読み込めませんでした")
                         continue
                     }
-                    await upload(photo.data, filename: "photo." + photo.ext, contentType: photo.mime)
+                    await upload(photo.data, filename: UploadNames.next(kind: "photo", ext: photo.ext), contentType: photo.mime)
                 }
             }
         }
@@ -145,7 +145,8 @@ struct CanvasEditor: View {
             CameraPicker { image in
                 guard let data = image.normalizedUp().jpegData(compressionQuality: 0.85), roomFor(1) else { return }
                 uploading += 1
-                Task { await upload(data, filename: "photo-\(Int(Date().timeIntervalSince1970)).jpg", contentType: "image/jpeg") }
+                let name = UploadNames.next(kind: "photo", ext: "jpg")
+                Task { await upload(data, filename: name, contentType: "image/jpeg") }
             }
             .ignoresSafeArea()
         }

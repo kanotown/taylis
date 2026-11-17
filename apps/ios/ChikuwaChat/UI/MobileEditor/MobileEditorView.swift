@@ -78,7 +78,7 @@ struct MobileEditorView: View {
                         controller.error = tr("写真を読み込めませんでした")
                         continue
                     }
-                    await upload(photo.data, filename: "photo." + photo.ext, contentType: photo.mime)
+                    await upload(photo.data, filename: UploadNames.next(kind: "photo", ext: photo.ext), contentType: photo.mime)
                 }
             }
         }

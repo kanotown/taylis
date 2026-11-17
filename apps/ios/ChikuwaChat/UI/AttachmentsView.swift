@@ -35,7 +35,8 @@ struct PickedMovie: Transferable {
             // Its own folder, so the file keeps its name (IMG_1234.MOV) without clashing with another pick.
             let dir = FileManager.default.temporaryDirectory.appendingPathComponent("picked-videos/\(UUID().uuidString)", isDirectory: true)
             try FileManager.default.createDirectory(at: dir, withIntermediateDirectories: true)
-            let name = received.file.lastPathComponent.isEmpty ? "video.mov" : received.file.lastPathComponent
+            // Without a name, a time one (UploadNames: 「video_20261117_090503.mov」).
+            let name = received.file.lastPathComponent.isEmpty ? UploadNames.next(kind: "video", ext: "mov") : received.file.lastPathComponent
             let copy = dir.appendingPathComponent(name)
             try FileManager.default.copyItem(at: received.file, to: copy)
             return PickedMovie(url: copy)
@@ -821,7 +822,8 @@ struct AttachmentUploader {
                 controller.error = tr("写真を読み込めませんでした") // it was dropped without a word (audit 2026-09-29)
                 continue
             }
-            await upload(data: photo.data, filename: "photo." + photo.ext, contentType: photo.mime)
+            // Its name is lost on the way: a time name (UploadNames: 「photo_20261117_090503.jpg」), not 「photo.jpg」 for all.
+            await upload(data: photo.data, filename: UploadNames.next(kind: "photo", ext: photo.ext), contentType: photo.mime)
         }
     }
 }
@@ -853,7 +855,8 @@ private struct AttachmentPickers: ViewModifier {
             .fullScreenCover(isPresented: $showCamera) {
                 CameraPicker { image in
                     guard let data = image.normalizedUp().jpegData(compressionQuality: 0.85) else { return }
-                    uploader?.batch { await $0.upload(data: data, filename: "photo-\(Int(Date().timeIntervalSince1970)).jpg", contentType: "image/jpeg") }
+                    let name = UploadNames.next(kind: "photo", ext: "jpg")
+                    uploader?.batch { await $0.upload(data: data, filename: name, contentType: "image/jpeg") }
                 }
                 .ignoresSafeArea()
             }

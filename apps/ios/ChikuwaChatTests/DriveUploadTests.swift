@@ -211,8 +211,9 @@ final class DriveUploadRulesTests: XCTestCase {
         XCTAssertEqual(DriveUploadRules.retryDelay(attempt: 1), 2)
         XCTAssertEqual(DriveUploadRules.retryDelay(attempt: 3), 8)
         XCTAssertEqual(DriveUploadRules.retryDelay(attempt: 9), 30)
-        XCTAssertEqual(DriveUploadRules.photoName(Date(timeIntervalSince1970: 0)).count, "IMG_19700101_000000.jpg".count)
-        XCTAssertTrue(DriveUploadRules.photoName().hasPrefix("IMG_"))
+        // The camera's and a nameless photo's name: the rule of every unnamed upload (UploadNamesTests).
+        XCTAssertTrue(DriveUploadRules.photoName().hasPrefix("photo_"))
+        XCTAssertTrue(DriveUploadRules.photoName(ext: "png").hasSuffix(".png"))
     }
 
     func testStagingCutsSlicesWithTheirHashesAndCutsAgainForAnotherPartSize() throws {

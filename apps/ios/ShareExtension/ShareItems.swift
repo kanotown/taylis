@@ -90,7 +90,7 @@ enum ShareItems {
             _ = provider.loadFileRepresentation(forTypeIdentifier: typeId) { url, _ in
                 guard let url else { return continuation.resume(returning: nil) }
                 // The file is ours only inside this callback: copy it now (the system streams the copy).
-                let name = displayName(url.lastPathComponent, suggested: suggested, type: type)
+                let name = uploadName(displayName(url.lastPathComponent, suggested: suggested, type: type), type: type)
                 guard let destination = stagedFile(name, index: index, in: folder) else { return continuation.resume(returning: nil) }
                 do {
                     try? FileManager.default.removeItem(at: destination)
@@ -109,7 +109,8 @@ enum ShareItems {
                 _ = provider.loadObject(ofClass: UIImage.self) { object, _ in continuation.resume(returning: object as? UIImage) }
             }
             if let data = image?.jpegData(compressionQuality: 0.9) {
-                let name = displayName("image.jpg", suggested: provider.suggestedName, type: .jpeg)
+                // 「image.jpg」 without a suggested name counts as none: a time name (uploadName).
+                let name = uploadName(displayName("image.jpg", suggested: provider.suggestedName, type: .jpeg), type: .jpeg)
                 if let destination = stagedFile(name, index: index, in: folder), (try? data.write(to: destination)) != nil {
                     result = (destination, name)
                 }
@@ -136,6 +137,14 @@ enum ShareItems {
             scalar == "/" || scalar == "\\" || scalar == ":" || scalar.properties.generalCategory == .control ? "_" : scalar
         })).trimmingCharacters(in: .whitespacesAndNewlines)
         return cleaned.isEmpty || cleaned == "." || cleaned == ".." ? "file" : cleaned
+    }
+
+    /// A name that counts as none (「image.png」, 「file」, nothing: UploadNames.isUnnamed) becomes a time name
+    /// (「image_20261117_090503.jpg」, docs/CHANNEL_FILES.md §4.4); any other name is kept as it is.
+    static func uploadName(_ name: String, type: UTType?) -> String {
+        guard UploadNames.isUnnamed(name) else { return name }
+        let own = (name as NSString).pathExtension
+        return UploadNames.next(kind: UploadNames.kind(mime: type?.preferredMIMEType ?? ""), ext: own.isEmpty ? type?.preferredFilenameExtension ?? "" : own)
     }
 
     /// The staged copy's place: `<index>-<name>` directly in `folder`, nil if it would be anywhere else.

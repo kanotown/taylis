@@ -60,12 +60,10 @@ enum DriveUploadRules {
     /// of its own that starts at once.
     static let pickGroup = 20
 
-    /// A name for a file this device made (camera, a photo without one): 「IMG_20261024_150312.jpg」.
+    /// A name for a file this device made (camera, a photo without one): 「photo_20261024_150312.jpg」, the rule of every
+    /// unnamed upload (UploadNames, apps/shared/upload-names.json; it was 「IMG_…」 before 2026-11-17).
     static func photoName(_ date: Date = Date(), ext: String = "jpg") -> String {
-        let formatter = DateFormatter()
-        formatter.locale = Locale(identifier: "en_US_POSIX")
-        formatter.dateFormat = "yyyyMMdd_HHmmss"
-        return "IMG_\(formatter.string(from: date)).\(ext)"
+        UploadNames.next(kind: "photo", ext: ext, at: date)
     }
 }
 
