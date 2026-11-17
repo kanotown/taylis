@@ -34,8 +34,8 @@ enum SafePaths {
         return cleaned
     }
 
-    /// `root` with `components` appended, or nil when the result, standardized, is not strictly inside `root` (a
-    /// component with a separator, `..`, or one that resolves to the root itself).
+    /// `root` with `components` appended, or nil when the result is not strictly inside `root` (a component with a
+    /// separator, `..`, or one that resolves to the root itself).
     static func file(under root: URL, _ components: [String], isDirectory: Bool = false) -> URL? {
         guard !components.isEmpty else { return nil }
         var url = root
@@ -46,12 +46,10 @@ enum SafePaths {
         return isInside(url, root: root) ? url : nil
     }
 
-    /// Whether `url`, standardized, lies strictly inside `root`.
+    /// Whether `url` lies strictly inside `root`, compared as spelled (LexicalPath: `standardizedFileURL` refused every
+    /// file not yet written on a phone, 2026-11-17).
     static func isInside(_ url: URL, root: URL) -> Bool {
-        let base = root.standardizedFileURL.path
-        let path = url.standardizedFileURL.path
-        let prefix = base.hasSuffix("/") ? base : base + "/"
-        return path.hasPrefix(prefix) && path.count > prefix.count
+        LexicalPath.isInside(url, root: root)
     }
 
     /// A short key for a server URL in a path (its normalized spelling hashed): its caches never share a folder.

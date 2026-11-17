@@ -1255,6 +1255,23 @@ final class SafePathsTests: XCTestCase {
         XCTAssertFalse(SafePaths.isInside(URL(fileURLWithPath: root.path + "-sibling/x"), root: root), "a sibling with the same prefix")
     }
 
+    /// 2026-11-17 (build 145): on a phone the app's folders are under /private/var, and `standardizedFileURL` dropped
+    /// /private from the existing folder only, not from the file not yet written in it: every new download (a video,
+    /// an album photo, a shared file) was refused. The simulator's folders have no /private, but the Mac's /private/tmp
+    /// shows the same thing.
+    func testAFileNotYetWrittenIsInsideAnExistingFolderUnderPrivate() throws {
+        let folder = URL(fileURLWithPath: "/private/tmp/taylis-safe-paths-\(UUID().uuidString)", isDirectory: true)
+        try FileManager.default.createDirectory(at: folder, withIntermediateDirectories: true)
+        defer { try? FileManager.default.removeItem(at: folder) }
+        XCTAssertNotEqual(folder.standardizedFileURL.path.hasPrefix("/private/"),
+                          folder.appendingPathComponent("not-yet").standardizedFileURL.path.hasPrefix("/private/"),
+                          "the spelling difference this test is about")
+        let file = try XCTUnwrap(SafePaths.file(under: folder, ["0190a8c2-7d3e-7b1a-9c4e-1f2a3b4c5d6e", "taylis-promo.mp4"]))
+        XCTAssertTrue(SafePaths.isInside(file, root: folder))
+        XCTAssertEqual(LexicalPath.components(file.deletingLastPathComponent().deletingLastPathComponent()), LexicalPath.components(folder))
+        for escape in [[".."], ["..", "x"], ["a", "../../x"], ["."]] { XCTAssertNil(SafePaths.file(under: folder, escape), "\(escape)") }
+    }
+
     func testAttachmentAndDriveCachesStayInTheirFolders() throws {
         func attachment(_ id: String, _ name: String) -> AttachmentOut {
             AttachmentOut(id: id, filename: name, contentType: "application/octet-stream", sizeBytes: 1, width: nil, height: nil,

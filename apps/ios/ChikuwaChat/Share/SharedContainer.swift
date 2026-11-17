@@ -267,3 +267,29 @@ final class FileLock: @unchecked Sendable {
         activity?.end()
     }
 }
+
+/// A file URL's path as it is spelled, for checking that a file stays inside its folder (SafePaths, the Share
+/// Extension's staged copies). `.` is dropped and `..` takes back the component before it; nothing is looked up on disk.
+/// Not `standardizedFileURL`: it drops a leading `/private` only where the result exists, so on a phone, whose folders
+/// are under /private/var, an existing folder and a file not yet written in it were spelled differently and every new
+/// download, album photo and shared file was refused (2026-11-17, build 145; the simulator's folders have no /private).
+enum LexicalPath {
+    static func components(_ url: URL) -> [String] {
+        var parts: [String] = []
+        for part in url.pathComponents {
+            switch part {
+            case "/" where parts.isEmpty: parts.append(part)
+            case "", ".", "/": continue
+            case "..": if parts.count > 1 { parts.removeLast() }
+            default: parts.append(part)
+            }
+        }
+        return parts
+    }
+
+    /// Whether `url` lies strictly inside `root`.
+    static func isInside(_ url: URL, root: URL) -> Bool {
+        let base = components(root), path = components(url)
+        return path.count > base.count && Array(path.prefix(base.count)) == base
+    }
+}

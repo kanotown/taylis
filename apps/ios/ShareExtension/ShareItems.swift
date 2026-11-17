@@ -141,7 +141,8 @@ enum ShareItems {
     /// The staged copy's place: `<index>-<name>` directly in `folder`, nil if it would be anywhere else.
     static func stagedFile(_ name: String, index: Int, in folder: URL) -> URL? {
         let destination = folder.appendingPathComponent("\(index)-\(name)")
-        return destination.standardizedFileURL.deletingLastPathComponent().path == folder.standardizedFileURL.path ? destination : nil
+        // Compared as spelled (LexicalPath): standardizedFileURL refused every copy on a phone (2026-11-17, build 145).
+        return LexicalPath.components(destination.deletingLastPathComponent()) == LexicalPath.components(folder) ? destination : nil
     }
 
     /// A small preview of a staged file (QuickLook draws it from the file on disk).
