@@ -108,7 +108,6 @@ import java.io.File
 import java.time.LocalDate
 import java.time.LocalDateTime
 import java.time.ZonedDateTime
-import java.time.format.DateTimeFormatter
 import jp.chikuwachat.android.R
 import jp.chikuwachat.android.L10n
 import androidx.compose.ui.res.stringResource
@@ -594,10 +593,8 @@ private const val COMPOSER_FOCUS_DELAY_MS = 300L
 /** 仕上げ B (C11): where the camera's photo goes before it is uploaded (the FileProvider's `camera/`). */
 object CameraCapture {
     const val DIR = "camera"
-    private val STAMP: DateTimeFormatter = DateTimeFormatter.ofPattern("yyyyMMdd_HHmmss")
-
-    /** 「photo_20260930_221605.jpg」: the name the attachment keeps. */
-    fun fileName(at: LocalDateTime): String = "photo_" + STAMP.format(at) + ".jpg"
+    /** 「photo_20260930_221605.jpg」: the name the attachment keeps (the rule of every unnamed upload, UploadNames). */
+    fun fileName(at: LocalDateTime): String = UploadNames.name("photo", "jpg", at, 1)
 
     /** A new file under the cache's `camera/`; photos left there over a day (the app stopped mid-upload) go first. */
     fun newFile(cacheDir: File, at: LocalDateTime): File {

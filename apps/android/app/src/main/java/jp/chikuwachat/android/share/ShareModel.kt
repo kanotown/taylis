@@ -8,6 +8,7 @@ import android.net.Uri
 import android.os.Build
 import android.provider.OpenableColumns
 import android.util.Size
+import android.webkit.MimeTypeMap
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateMapOf
 import androidx.compose.runtime.mutableStateOf
@@ -18,6 +19,7 @@ import androidx.lifecycle.viewModelScope
 import jp.chikuwachat.android.ChikuwaApp
 import jp.chikuwachat.android.api.Limits
 import jp.chikuwachat.android.ui.RecentConversations
+import jp.chikuwachat.android.ui.UploadNames
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.Job
 import kotlinx.coroutines.launch
@@ -120,7 +122,18 @@ class ShareModel(app: Application) : AndroidViewModel(app) {
             true
         }.getOrDefault(false)
         val mime = runCatching { resolver.getType(parsed) }.getOrNull()
-        return SharedFile(uri, SharePayload.fileName(name, uri), size, mime, readable)
+        return SharedFile(uri, uploadName(SharePayload.fileName(name, uri), mime), size, mime, readable)
+    }
+
+    /**
+     * A name that counts as none (「image.png」, 「file」: UploadNames.isUnnamed) becomes a time name
+     * (「image_20261117_090503.png」, docs/CHANNEL_FILES.md §4.4); any other name is kept as it is.
+     */
+    private fun uploadName(name: String, mime: String?): String {
+        if (!UploadNames.isUnnamed(name)) return name
+        val own = name.substringAfterLast('.', "").lowercase()
+        val ext = own.ifEmpty { mime?.let { MimeTypeMap.getSingleton().getExtensionFromMimeType(it) }.orEmpty() }
+        return UploadNames.next(UploadNames.kind(mime), ext)
     }
 
     /** Each file to `filesDir/share/<job>/<index>` (a file over the attachments' limit too: the drive takes it). */

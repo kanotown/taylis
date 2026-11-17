@@ -14,6 +14,7 @@ import jp.chikuwachat.android.ui.Dnd
 import jp.chikuwachat.android.ui.CalendarChannels
 import jp.chikuwachat.android.ui.CalendarDates
 import jp.chikuwachat.android.ui.TaskRules
+import jp.chikuwachat.android.ui.UploadNames
 import jp.chikuwachat.android.api.ReminderOut
 import java.util.UUID
 import java.time.ZonedDateTime
@@ -3261,8 +3262,18 @@ class AppController(private val app: Application) {
         val (name, size) = withContext(Dispatchers.IO) { describeDocument(resolver, uri) }
         val limit = store.limits?.maxAttachmentBytes
         if (limit != null && size != null && size > limit) throw Refusal(L10n.str(R.string.app_controller_the_file_is_too_large_limit, formatSize(limit)))
-        api.uploadAttachment(ContentUriBody(resolver, uri, size), name ?: "file")
+        api.uploadAttachment(ContentUriBody(resolver, uri, size), name?.takeIf { it.isNotBlank() } ?: unnamedUploadName(resolver, uri))
     }.onFailure { if (report) error = describe(it) }
+
+    /**
+     * A provider that tells no name: a time name by its type (「image_20261117_090503.png」, docs/CHANNEL_FILES.md §4.4)
+     * instead of 「file」 for all. A name it tells is kept as it is, whatever it is (the person picked the file).
+     */
+    private fun unnamedUploadName(resolver: ContentResolver, uri: Uri): String {
+        val mime = runCatching { resolver.getType(uri) }.getOrNull()
+        val ext = mime?.let { android.webkit.MimeTypeMap.getSingleton().getExtensionFromMimeType(it) }.orEmpty()
+        return UploadNames.next(UploadNames.kind(mime), ext)
+    }
 
     /** Display name and size of a picked document (either may be unknown); refuses one that cannot be opened. */
     private fun describeDocument(resolver: ContentResolver, uri: Uri): Pair<String?, Long?> {
