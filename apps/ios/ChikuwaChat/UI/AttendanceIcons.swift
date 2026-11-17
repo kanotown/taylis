@@ -256,6 +256,9 @@ struct AttendanceQuickSheet: View {
         // (2026-10-07). Taller than the screen (many states, large text, a small iPhone), the system keeps it to the
         // large detent and the rows scroll. iOS 17 (no scroll geometry) keeps medium / large.
         .presentationDetents(fitted.map { [.height($0), .large] } ?? [.medium, .large], selection: $detent)
+        // Solid, not iOS 26's glass below full height (MOBILE_POLISH.md C4, as MyStatusSheet): the screen behind showed
+        // through the rows and the note (2026-11-17, the SNS pictures).
+        .presentationBackground(Color(.systemGroupedBackground))
     }
 
     private func row(_ state: AttendanceStateOut, mine: AttendanceEntryOut?) -> some View {
