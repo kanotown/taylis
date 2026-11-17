@@ -1,0 +1,93 @@
+{
+  "_comment": "The name a file gets when it reaches an upload without a real one (2026-11-17, docs/CHANNEL_FILES.md §4.4): pasted images, the camera, photo-library pictures that lose their name, placeholders. Name: <kind>_<yyyyMMdd>_<HHmmss>[_<n>].<ext> in the device's local time (Gregorian, ASCII digits) when the file is added; ext lower-cased, no dot when there is none. index: the 2nd, 3rd … unnamed file added in the same second (any kind) gets _2, _3 …; the first has none. kind: photo (camera, photo library), image (other unnamed pictures, pasted images), video, file; kinds maps a MIME type to one (image/* → image, video/* → video, else file; case-insensitive). unnamed: names that count as no name (trimmed, ASCII case-insensitive): empty, file, image.<image ext> and photo.<image ext> (image ext: png jpg jpeg gif webp heic heif tif tiff bmp avif), video.<video ext> (mov mp4 m4v webm). Desktop / Web rename these only for pasted and dropped files; a picked file keeps its name whatever it is. Hand-written; desktop (tests/uploadNames.test.ts), iOS (UploadNamesTests) and Android (UploadNamesTest) read this file.",
+  "names": [
+    { "name": "pasted image", "kind": "image", "ext": "png", "time": "2026-11-17T09:05:03", "index": 1, "expected": "image_20261117_090503.png" },
+    { "name": "second in the same second", "kind": "image", "ext": "png", "time": "2026-11-17T09:05:03", "index": 2, "expected": "image_20261117_090503_2.png" },
+    { "name": "third in the same second", "kind": "image", "ext": "png", "time": "2026-11-17T09:05:03", "index": 3, "expected": "image_20261117_090503_3.png" },
+    { "name": "tenth", "kind": "image", "ext": "gif", "time": "2026-11-17T09:05:03", "index": 10, "expected": "image_20261117_090503_10.gif" },
+    { "name": "zero padding", "kind": "photo", "ext": "jpg", "time": "2026-01-02T03:04:05", "index": 1, "expected": "photo_20260102_030405.jpg" },
+    { "name": "end of the year", "kind": "photo", "ext": "heic", "time": "2026-12-31T23:59:59", "index": 1, "expected": "photo_20261231_235959.heic" },
+    { "name": "midnight", "kind": "video", "ext": "mov", "time": "2026-11-17T00:00:00", "index": 1, "expected": "video_20261117_000000.mov" },
+    { "name": "video mp4", "kind": "video", "ext": "mp4", "time": "2026-11-17T21:30:45", "index": 2, "expected": "video_20261117_213045_2.mp4" },
+    { "name": "file with a type", "kind": "file", "ext": "pdf", "time": "2026-11-17T09:05:03", "index": 1, "expected": "file_20261117_090503.pdf" },
+    { "name": "file without an extension", "kind": "file", "ext": "", "time": "2026-11-17T09:05:03", "index": 1, "expected": "file_20261117_090503" },
+    { "name": "extension lower-cased", "kind": "photo", "ext": "JPG", "time": "2026-11-17T09:05:03", "index": 1, "expected": "photo_20261117_090503.jpg" }
+  ],
+  "sequences": [
+    {
+      "name": "one counter for every kind, reset by a new second",
+      "steps": [
+        { "kind": "image", "ext": "png", "time": "2026-11-17T09:05:03", "expected": "image_20261117_090503.png" },
+        { "kind": "image", "ext": "png", "time": "2026-11-17T09:05:03", "expected": "image_20261117_090503_2.png" },
+        { "kind": "photo", "ext": "jpg", "time": "2026-11-17T09:05:03", "expected": "photo_20261117_090503_3.jpg" },
+        { "kind": "image", "ext": "png", "time": "2026-11-17T09:05:04", "expected": "image_20261117_090504.png" },
+        { "kind": "video", "ext": "mov", "time": "2026-11-17T09:05:04", "expected": "video_20261117_090504_2.mov" },
+        { "kind": "file", "ext": "", "time": "2026-11-17T09:06:00", "expected": "file_20261117_090600" }
+      ]
+    }
+  ],
+  "kinds": [
+    { "mime": "image/png", "kind": "image" },
+    { "mime": "image/heic", "kind": "image" },
+    { "mime": "IMAGE/JPEG", "kind": "image" },
+    { "mime": "video/quicktime", "kind": "video" },
+    { "mime": "video/mp4", "kind": "video" },
+    { "mime": "application/pdf", "kind": "file" },
+    { "mime": "text/plain", "kind": "file" },
+    { "mime": "", "kind": "file" }
+  ],
+  "unnamed": [
+    "",
+    "   ",
+    " image.png ",
+    "image.png",
+    "Image.png",
+    "image.PNG",
+    "IMAGE.JPG",
+    "image.jpg",
+    "image.jpeg",
+    "image.gif",
+    "image.webp",
+    "image.heic",
+    "image.heif",
+    "image.tif",
+    "image.tiff",
+    "image.bmp",
+    "image.avif",
+    "photo.jpg",
+    "photo.png",
+    "photo.heic",
+    "Photo.JPEG",
+    "video.mov",
+    "video.mp4",
+    "video.m4v",
+    "video.webm",
+    "file",
+    "File"
+  ],
+  "named": [
+    "IMG_1234.HEIC",
+    "IMG_1234.MOV",
+    "image",
+    "photo",
+    "video",
+    "image.pdf",
+    "image.svg",
+    "image.mov",
+    "photo.mp4",
+    "video.jpg",
+    "file.txt",
+    "files",
+    "image (1).png",
+    "image 2.png",
+    "images.png",
+    "my image.png",
+    "image.png.zip",
+    "image_20261117_090503.png",
+    "photo_20260930_221605.jpg",
+    "photo-1763337903.jpg",
+    "スクリーンショット 2026-11-17 9.05.03.png",
+    "画像.png",
+    "Screenshot 2026-11-17 at 9.05.03.png"
+  ]
+}
