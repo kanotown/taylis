@@ -147,17 +147,6 @@ export function clickAction(item: Viewable, keys: { metaKey: boolean; ctrlKey: b
   return viewerKind(item) ? "view" : "details";
 }
 
-/** The list's optional columns at a width of the listing (px): the least needed go first as it narrows (§27). */
-export interface DriveColumns {
-  modified: boolean;
-  by: boolean;
-  size: boolean;
-}
-
-export function driveColumns(width: number): DriveColumns {
-  return { by: width >= 700, size: width >= 520, modified: width >= 420 };
-}
-
 /** The thumbnail a row or a tile shows (null: an icon). */
 export function thumbnailPath(item: Pick<DriveItemOut, "kind" | "file">): string | null {
   const file = item.file;

@@ -341,3 +341,133 @@ describe("the pickers' columns (2026-10-31, §27.8)", () => {
     expect(list).toContain("max-sm:h-72");
   });
 });
+
+describe("the list's column widths (§27.9)", () => {
+  const long = file("l", "研究報告書_最終版_修正済み_2026年度_提出用_とても長い名前のファイル.pdf", "application/pdf");
+  const listing = () => vi.fn(async () => ({ folder: ROOT, path: [{ id: "root", name: "研究室ドライブ" }], items: [long], next_cursor: null, shared_above: 0 }));
+
+  /** The listing measured `width` px wide (ResizeObserver and getBoundingClientRect stand in for layout). */
+  function measuredAt(width: number) {
+    const callbacks: Array<() => void> = [];
+    vi.stubGlobal("ResizeObserver", class {
+      constructor(callback: () => void) { callbacks.push(callback); }
+      observe() {}
+      disconnect() {}
+    });
+    let current = width;
+    const rect = vi.spyOn(HTMLElement.prototype, "getBoundingClientRect").mockImplementation(() => ({ width: current, height: 600, top: 0, left: 0, right: current, bottom: 600, x: 0, y: 0, toJSON: () => ({}) }) as DOMRect);
+    return {
+      resize: (next: number) => {
+        current = next;
+        act(() => callbacks.forEach((callback) => callback()));
+      },
+      restore: () => rect.mockRestore(),
+    };
+  }
+
+  const handle = (name: string) => screen.getByRole("separator", { name });
+  const headerWidth = (name: string) => (handle(name).closest("th") as HTMLElement).style.width;
+  const handleNames = () => screen.getAllByRole("separator").map((element) => element.getAttribute("aria-label"));
+
+  afterEach(() => localStorage.clear());
+
+  it("a handle between the columns drags the one on its right; the name keeps the rest; no sort; kept on this device", async () => {
+    const layout = measuredAt(1000);
+    const driveChildren = listing();
+    const { unmount } = render(<DriveBrowser controller={controllerWith({ driveChildren, searchDrive: vi.fn() })} location={LOCATION} folderId="root" onFolder={vi.fn()} />);
+    await screen.findByTitle(long.name);
+    // The whole name on hover, however it is shortened.
+    expect(document.querySelector('[data-drive-item="l"] [data-file-name]')!.getAttribute("title")).toBe(long.name);
+    // One handle per boundary from the name to the size: name|modified, modified|by, by|size.
+    expect(handleNames()).toEqual(["更新日時の幅", "更新した人の幅", "大きさの幅"]);
+    const modified = handle("更新日時の幅");
+    expect(modified.getAttribute("aria-orientation")).toBe("vertical");
+    expect(modified.tabIndex).toBe(0);
+    expect(headerWidth("更新日時の幅")).toBe("144px");
+    expect(modified.getAttribute("aria-valuenow")).toBe("144");
+    expect(modified.getAttribute("aria-valuemin")).toBe("72");
+    expect(modified.getAttribute("aria-valuemax")).toBe("320");
+
+    // Dragged left 60 px: the date column 60 px wider (the name narrower); far left: its maximum.
+    fireEvent.pointerDown(modified, { pointerId: 1, button: 0, clientX: 500 });
+    expect(modified.hasAttribute("data-dragging")).toBe(true);
+    fireEvent.pointerMove(modified, { pointerId: 1, clientX: 440 });
+    expect(headerWidth("更新日時の幅")).toBe("204px");
+    fireEvent.pointerMove(modified, { pointerId: 1, clientX: -2000 });
+    expect(headerWidth("更新日時の幅")).toBe("320px");
+    // Another pointer does not move it.
+    fireEvent.pointerMove(modified, { pointerId: 2, clientX: 600 });
+    expect(headerWidth("更新日時の幅")).toBe("320px");
+    fireEvent.pointerUp(modified, { pointerId: 1, clientX: -2000 });
+    fireEvent.click(modified);
+    expect(modified.hasAttribute("data-dragging")).toBe(false);
+    expect(JSON.parse(localStorage.getItem("chikuwa.prefs.driveColumns")!)).toEqual({ modified: 320 });
+    // Not a sort: the listing was read once, by name.
+    expect(driveChildren).toHaveBeenCalledTimes(1);
+    expect(handle("更新日時の幅").closest("th")!.getAttribute("aria-sort")).toBeNull();
+
+    // Dragged right: narrower, down to its minimum (the name gets the room).
+    fireEvent.pointerDown(handle("大きさの幅"), { pointerId: 3, button: 0, clientX: 800 });
+    fireEvent.pointerMove(handle("大きさの幅"), { pointerId: 3, clientX: 900 });
+    fireEvent.pointerUp(handle("大きさの幅"), { pointerId: 3, clientX: 900 });
+    expect(headerWidth("大きさの幅")).toBe("56px");
+
+    // The next listing (any location's) opens with the same widths.
+    unmount();
+    render(<DriveBrowser controller={controllerWith({ driveChildren: listing(), searchDrive: vi.fn() })} location={{ ...LOCATION, id: "mine", kind: "user" }} folderId="root" onFolder={vi.fn()} />);
+    await screen.findByTitle(long.name);
+    expect(headerWidth("更新日時の幅")).toBe("320px");
+    expect(headerWidth("大きさの幅")).toBe("56px");
+    // A double click puts the default width back (and forgets it).
+    fireEvent.doubleClick(handle("更新日時の幅"));
+    expect(headerWidth("更新日時の幅")).toBe("144px");
+    expect(JSON.parse(localStorage.getItem("chikuwa.prefs.driveColumns")!)).toEqual({ size: 56 });
+    layout.restore();
+  });
+
+  it("the keyboard moves a focused handle by 16 px within its limits, without reaching the list's keys", async () => {
+    const layout = measuredAt(1000);
+    render(<DriveBrowser controller={controllerWith({ driveChildren: listing(), searchDrive: vi.fn() })} location={LOCATION} folderId="root" onFolder={vi.fn()} />);
+    await screen.findByTitle(long.name);
+    const size = handle("大きさの幅");
+    size.focus();
+    expect(document.activeElement).toBe(size);
+    const outer = vi.fn();
+    window.addEventListener("keydown", outer);
+    fireEvent.keyDown(size, { key: "ArrowLeft" });
+    expect(size.getAttribute("aria-valuenow")).toBe("96");
+    expect(headerWidth("大きさの幅")).toBe("96px");
+    fireEvent.keyDown(size, { key: "ArrowRight" });
+    fireEvent.keyDown(size, { key: "ArrowRight" });
+    fireEvent.keyDown(size, { key: "ArrowRight" });
+    expect(size.getAttribute("aria-valuenow")).toBe("56");
+    expect(JSON.parse(localStorage.getItem("chikuwa.prefs.driveColumns")!)).toEqual({ size: 56 });
+    expect(outer).not.toHaveBeenCalled();
+    window.removeEventListener("keydown", outer);
+    layout.restore();
+  });
+
+  it("the name keeps its minimum: a drag stops there, and a widened column hides before squeezing it", async () => {
+    const layout = measuredAt(700);
+    render(<DriveBrowser controller={controllerWith({ driveChildren: listing(), searchDrive: vi.fn() })} location={LOCATION} folderId="root" onFolder={vi.fn()} />);
+    await screen.findByTitle(long.name);
+    const table = () => document.querySelector("table")!;
+    expect(table().dataset["driveColumns"]).toBe("modified by size");
+    // 700 px: check box 40, date 144, by 128, size 80, actions 104 → the name has 204, so the date may grow by 4.
+    const modified = handle("更新日時の幅");
+    expect(modified.getAttribute("aria-valuemax")).toBe("148");
+    fireEvent.pointerDown(modified, { pointerId: 1, button: 0, clientX: 300 });
+    fireEvent.pointerMove(modified, { pointerId: 1, clientX: 100 });
+    expect(table().dataset["driveColumns"]).toBe("modified by size");
+    fireEvent.pointerUp(modified, { pointerId: 1, clientX: 100 });
+    expect(headerWidth("更新日時の幅")).toBe("148px");
+    // Widened further in a wider window, the date column makes who changed it give way sooner when it narrows again.
+    layout.resize(1000);
+    fireEvent.keyDown(handle("更新日時の幅"), { key: "ArrowLeft" });
+    expect(headerWidth("更新日時の幅")).toBe("164px");
+    layout.resize(700);
+    expect(table().dataset["driveColumns"]).toBe("modified size");
+    expect(handleNames()).toEqual(["更新日時の幅", "大きさの幅"]);
+    layout.restore();
+  });
+});

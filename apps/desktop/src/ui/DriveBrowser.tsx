@@ -4,7 +4,8 @@
  * - The bar: breadcrumbs (a crumb takes dropped items: moved there), the search of this location, 「新しいフォルダ」,
  *   「アップロード」 (files / a folder), sort, list or grid (remembered on this device), the trash, the details pane.
  * - The listing reads 100 items a page by cursor as it scrolls (folders first, then by name, time or size), lists them
- *   (icon or thumbnail, name, time, who changed it, size; the less needed columns give way as the listing narrows) or
+ *   (icon or thumbnail, name, time, who changed it, size; the columns' widths dragged at the header's boundaries, §27.9,
+ *   and the less needed columns giving way as the listing narrows) or
  *   tiles them (thumbnails). §27: a click opens — a folder (into it), a photo, a video, a PDF or an Office file (the
  *   app's viewers), anything else (its details; only 「ダウンロード」 downloads) — and ⌘ / Ctrl, Shift or the
  *   row's check box only select; ↑ ↓ Enter, Space (preview), F2 (rename), Delete (trash), ⌘A, ⌘X then ⌘V (move),
@@ -18,12 +19,13 @@
  */
 import { ArrowDown, ArrowUp, ChevronDown, ChevronRight, Copy, Download, File, FileArchive, FileAudio, FileImage, FilePlus2, FileSpreadsheet, FileText, FileVideo, Folder, FolderInput, FolderOpen, Hash, HardDrive, User, FolderPlus, FolderUp, History, Images, Info, LayoutGrid, Link2, List, Loader2, MoreHorizontal, Presentation, RotateCcw, Search, Trash2, Upload, X } from "lucide-react";
 import { ContextMenu } from "radix-ui";
-import { type DragEvent, type KeyboardEvent, type ReactNode, useCallback, useEffect, useMemo, useRef, useState } from "react";
+import { type DragEvent, type KeyboardEvent, type PointerEvent as ReactPointerEvent, type ReactNode, useCallback, useEffect, useMemo, useRef, useState } from "react";
 
 import { ApiError, describeError } from "../api/errors";
 import type { DriveCrumb, DriveItemOut, DriveLocationOut, DriveSearchHitOut, DriveTrashEntryOut } from "../api/types";
 import type { AppController } from "../state/app";
-import { appendPage, breadcrumbs, checkAll, checkSelection, clickAction, clickSelection, headerCheck, type DriveIconKind, driveColumns, type DriveOrder, type DriveSort, type DriveViewMode, driveTime, exactTime, formatBytes, iconKind, itemTime, locationName, nextSort, pathLine, readViewMode, sortLabel, thumbnailPath, viewable, viewerKind, writeViewMode } from "../drive/listing";
+import { actionsWidth, CHECK_WIDTH, clampColumn, COLUMN_LIMITS, COLUMN_STEP, columnRange, type DriveColumn, type DriveColumns, type DriveColumnWidths, driveColumns } from "../drive/columns";
+import { appendPage, breadcrumbs, checkAll, checkSelection, clickAction, clickSelection, headerCheck, type DriveIconKind, type DriveOrder, type DriveSort, type DriveViewMode, driveTime, exactTime, formatBytes, iconKind, itemTime, locationName, nextSort, pathLine, readViewMode, sortLabel, thumbnailPath, viewable, viewerKind, writeViewMode } from "../drive/listing";
 import { openPage } from "../drive/snippet";
 import { afterPaste, type DriveClipboard, pasteAction } from "../drive/actions";
 import { canRearrange, isSystemFolder, itemName, localizedPath, rememberSystemFolders } from "../drive/channelFiles";
@@ -46,7 +48,8 @@ import { DropOverlay, useFileDropZone } from "./FileDropZone";
 import { FileName } from "./FileName";
 import { sinceLabel } from "./format";
 import { Button, cn, IconButton, Input, Menu, MenuContent, MenuItem, MenuLabel, MenuRadioGroup, MenuRadioItem, MenuSeparator, MenuTrigger, modKey } from "./primitives";
-import { t } from "../i18n";
+import { readDriveColumnWidths, writeDriveColumnWidth } from "./prefs";
+import { type MessageKey, t } from "../i18n";
 
 const PAGE = 100;
 /** The details pane's width (w-72), and the listing width below which it lies over the listing instead (§27). */
@@ -223,6 +226,10 @@ export function DriveBrowser({ controller, location, folderId, onFolder, mode = 
     resize.current = new ResizeObserver(measure);
     resize.current.observe(element);
   }, []);
+  // §27.9: the list's column widths dragged on this device (every location's listing), and the columns held as they
+  // were while a handle is dragged (one appearing mid-drag would move the boundary away from the pointer).
+  const [columnWidths, setColumnWidths] = useState<DriveColumnWidths>(readDriveColumnWidths);
+  const [heldColumns, setHeldColumns] = useState<DriveColumns | null>(null);
   const generation = useRef(0);
   const canWrite = location.can_write;
 
@@ -747,8 +754,26 @@ export function DriveBrowser({ controller, location, folderId, onFolder, mode = 
     </p>
   ) : null;
 
-  // A narrow listing keeps only the ⋯ (the hover buttons would take the names' room).
-  const hoverActions = width === 0 || width >= 520;
+  // §27.4 / §27.9: what the list shows at the listing's width (beside the details pane, narrower by its width) and the
+  // columns' widths; a narrow listing keeps only the ⋯ (the hover buttons would take the names' room).
+  const tableWidth = width === 0 ? Infinity : width - (details && mode === "folder" && width >= DETAILS_BESIDE_MIN ? DETAILS_WIDTH : 0);
+  const columns = heldColumns ?? driveColumns(tableWidth, columnWidths);
+  const hoverActions = columns.hover;
+  /** §27.9: the handle on a column's left edge (the boundary with the column before it). */
+  const columnHandle = (column: DriveColumn) => (
+    <ColumnHandle
+      column={column}
+      width={columnWidths[column]}
+      range={columnRange(column, columnWidths, columns, tableWidth)}
+      onStart={() => setHeldColumns(columns)}
+      onWidth={(value, done) => {
+        setColumnWidths((current) => ({ ...current, [column]: value }));
+        if (!done) return;
+        setHeldColumns(null);
+        writeDriveColumnWidth(column, value);
+      }}
+    />
+  );
   /** §27: a row's actions on hover (共有・ダウンロード) and its ⋯. */
   const rowActions = (item: DriveItemOut) => (
     <div className="flex items-center justify-end gap-0.5" onClick={(event) => event.stopPropagation()}>
@@ -766,8 +791,6 @@ export function DriveBrowser({ controller, location, folderId, onFolder, mode = 
     </div>
   );
 
-  // Beside the details pane the listing is narrower by its width.
-  const columns = driveColumns(width === 0 ? Infinity : width - (details && mode === "folder" && width >= DETAILS_BESIDE_MIN ? DETAILS_WIDTH : 0));
   const now = new Date();
   const listingBody = mode === "trash" ? (
     <TrashList
@@ -810,12 +833,12 @@ export function DriveBrowser({ controller, location, folderId, onFolder, mode = 
     <table className="w-full table-fixed border-collapse text-[13.5px]" data-drive-columns={[columns.modified && "modified", columns.by && "by", columns.size && "size"].filter(Boolean).join(" ")}>
       <thead className="sticky top-0 z-10 bg-canvas text-left text-xs text-muted">
         <tr className="border-b border-line">
-          <th className="w-10 pl-4" aria-label={t("drive.select")}><HeaderCheck order={order} selected={selected} onCheck={checkEvery} /></th>
+          <th className="pl-4" style={{ width: CHECK_WIDTH }} aria-label={t("drive.select")}><HeaderCheck order={order} selected={selected} onCheck={checkEvery} /></th>
           <SortHeader label={t("drive.column.name")} sort="name" current={sort} onSort={setSort} disabled={!!hits} />
-          {columns.modified && <SortHeader label={t("drive.column.modified")} sort="modified" current={sort} onSort={setSort} disabled={!!hits} className="w-36" />}
-          {columns.by && <th className="w-32 px-2 py-2 font-medium">{t("drive.column.by")}</th>}
-          {columns.size && <SortHeader label={t("drive.column.size")} sort="size" current={sort} onSort={setSort} disabled={!!hits} className="w-20 text-right" align="right" />}
-          <th className={hoverActions ? "w-[6.5rem]" : "w-10"} aria-label={t("drive.actions")} />
+          {columns.modified && <SortHeader label={t("drive.column.modified")} sort="modified" current={sort} onSort={setSort} disabled={!!hits} width={columnWidths.modified}>{columnHandle("modified")}</SortHeader>}
+          {columns.by && <th className="relative px-2 py-2 font-medium" style={{ width: columnWidths.by }}><span className="block truncate">{t("drive.column.by")}</span>{columnHandle("by")}</th>}
+          {columns.size && <SortHeader label={t("drive.column.size")} sort="size" current={sort} onSort={setSort} disabled={!!hits} width={columnWidths.size} className="text-right" align="right">{columnHandle("size")}</SortHeader>}
+          <th style={{ width: actionsWidth(columns) }} aria-label={t("drive.actions")} />
         </tr>
       </thead>
       <tbody>
@@ -852,8 +875,8 @@ export function DriveBrowser({ controller, location, folderId, onFolder, mode = 
                     </div>
                   </td>
                   {columns.modified && <td className="truncate px-2 text-[13px] text-muted" title={exactTime(time)}>{driveTime(time, now)}</td>}
-                  {columns.by && <td className="truncate px-2 text-[13px] text-muted">{who(item.updated_by ?? item.created_by)}</td>}
-                  {columns.size && <td className="truncate px-2 text-right text-[13px] tabular-nums text-muted">{item.kind === "file" ? formatBytes(item.size_bytes) : "—"}</td>}
+                  {columns.by && <td className="truncate px-2 text-[13px] text-muted" title={who(item.updated_by ?? item.created_by) || undefined}>{who(item.updated_by ?? item.created_by)}</td>}
+                  {columns.size && <td className="truncate px-2 text-right text-[13px] tabular-nums text-muted" title={item.kind === "file" ? formatBytes(item.size_bytes) : undefined}>{item.kind === "file" ? formatBytes(item.size_bytes) : "—"}</td>}
                   <td className="pr-2">{rowActions(item)}</td>
                 </tr>
               </ContextMenu.Trigger>
@@ -1066,15 +1089,107 @@ function HeaderCheck({ order, selected, onCheck }: { order: readonly string[]; s
   );
 }
 
-function SortHeader({ label, sort, current, onSort, disabled, className, align = "left" }: { label: string; sort: DriveSort; current: { sort: DriveSort; order: DriveOrder }; onSort: (next: { sort: DriveSort; order: DriveOrder }) => void; disabled: boolean; className?: string; align?: "left" | "right" }) {
+/** A column's header: a sort button (its label truncates in a narrowed column) and, as `children`, its width handle. */
+function SortHeader({ label, sort, current, onSort, disabled, className, align = "left", width, children }: { label: string; sort: DriveSort; current: { sort: DriveSort; order: DriveOrder }; onSort: (next: { sort: DriveSort; order: DriveOrder }) => void; disabled: boolean; className?: string; align?: "left" | "right"; width?: number; children?: ReactNode }) {
   const active = current.sort === sort;
   return (
-    <th className={cn("px-2 py-2 font-medium", className)} aria-sort={active ? (current.order === "asc" ? "ascending" : "descending") : undefined}>
-      <button type="button" disabled={disabled} onClick={() => onSort(nextSort(current, sort))} className={cn("inline-flex items-center gap-1 hover:text-ink disabled:hover:text-muted", align === "right" && "flex-row-reverse", active && !disabled && "text-ink")}>
-        {label}
-        {active && !disabled && (current.order === "asc" ? <ArrowUp size={12} /> : <ArrowDown size={12} />)}
+    <th className={cn("relative px-2 py-2 font-medium", className)} style={width === undefined ? undefined : { width }} aria-sort={active ? (current.order === "asc" ? "ascending" : "descending") : undefined}>
+      <button type="button" disabled={disabled} onClick={() => onSort(nextSort(current, sort))} className={cn("inline-flex max-w-full items-center gap-1 align-middle hover:text-ink disabled:hover:text-muted", align === "right" && "flex-row-reverse", active && !disabled && "text-ink")}>
+        <span className="truncate">{label}</span>
+        {active && !disabled && (current.order === "asc" ? <ArrowUp size={12} className="shrink-0" /> : <ArrowDown size={12} className="shrink-0" />)}
       </button>
+      {children}
     </th>
+  );
+}
+
+const COLUMN_WIDTH_LABELS: Readonly<Record<DriveColumn, MessageKey>> = {
+  modified: "drive.columnWidth.modified",
+  by: "drive.columnWidth.by",
+  size: "drive.columnWidth.size",
+};
+
+/**
+ * §27.9: the boundary on a column's left edge. Dragged (the pointer captured, so the drag goes on outside the header),
+ * the column on its right gets narrower or wider and the name column takes the rest; ← / → move it by 16 px; a double
+ * click puts the column's default width back. It sits beside the header's sort button, so a drag never sorts.
+ * `onWidth(value, done)`: each width while dragging, then `done` with the last one (kept on this device).
+ */
+function ColumnHandle({ column, width, range, onStart, onWidth }: {
+  column: DriveColumn;
+  width: number;
+  range: { min: number; max: number };
+  onStart: () => void;
+  onWidth: (value: number, done: boolean) => void;
+}) {
+  const drag = useRef<{ pointerId: number; startX: number; startWidth: number; range: { min: number; max: number }; width: number } | null>(null);
+  const [dragging, setDragging] = useState(false);
+  const latest = useRef(onWidth);
+  latest.current = onWidth;
+  const stop = useCallback(() => {
+    const current = drag.current;
+    if (!current) return;
+    drag.current = null;
+    setDragging(false);
+    document.body.style.cursor = "";
+    document.body.style.userSelect = "";
+    latest.current(current.width, true);
+  }, []);
+  // A handle gone mid-drag (its listing replaced) still ends the drag.
+  useEffect(() => stop, [stop]);
+  const end = (event: ReactPointerEvent<HTMLDivElement>) => {
+    if (drag.current?.pointerId === event.pointerId) stop();
+  };
+  return (
+    <div
+      role="separator"
+      aria-orientation="vertical"
+      aria-label={t(COLUMN_WIDTH_LABELS[column])}
+      aria-valuemin={range.min}
+      aria-valuemax={range.max}
+      aria-valuenow={width}
+      title={t("main.resizeHint")}
+      tabIndex={0}
+      data-drive-column-handle={column}
+      data-dragging={dragging ? "" : undefined}
+      onPointerDown={(event) => {
+        if (event.button !== 0 || drag.current) return;
+        event.preventDefault();
+        event.stopPropagation();
+        event.currentTarget.setPointerCapture?.(event.pointerId);
+        drag.current = { pointerId: event.pointerId, startX: event.clientX, startWidth: width, range, width };
+        setDragging(true);
+        document.body.style.cursor = "col-resize";
+        document.body.style.userSelect = "none";
+        onStart();
+      }}
+      onPointerMove={(event) => {
+        const current = drag.current;
+        if (!current || current.pointerId !== event.pointerId) return;
+        const next = clampColumn(current.startWidth - (event.clientX - current.startX), current.range);
+        if (next === current.width) return;
+        current.width = next;
+        onWidth(next, false);
+      }}
+      onPointerUp={end}
+      onPointerCancel={end}
+      onLostPointerCapture={end}
+      onClick={(event) => event.stopPropagation()}
+      onDoubleClick={(event) => {
+        event.stopPropagation();
+        onWidth(COLUMN_LIMITS[column].default, true);
+      }}
+      onKeyDown={(event) => {
+        if (event.key !== "ArrowLeft" && event.key !== "ArrowRight") return;
+        // Not the list's keys: the boundary moves the way of the arrow (← widens the column on its right).
+        event.preventDefault();
+        event.stopPropagation();
+        onWidth(clampColumn(width + (event.key === "ArrowLeft" ? COLUMN_STEP : -COLUMN_STEP), range), true);
+      }}
+      className="group/handle absolute inset-y-0 -left-1 z-[1] w-2 cursor-col-resize touch-none outline-none"
+    >
+      <span aria-hidden className={cn("pointer-events-none absolute inset-y-1.5 left-1/2 w-px -translate-x-1/2", dragging ? "bg-accent" : "group-hover/handle:bg-ink/25 group-focus-visible/handle:bg-accent")} />
+    </div>
   );
 }
 

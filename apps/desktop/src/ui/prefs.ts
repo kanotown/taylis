@@ -1,4 +1,6 @@
 /** Per-device UI preferences (browser storage; not synced). */
+import { changedWidths, columnWidthsFrom, DEFAULT_COLUMN_WIDTHS, type DriveColumn, type DriveColumnWidths } from "../drive/columns";
+
 /** "mod-enter": ⌘+Enter on a Mac, Ctrl+Enter elsewhere (the default since 2026-09-30, as the tester asked). */
 export type SendKey = "mod-enter" | "shift-enter" | "enter";
 
@@ -8,6 +10,7 @@ const PANE_WIDTH = "chikuwa.prefs.paneWidth";
 const GROUP_POSTS = "chikuwa.prefs.groupPosts";
 const CANVAS_SPLIT = "chikuwa.prefs.canvasSplit";
 const FORMAT_BAR = "chikuwa.prefs.formatBar";
+const DRIVE_COLUMNS = "chikuwa.prefs.driveColumns";
 /** The right-hand pane (thread, pins): dragged by its left edge. */
 export const PANE_MIN = 320;
 export const PANE_MAX = 760;
@@ -98,6 +101,26 @@ export function readSidebarWidth(): number {
 
 export function writeSidebarWidth(value: number): void {
   write(SIDEBAR_WIDTH, String(Math.round(value)));
+}
+
+/**
+ * The drive list's column widths on this device (docs/DRIVE.md §27.9), for every location's listing. Stored as JSON of
+ * the columns not at their default; a width out of its column's limits reads as the default.
+ */
+export function readDriveColumnWidths(): DriveColumnWidths {
+  const value = read(DRIVE_COLUMNS);
+  if (!value) return DEFAULT_COLUMN_WIDTHS;
+  try {
+    return columnWidthsFrom(JSON.parse(value));
+  } catch {
+    return DEFAULT_COLUMN_WIDTHS;
+  }
+}
+
+/** One column's width kept; the others stay as stored (another listing may have changed them since this one read). */
+export function writeDriveColumnWidth(column: DriveColumn, width: number): void {
+  const changed = changedWidths(columnWidthsFrom({ ...readDriveColumnWidths(), [column]: width }));
+  write(DRIVE_COLUMNS, changed ? JSON.stringify(changed) : null);
 }
 
 export function readPaneWidth(): number {

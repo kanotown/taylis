@@ -6,7 +6,7 @@ import { describe, expect, it, vi } from "vitest";
 
 import type { DriveItemOut } from "../src/api/types";
 import { browserDownload, downloadRoute, pipeToSink, ticketUrl } from "../src/drive/download";
-import { appendPage, asAttachment, breadcrumbs, checkAll, checkSelection, clickAction, clickSelection, headerCheck, documentSource, driveColumns, driveFileOf, driveTime, exactTime, formatBytes, iconKind, isOffice, isPdf, itemTime, locationName, nextSort, orderLocations, pathLine, stepItem, thumbnailPath, viewable, viewerKind } from "../src/drive/listing";
+import { appendPage, asAttachment, breadcrumbs, checkAll, checkSelection, clickAction, clickSelection, headerCheck, documentSource, driveFileOf, driveTime, exactTime, formatBytes, iconKind, isOffice, isPdf, itemTime, locationName, nextSort, orderLocations, pathLine, stepItem, thumbnailPath, viewable, viewerKind } from "../src/drive/listing";
 import { dirOf, emptyFolders, foldersOf, treeFromEntries, treeFromInput } from "../src/platform/driveFiles";
 import { coalesce, DriveHub, type DriveSignal } from "../src/sync/drive";
 import { setLocale } from "../src/i18n";
@@ -128,14 +128,6 @@ describe("viewers", () => {
     expect(clickAction(pdf, { ...keys, ctrlKey: true })).toBe("select");
     expect(clickAction(item("t"), { ...keys, shiftKey: true })).toBe("select");
     expect(clickAction(folder, { ...keys, detail: 2 })).toBe("none");
-  });
-
-  it("the list's columns give way as the listing narrows: who changed it, then the size, then the time", () => {
-    expect(driveColumns(1000)).toEqual({ modified: true, by: true, size: true });
-    expect(driveColumns(700)).toEqual({ modified: true, by: true, size: true });
-    expect(driveColumns(650)).toEqual({ modified: true, by: false, size: true });
-    expect(driveColumns(480)).toEqual({ modified: true, by: false, size: false });
-    expect(driveColumns(360)).toEqual({ modified: false, by: false, size: false });
   });
 
   it("a drive file in a viewer is an attachment that downloads the drive's way", () => {
