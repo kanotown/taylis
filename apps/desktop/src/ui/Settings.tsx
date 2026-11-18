@@ -1,4 +1,4 @@
-import { AppWindow, Bell, FolderDown, BellOff, Building2, ChevronDown, ChevronRight, ChevronUp, GripVertical, EyeOff, Flag, ImagePlus, Info, Keyboard, Laptop, ListTodo, Lock, LogOut, Monitor, Moon, Newspaper, Palette, Plus, Rows3, ShieldCheck, Smartphone, SmilePlus, UserRound } from "lucide-react";
+import { AppWindow, Bell, BellDot, FolderDown, BellOff, Building2, ChevronDown, ChevronRight, ChevronUp, GripVertical, EyeOff, Flag, ImagePlus, Info, Keyboard, Laptop, ListTodo, Lock, LogOut, Monitor, Moon, Newspaper, Palette, Plus, Rows3, ShieldCheck, Smartphone, SmilePlus, UserRound } from "lucide-react";
 import { type FormEvent, type ReactNode, useEffect, useRef, useState } from "react";
 
 import type { SessionOut, TotpStatusOut } from "../api/types";
@@ -518,6 +518,24 @@ function NotificationsSection({ controller }: { controller: AppController }) {
             checked={me.notify_tasks}
             disabled={busy}
             onChange={(e) => { const on = e.target.checked; setBusy(true); void controller.setNotifyTasks(on).finally(() => setBusy(false)); }}
+          />
+        </label>
+      )}
+      {/* M192 (PUSH_NOTIFICATIONS.md §18): one push to the phones summing up the mentions and DMs held back by quiet hours or a pause,
+          once it is over (the desktop itself shows nothing: its unread state is on screen); a server before M192 has no such setting. */}
+      {typeof me?.notify_digest === "boolean" && (
+        <label className={cn(CARD, "cursor-pointer")}>
+          <BellDot size={18} className="text-muted" />
+          <span className="min-w-0 flex-1 text-sm">
+            {t("settings.notifications.digest")} <span className="mt-0.5 block text-xs text-muted">{t("settings.notifications.digestNote")}</span>
+          </span>
+          <input
+            type="checkbox"
+            role="switch"
+            className="h-4 w-4 accent-[var(--accent)]"
+            checked={me.notify_digest}
+            disabled={busy}
+            onChange={(e) => { const on = e.target.checked; setBusy(true); void controller.setNotifyDigest(on).finally(() => setBusy(false)); }}
           />
         </label>
       )}

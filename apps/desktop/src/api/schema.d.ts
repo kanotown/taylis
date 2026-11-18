@@ -17416,6 +17416,11 @@ export interface components {
              */
             notification_default: "all" | "mentions" | "none";
             /**
+             * Notify Digest
+             * @default true
+             */
+            notify_digest: boolean;
+            /**
              * Notify Keywords
              * @default []
              */
@@ -17524,6 +17529,8 @@ export interface components {
             nav_items?: components["schemas"]["NavItem"][] | null;
             /** Notification Default */
             notification_default?: ("all" | "mentions" | "none") | null;
+            /** Notify Digest */
+            notify_digest?: boolean | null;
             /** Notify Keywords */
             notify_keywords?: string[] | null;
             /** Notify Reactions */

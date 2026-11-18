@@ -1907,6 +1907,11 @@ export class AppController {
     return this.updateProfile({ notify_tasks: on });
   }
 
+  /** M192: 「止めていた間のメンションをまとめて通知」 (users.notify_digest; the phones get the summary push). */
+  setNotifyDigest(on: boolean): Promise<boolean> {
+    return this.updateProfile({ notify_digest: on });
+  }
+
   /**
    * M50: 「リアクションの候補」 (users.quick_reactions), null = back to the recent-first rule. Shown at once; a refused or
    * failed save puts the previous list back (and says why). My other devices read it on their next bootstrap, or at once
