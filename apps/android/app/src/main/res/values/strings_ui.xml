@@ -1618,6 +1618,8 @@
     <string name="you_screens_clear">クリア</string>
     <string name="you_screens_clear_after">消えるタイミング</string>
     <string name="you_screens_commuting">移動中</string>
+    <string name="you_screens_digest_after_pause">止めていた間のメンションをまとめて通知</string>
+    <string name="you_screens_digest_after_pause_hint">おやすみ時間・一時停止のあとに 1 件にまとめて届きます</string>
     <string name="you_screens_dont_clear">消さない</string>
     <string name="you_screens_e_g">例：かのう とおる</string>
     <string name="you_screens_e_g_lab_head_ta_year">例：研究室長 / TA（学年・職位は自動）</string>

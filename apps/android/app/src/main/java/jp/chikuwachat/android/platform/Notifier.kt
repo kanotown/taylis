@@ -65,9 +65,11 @@ class Notifier(private val context: Context) {
         pageId: String? = null,
         /** M172: an equipment notice: the tap opens its loan, item or (the keepers' summary) the overdue list. */
         lending: LendingTarget? = null,
+        /** M192: the summary of what a pause held back: the tap opens 「アクティビティ」. */
+        activity: Boolean = false,
     ) {
         if (!permitted) return
-        val pending = contentIntent(channelId, key, workspace, messageId, parentId, reveal, eventId, taskId, canvasId, reservations, pageId, lending)
+        val pending = contentIntent(channelId, key, workspace, messageId, parentId, reveal, eventId, taskId, canvasId, reservations, pageId, lending, activity)
         val builder = Notification.Builder(context, CHANNEL_ID)
             .setSmallIcon(R.drawable.ic_notification)
             .setContentTitle(title)
@@ -156,7 +158,7 @@ class Notifier(private val context: Context) {
     private fun contentIntent(
         channelId: String?, key: String, workspace: String?, messageId: String?, parentId: String?, reveal: Boolean = false,
         eventId: String? = null, taskId: String? = null, canvasId: String? = null, reservations: Boolean = false, pageId: String? = null,
-        lending: LendingTarget? = null,
+        lending: LendingTarget? = null, activity: Boolean = false,
     ): PendingIntent {
         // M16c: the tap opens the notification's workspace first (WORKSPACES.md §7).
         val intent = Intent(context, MainActivity::class.java).apply {
@@ -166,6 +168,7 @@ class Notifier(private val context: Context) {
             if (taskId != null) putExtra(EXTRA_TASK_ID, taskId)
             if (canvasId != null) putExtra(EXTRA_CANVAS_ID, canvasId)
             if (reservations) putExtra(EXTRA_RESERVATIONS, true)
+            if (activity) putExtra(EXTRA_ACTIVITY, true)
             if (pageId != null) putExtra(EXTRA_PAGE_ID, pageId)
             if (lending != null) {
                 putExtra(EXTRA_LENDING, true)
@@ -259,6 +262,8 @@ class Notifier(private val context: Context) {
         const val EXTRA_CANVAS_ID = "canvas_id"
         const val EXTRA_PAGE_ID = "page_id"
         const val EXTRA_RESERVATIONS = "reservations"
+        /** M192: the summary after a pause opens 「アクティビティ」. */
+        const val EXTRA_ACTIVITY = "activity"
         /** M172: an equipment notice, with its item and loan when it has them. */
         const val EXTRA_LENDING = "lending"
         const val EXTRA_LENDING_ITEM_ID = "lending_item_id"

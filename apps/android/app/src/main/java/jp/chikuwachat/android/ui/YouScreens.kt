@@ -581,6 +581,18 @@ private fun NotificationSettingsScreen(controller: AppController, version: Int) 
                 }
             }
         }
+        // M192 (PUSH_NOTIFICATIONS.md §18): only against a server that has the summary after a pause (it sends notify_digest).
+        me?.notifyDigest?.let { notifyDigest ->
+            var savingDigest by remember { mutableStateOf(false) }
+            Spacer(Modifier.padding(top = 8.dp))
+            SwitchRow(stringResource(R.string.you_screens_digest_after_pause), stringResource(R.string.you_screens_digest_after_pause_hint), checked = notifyDigest, enabled = !savingDigest) { on ->
+                scope.launch {
+                    savingDigest = true
+                    controller.setNotifyDigest(on)
+                    savingDigest = false
+                }
+            }
+        }
         SectionTitle(stringResource(R.string.you_screens_notification_keywords))
         val savedKeywords = me?.notifyKeywords ?: emptyList()
         var keywords by rememberSaveable { mutableStateOf(savedKeywords.joinToString(", ")) }

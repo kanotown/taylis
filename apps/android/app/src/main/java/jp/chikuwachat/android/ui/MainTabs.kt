@@ -185,6 +185,10 @@ object MainTabs {
     fun landReservations(state: TabStacks): TabStacks =
         withStack(state, MainTab.HOME, MainNav.openReservations(rootStack(MainTab.HOME))).copy(selected = MainTab.HOME)
 
+    /** M192: the summary after a pause (`kind = digest`): the activity tab at its root, on 「すべて」 (the mentions show). */
+    fun landActivity(state: TabStacks): TabStacks =
+        withStack(state, MainTab.ACTIVITY, rootStack(MainTab.ACTIVITY)).copy(selected = MainTab.ACTIVITY)
+
     /** M172: a lending notice (`kind = lending`): the home tab shows its loan / item over 「備品」, or the overdue list. */
     fun landLending(state: TabStacks, itemId: String?, loanId: String?): TabStacks =
         withStack(state, MainTab.HOME, MainNav.landLending(rootStack(MainTab.HOME), itemId, loanId)).copy(selected = MainTab.HOME)

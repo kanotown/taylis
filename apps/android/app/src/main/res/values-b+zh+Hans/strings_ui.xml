@@ -1618,6 +1618,8 @@
     <string name="you_screens_clear">清除</string>
     <string name="you_screens_clear_after">清除时间</string>
     <string name="you_screens_commuting">移动中</string>
+    <string name="you_screens_digest_after_pause">汇总通知暂停期间的提及</string>
+    <string name="you_screens_digest_after_pause_hint">勿扰时段或暂停结束后合并为一条通知送达</string>
     <string name="you_screens_dont_clear">不清除</string>
     <string name="you_screens_e_g">例如：かのう とおる</string>
     <string name="you_screens_e_g_lab_head_ta_year">例如：研究室负责人 / TA (年级和职称自动显示)</string>

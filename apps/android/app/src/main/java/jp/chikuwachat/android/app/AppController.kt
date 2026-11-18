@@ -1437,6 +1437,7 @@ class AppController(private val app: Application) {
         entry: Workspace?, channelId: String?, title: String, body: String, key: String = channelId ?: "", messageId: String? = null, parentId: String? = null,
         reveal: Boolean = false, eventId: String? = null, taskId: String? = null, canvasId: String? = null, reservations: Boolean = false,
         conversation: ConversationNote? = null, pageId: String? = null, lending: jp.chikuwachat.android.platform.LendingTarget? = null,
+        activity: Boolean = false,
     ) {
         val named = workspaces.size >= 2
         if (conversation != null && channelId != null) {
@@ -1459,7 +1460,7 @@ class AppController(private val app: Application) {
         notifier.notifyMessage(
             channelId, title, body, key = key, workspace = entry?.serverUrl, subText = if (named) entry?.name else null,
             messageId = messageId, parentId = parentId, reveal = reveal, badge = totalBadge(), eventId = eventId, taskId = taskId,
-            canvasId = canvasId, reservations = reservations, pageId = pageId, lending = lending,
+            canvasId = canvasId, reservations = reservations, pageId = pageId, lending = lending, activity = activity,
         )
     }
 
@@ -1513,16 +1514,17 @@ class AppController(private val app: Application) {
                 // M52: a calendar alarm's push is shown the same way (while live, the socket's calendar.alarm.updated says it).
                 // §15: a test push is what the reader just asked for: shown even with the app open and the socket live.
                 if (message.shown && (message.isTest || (!live && !reading)) && key != null) {
-                    notify(target, message.channelId, message.displayTitle, message.body, key, messageId = message.messageId, parentId = message.parentId, reveal = message.isReaction, eventId = message.eventId, taskId = message.taskId, canvasId = message.canvasId, reservations = message.isReservation, conversation = message.conversation, pageId = message.pageId, lending = message.lendingTarget)
+                    notify(target, message.channelId, message.displayTitle, message.body, key, messageId = message.messageId, parentId = message.parentId, reveal = message.isReaction, eventId = message.eventId, taskId = message.taskId, canvasId = message.canvasId, reservations = message.isReservation, conversation = message.conversation, pageId = message.pageId, lending = message.lendingTarget, activity = message.isDigest)
                 }
                 // M28c: the push's own conversation catches up too (the socket may be stale), not only the open one.
                 engine?.pushReceived(message.channelId, message.messageId)
                 return@launch
             }
-            // The mark first: the notification's number counts this workspace's badge with the others'.
-            if (message.kind == "message") updateWorkspace(target.serverUrl) { it.copy(hasUnread = true, badge = message.badge ?: it.badge) }
+            // The mark first: the notification's number counts this workspace's badge with the others'. M192: the
+            // summary after a pause is of unread mentions and DMs too.
+            if (message.kind == "message" || message.isDigest) updateWorkspace(target.serverUrl) { it.copy(hasUnread = true, badge = message.badge ?: it.badge) }
             if (message.shown && key != null) {
-                notify(target, message.channelId, message.displayTitle, message.body, key, messageId = message.messageId, parentId = message.parentId, reveal = message.isReaction, eventId = message.eventId, taskId = message.taskId, canvasId = message.canvasId, reservations = message.isReservation, conversation = message.conversation, pageId = message.pageId, lending = message.lendingTarget)
+                notify(target, message.channelId, message.displayTitle, message.body, key, messageId = message.messageId, parentId = message.parentId, reveal = message.isReaction, eventId = message.eventId, taskId = message.taskId, canvasId = message.canvasId, reservations = message.isReservation, conversation = message.conversation, pageId = message.pageId, lending = message.lendingTarget, activity = message.isDigest)
             }
         }
     }
@@ -3558,6 +3560,9 @@ class AppController(private val app: Application) {
     /** M56: 「タスク (割り当て・期限)」, the pushes (and the open app's notices) of task.assigned / task.due. */
     suspend fun setNotifyTasks(on: Boolean): Boolean = updateProfileJson(buildJsonObject { put("notify_tasks", on) })
 
+    /** M192: 「止めていた間のメンションをまとめて通知」, the summary push after quiet hours or a pause (PUSH_NOTIFICATIONS.md §18). */
+    suspend fun setNotifyDigest(on: Boolean): Boolean = updateProfileJson(buildJsonObject { put("notify_digest", on) })
+
     /** M39: 「リアクションのバナー」, a push when someone reacts to my message (the activity lists it either way). */
     suspend fun setNotifyReactions(on: Boolean): Boolean = updateProfileJson(buildJsonObject { put("notify_reactions", on) })
 
@@ -3746,6 +3751,16 @@ class AppController(private val app: Application) {
 
     /** M112: the main screen should open 「予約」 (a tapped notification). */
     var pendingReservations by mutableStateOf(false)
+
+    /** M192: the main screen should open 「アクティビティ」 (the tapped summary after a pause). */
+    var pendingActivity by mutableStateOf(false)
+
+    /** M192: a tapped summary after a pause: its workspace comes on screen, then the activity tab. */
+    fun openActivityFromNotification(workspaceKey: String?) {
+        pendingWorkspaceKey = workspaceKey
+        pendingActivity = true
+        bringWorkspace { pendingActivity = true }
+    }
 
     /** M112: a tapped reservation notification: its workspace comes on screen, then 「予約」 opens on the home tab. */
     fun openReservationsFromNotification(workspaceKey: String?) {

@@ -69,11 +69,14 @@ data class PushMessage(
     /** M172: what a lending notification's tap opens (null for any other kind). */
     val lendingTarget: LendingTarget? get() = if (isLending) LendingTarget(lendingItemId, loanId) else null
 
+    /** M192 (PUSH_NOTIFICATIONS.md §18): the summary of what a pause held back; no conversation, the tap opens 「アクティビティ」. */
+    val isDigest: Boolean get() = kind == "digest"
+
     /** §15: 「テスト通知を送る」: no conversation; the tap only opens the app. */
     val isTest: Boolean get() = kind == "test"
 
     /** Whether it becomes a notification: a conversation's, or a calendar alarm's / a task's / a test's (which have no conversation). */
-    val shown: Boolean get() = !isSilent && notificationKey != null && (channelId != null || isCalendar || isTask || isTest || isReservation || isPage || isLending)
+    val shown: Boolean get() = !isSilent && notificationKey != null && (channelId != null || isCalendar || isTask || isTest || isReservation || isPage || isLending || isDigest)
 
     /** M39: someone reacted to my message (PUSH_NOTIFICATIONS.md §4); the tap opens that message. */
     val isReaction: Boolean get() = kind == "reaction"
@@ -119,6 +122,8 @@ data class PushMessage(
         "reservation" -> collapseKey ?: "reservation"
         // M172: one per loan ("lending:loan:<loan id>", the server's collapse key): the next morning's reminder replaces it.
         "lending" -> collapseKey ?: loanId?.let { "lending:loan:$it" } ?: lendingItemId?.let { "lending:item:$it" } ?: "lending:overdue"
+        // M192: one summary at a time (the server's collapse key is "digest"): a later one replaces it.
+        "digest" -> collapseKey ?: "digest"
         // §15: one test notification at a time (the server's collapse key is "test").
         "test" -> collapseKey ?: "test"
         else -> channelId

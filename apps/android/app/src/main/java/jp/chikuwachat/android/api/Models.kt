@@ -104,6 +104,11 @@ data class UserMe(
      */
     val notifyTasks: Boolean? = null,
     /**
+     * M192 (PUSH_NOTIFICATIONS.md §18): one push summing up the mentions and DMs that quiet hours or a pause held back,
+     * once it is over (default on). Null from a server before M192 (no key): 自分 → 通知 then hides the switch.
+     */
+    val notifyDigest: Boolean? = null,
+    /**
      * M111: `nav_items` as it came (my home tiles / the desktop's sidebar items, apps/shared/nav-items.json): no key
      * ([NAV_ITEMS_ABSENT], a server before M111: the setting is hidden, the tiles are the defaults) differs from null
      * (not customised). Read it through [navItems] / [knowsNavItems].

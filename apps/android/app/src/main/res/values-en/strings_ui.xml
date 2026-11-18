@@ -1624,6 +1624,8 @@
     <string name="you_screens_clear">Clear</string>
     <string name="you_screens_clear_after">Clear after</string>
     <string name="you_screens_commuting">Commuting</string>
+    <string name="you_screens_digest_after_pause">Sum up the mentions from while notifications were paused</string>
+    <string name="you_screens_digest_after_pause_hint">Arrives as one notification after quiet hours or a pause</string>
     <string name="you_screens_dont_clear">Don\'t clear</string>
     <string name="you_screens_e_g">e.g. かのう とおる</string>
     <string name="you_screens_e_g_lab_head_ta_year">e.g. Lab head / TA (year and rank are automatic)</string>

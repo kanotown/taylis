@@ -701,6 +701,14 @@ fun MainScreen(controller: AppController) {
         focusManager.clearFocus()
         tabs = MainTabs.landLending(tabs, target.itemId, target.loanId)
     }
+    // M192 (PUSH_NOTIFICATIONS.md §18): the tapped summary of what a pause held back: the activity tab.
+    LaunchedEffect(controller.pendingActivity) {
+        if (!controller.pendingActivity) return@LaunchedEffect
+        controller.pendingActivity = false
+        controller.messageFocus = null
+        focusManager.clearFocus()
+        tabs = MainTabs.landActivity(tabs)
+    }
     // M112: a tapped reservation notice (or an activity row): 「予約」 on the home tab.
     LaunchedEffect(controller.pendingReservations) {
         if (!controller.pendingReservations) return@LaunchedEffect

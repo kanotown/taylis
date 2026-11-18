@@ -114,6 +114,14 @@ class MainActivity : ComponentActivity() {
             controller.openLendingFromNotification(workspace, target)
             return
         }
+        // M192 (PUSH_NOTIFICATIONS.md §18): the summary of what a pause held back opens 「アクティビティ」.
+        if (intent.getBooleanExtra(Notifier.EXTRA_ACTIVITY, false)) {
+            val workspace = intent.getStringExtra(Notifier.EXTRA_WORKSPACE)
+            intent.removeExtra(Notifier.EXTRA_ACTIVITY)
+            intent.removeExtra(Notifier.EXTRA_WORKSPACE)
+            controller.openActivityFromNotification(workspace)
+            return
+        }
         // M112: a reservation notice opens 「予約」.
         if (intent?.getBooleanExtra(Notifier.EXTRA_RESERVATIONS, false) == true) {
             val workspace = intent.getStringExtra(Notifier.EXTRA_WORKSPACE)
