@@ -85,7 +85,7 @@ async def send_due(db: AsyncSession, planner: "PushPlanner", *, now: datetime | 
         except Exception:
             # The notes stay for the next round; one person's failure does not hold up the rest.
             await db.rollback()
-            log.exception("notification digest for user %s failed", user.id)
+            log.exception("notification digest for user %s failed", user_id)
     return planned
 
 

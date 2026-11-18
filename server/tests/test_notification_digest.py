@@ -3,7 +3,9 @@
 import uuid
 from collections.abc import Callable
 from datetime import UTC, datetime, timedelta
+from typing import Any
 
+import pytest
 from fastapi import FastAPI
 from httpx import AsyncClient
 from sqlalchemy import select, update
@@ -412,3 +414,37 @@ async def test_a_deactivated_person_is_cleared_without_a_push(
     await db.commit()
     assert await digest.send_due(db, planner_of(test_settings)) == 0
     assert await deliveries(db) == [] and await noted(db) == []
+
+
+async def test_one_persons_failure_keeps_their_notes_and_does_not_hold_up_the_rest(
+    app: FastAPI, db: AsyncSession, test_settings: Settings, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    alice = await make_user(db, "alice")
+    bob = await make_user(db, "bob")
+    carol = await make_user(db, "carol")
+    until = utcnow() + timedelta(minutes=30)
+    for person in (bob, carol):
+        await add_device(db, person, token=f"tok-{person.username}")
+        await paused(db, person, until)
+        dm, _ = await channels.get_or_create_dm(db, alice, [person])
+        await say(db, alice, dm.id)
+    await relay(app, test_settings)
+    plan = digest._plan
+
+    async def failing_for_bob(
+        db: AsyncSession, planner: PushPlanner, user: User, *rest: Any
+    ) -> bool:
+        if user.username == "bob":
+            raise RuntimeError("boom")
+        return await plan(db, planner, user, *rest)
+
+    monkeypatch.setattr(digest, "_plan", failing_for_bob)
+    later = until + timedelta(seconds=1)
+    bob_id, carol_id = bob.id, carol.id  # the rollback expires the session's rows
+    assert await digest.send_due(db, planner_of(test_settings), now=later) == 1
+    assert [r.user_id for r in await deliveries(db)] == [carol_id]
+    assert [user for user, _ in await noted(db)] == [bob_id]  # kept for the next round
+    monkeypatch.setattr(digest, "_plan", plan)
+    assert await digest.send_due(db, planner_of(test_settings), now=later) == 1
+    assert {r.user_id for r in await deliveries(db)} == {bob_id, carol_id}
+    assert await noted(db) == []
