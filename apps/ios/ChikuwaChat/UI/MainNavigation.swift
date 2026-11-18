@@ -225,6 +225,18 @@ struct MainNavigation: Equatable {
         if layout == .split { split = [.list(id)]; youSheet = false } else { paths[.home] = [.list(id)]; tab = .home }
     }
 
+    /// M192: the summary after a pause (PUSH_NOTIFICATIONS.md §18): the activity tab at its first screen, or the
+    /// activity alone in the detail column.
+    mutating func landActivity() {
+        if layout == .split {
+            split = [.list(Self.activityId)]
+            youSheet = false
+        } else {
+            paths[.activity] = []
+            tab = .activity
+        }
+    }
+
     /// M171: an equipment notice: on the home tab over 「備品」 (Back: its list), or in the detail column.
     mutating func landLending(_ screen: LendingScreen, listId: String) {
         let path: [MainRoute] = [.list(listId), .lending(screen)]

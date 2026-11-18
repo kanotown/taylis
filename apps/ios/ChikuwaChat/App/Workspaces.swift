@@ -80,7 +80,7 @@ struct PushPayload: Equatable, Sendable {
     var parentId: String?
     /// `aps.badge`: that server's count for this account.
     var badge: Int?
-    /// "message" (also when absent), "reminder", "reaction" (M39), "calendar" (M51), "task" (M55) …
+    /// "message" (also when absent), "reminder", "reaction" (M39), "calendar" (M51), "task" (M55), "digest" (M192) …
     var kind: String?
     /// M52: a calendar alarm's event (`kind = calendar`; its `channel_id` is null for my own calendar).
     var eventId: String?
@@ -119,6 +119,9 @@ struct PushPayload: Equatable, Sendable {
 
     /// M171: an equipment notice opens 「備品」 at the loan, else the item, else the overdue list.
     var opensLending: Bool { kind == "lending" }
+
+    /// M192: the summary of what a pause held back (PUSH_NOTIFICATIONS.md §18) opens 「アクティビティ」.
+    var opensActivity: Bool { kind == "digest" }
 
     /// M73: a canvas mention opens that canvas (its conversation's 「キャンバス」 tab).
     var opensCanvas: Bool { kind == "canvas" && canvasId != nil }

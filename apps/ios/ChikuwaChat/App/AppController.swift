@@ -914,7 +914,7 @@ final class AppController {
     }
 
     /// What a tapped notification opens, in the workspace on screen: a conversation (a reply's thread with it), a
-    /// reaction's message, an event, a task, a page, 「予約」, 「備品」, a canvas.
+    /// reaction's message, an event, a task, a page, 「予約」, 「備品」, 「アクティビティ」, a canvas.
     func openNotificationTarget(_ payload: PushPayload) async {
         if payload.opensMessage, let messageId = payload.messageId {
             // M39: a reaction to my message (PUSH_NOTIFICATIONS.md §4): that message, not the conversation's unread
@@ -948,6 +948,14 @@ final class AppController {
         if payload.opensReservations {
             // M112 (PUSH_NOTIFICATIONS.md §4, kind = reservation): 「予約」 on the home tab.
             PushCenter.shared.pendingReservations = true
+            engine?.reconnectNow()
+            return
+        }
+        if payload.opensActivity {
+            // M192 (PUSH_NOTIFICATIONS.md §18, kind = digest): the summary after a pause opens 「アクティビティ」.
+            PushCenter.shared.pendingActivity = true
+            PushCenter.shared.pendingChannelId = nil
+            PushCenter.shared.pendingParentId = nil
             engine?.reconnectNow()
             return
         }
@@ -1804,7 +1812,7 @@ final class AppController {
                        dndUntil: String?? = nil, quietHours: QuietHours?? = nil, notifyKeywords: [String]? = nil,
                        presenceHidden: Bool? = nil, notificationDefault: String? = nil, timesNotificationDefault: String? = nil,
                        notifyReactions: Bool? = nil, quickReactions: [String]?? = nil, notifyTasks: Bool? = nil, navItems: [NavItem]?? = nil,
-                       locale: String?? = nil, quiet: Bool = false) async -> Bool {
+                       locale: String?? = nil, notifyDigest: Bool? = nil, quiet: Bool = false) async -> Bool {
         guard let api else { return false }
         var fields: [String: JSONValue] = [:]
         if let locale { fields["locale"] = locale.map(JSONValue.string) ?? .null }
@@ -1812,6 +1820,7 @@ final class AppController {
             fields["nav_items"] = navItems.map { list in .array(list.map { .object(["key": .string($0.key), "visible": .bool($0.visible)]) }) } ?? .null
         }
         if let notifyTasks { fields["notify_tasks"] = .bool(notifyTasks) }  // M56
+        if let notifyDigest { fields["notify_digest"] = .bool(notifyDigest) }  // M192
         if let quickReactions { fields["quick_reactions"] = quickReactions.map { .array($0.map(JSONValue.string)) } ?? .null }  // M50
         if let notifyReactions { fields["notify_reactions"] = .bool(notifyReactions) }  // M39
         // M35: channels that follow the default show the new level at once (they resolve with store.me).

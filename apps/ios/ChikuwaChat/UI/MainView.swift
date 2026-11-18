@@ -353,6 +353,12 @@ struct MainView: View {
             PushCenter.shared.pendingLending = nil
             nav.landLending(screen, listId: LendingView.selectionId)
         }
+        .onChange(of: PushCenter.shared.pendingActivity, initial: true) { _, pending in
+            // M192: the tapped summary of what a pause held back: 「アクティビティ」 (the tab, or the split's detail).
+            guard pending else { return }
+            PushCenter.shared.pendingActivity = false
+            nav.landActivity()
+        }
         .onChange(of: PushCenter.shared.pendingAttendance, initial: true) { _, pending in
             // The 在室状況 widget was tapped: 「在室状況」, as its pill's 「在室状況を開く」.
             guard pending else { return }

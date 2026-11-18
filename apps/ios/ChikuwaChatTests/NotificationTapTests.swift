@@ -13,6 +13,7 @@ final class NotificationTapTests: XCTestCase {
         push.pendingParentId = nil
         push.pendingCalendar = false
         push.pendingPage = nil
+        push.pendingActivity = false
         super.tearDown()
     }
 
@@ -40,6 +41,43 @@ final class NotificationTapTests: XCTestCase {
         XCTAssertEqual(controller.calendarOpen?.eventId, "e1")
         XCTAssertTrue(push.pendingCalendar)
         XCTAssertNil(push.pendingChannelId)
+    }
+
+    /// M192 (PUSH_NOTIFICATIONS.md §18): the summary of what a pause held back has no conversation: it opens 「アクティビティ」,
+    /// on the phone's tab (at its first screen) or alone in the split's detail column; with the app open it shows.
+    func testTheSummaryAfterAPauseOpensTheActivity() async throws {
+        let controller = AppController(defaults: UserDefaults(suiteName: "NotificationTapTests.\(UUID().uuidString)")!)
+        let push = PushCenter.shared
+        let digest = PushPayload(userInfo: ["kind": "digest", "workspace_id": "w", "aps": ["badge": 3]])
+        XCTAssertTrue(digest.opensActivity)
+        XCTAssertFalse(digest.opensLending || digest.opensReservations || digest.opensMessage)
+        XCTAssertFalse(PushPayload(userInfo: ["kind": "message", "channel_id": "c1"]).opensActivity)
+        XCTAssertTrue(Workspaces.shouldPresent(digest, target: nil, active: nil, openChannelId: "c1"))
+
+        push.pendingChannelId = "c9"
+        await controller.openNotificationTarget(digest)
+        XCTAssertTrue(push.pendingActivity)
+        XCTAssertNil(push.pendingChannelId)
+
+        var nav = MainNavigation()
+        nav.tab = .home
+        nav.paths[.activity] = [.channel("c1")]
+        nav.landActivity()
+        XCTAssertEqual(nav.tab, .activity)
+        XCTAssertEqual(nav.paths[.activity], [])
+        var split = MainNavigation()
+        split.layout = .split
+        split.youSheet = true
+        split.split = [.channel("c1")]
+        split.landActivity()
+        XCTAssertEqual(split.split, [.list(MainNavigation.activityId)])
+        XCTAssertFalse(split.youSheet)
+
+        // The setting: UserMe carries it from M192 on (the switch is hidden for an older server).
+        let base = #""id":"u1","username":"kano","display_name":"Kano","role":"member","deactivated_at":null,"created_at":"","updated_at":"","email":null,"must_change_password":false"#
+        XCTAssertNil(try JSON.snakeDecoder.decode(UserMe.self, from: Data("{\(base)}".utf8)).notifyDigest)
+        let off = try JSON.snakeDecoder.decode(UserMe.self, from: Data("{\(base),\"notify_digest\":false}".utf8))
+        XCTAssertEqual(off.notifyDigest, false)
     }
 
     func testWhatATapCloses() throws {

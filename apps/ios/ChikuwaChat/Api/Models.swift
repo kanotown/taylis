@@ -82,6 +82,9 @@ struct UserMe: Codable, Equatable {
     /// (no tasks there: the switch is hidden, and so is 「タスクにする」); on when absent.
     var notifyTasks: Bool? = nil
     var taskNotices: Bool { notifyTasks ?? true }
+    /// M192 (PUSH_NOTIFICATIONS.md §18): one push summing up the mentions and DMs that quiet hours or a pause held back,
+    /// once it is over. nil from a server before M192 (no such setting there: the switch is hidden).
+    var notifyDigest: Bool? = nil
     /// The UI language ("ja" / "en" / "zh-Hans"; null = follow the device), the same on every device. A server
     /// without it leaves the key out (`.unsupported`: the choice stays on this device).
     var locale: LocaleSetting = .unsupported

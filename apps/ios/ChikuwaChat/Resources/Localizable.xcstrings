@@ -714,6 +714,22 @@
         }
       }
     },
+    "おやすみ時間・一時停止のあとに 1 件にまとめて届きます" : {
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Arrives as one notification after quiet hours or a pause"
+          }
+        },
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "勿扰时段或暂停结束后合并为一条通知送达"
+          }
+        }
+      }
+    },
     "この URL は http です。パスワードやメッセージが暗号化されずに送られ、途中で読まれたり書き換えられたりするおそれがあります。サーバが https に対応していれば https で接続してください。" : {
       "localizations" : {
         "en" : {
@@ -3862,6 +3878,22 @@
           "stringUnit" : {
             "state" : "translated",
             "value" : "未读与提及"
+          }
+        }
+      }
+    },
+    "止めていた間のメンションをまとめて通知" : {
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Sum up the mentions from while notifications were paused"
+          }
+        },
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "汇总通知暂停期间的提及"
           }
         }
       }

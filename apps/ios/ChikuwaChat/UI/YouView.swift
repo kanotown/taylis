@@ -402,6 +402,17 @@ struct NotificationSettingsView: View {
                     Text("担当に加えられたときと、担当のタスクの期限の日の朝 8 時に通知します")
                 }
             }
+            // M192 (PUSH_NOTIFICATIONS.md §18): one push summing up the mentions and DMs that quiet hours or a pause held
+            // back, once it is over; a server before M192 has no such setting.
+            if let notifyDigest = me?.notifyDigest {
+                Section {
+                    Toggle("止めていた間のメンションをまとめて通知", isOn: Binding(get: { notifyDigest }, set: { on in
+                        Task { _ = await controller.updateProfile(notifyDigest: on) }
+                    }))
+                } footer: {
+                    Text("おやすみ時間・一時停止のあとに 1 件にまとめて届きます")
+                }
+            }
             // M12g: words that notify me like a mention, edited as a comma-separated line.
             Section {
                 TextField("例：リリース, 締切", text: $keywords, axis: .vertical)
