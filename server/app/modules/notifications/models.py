@@ -12,6 +12,7 @@ from sqlalchemy import (
     Integer,
     String,
     Text,
+    UniqueConstraint,
     func,
     text,
 )
@@ -73,5 +74,27 @@ class PushDelivery(Base):
             "push_deliveries_pending_idx",
             "next_attempt_at",
             postgresql_where=text("status = 'pending'"),
+        ),
+    )
+
+
+class NotificationDigestItem(Base):
+    """M192 (PUSH_NOTIFICATIONS.md §18): a message push that only the person's pause (DND or quiet
+    hours) held back and that addresses them: a mention (by name, group, @channel / @here,
+    keyword) or a DM / group DM message. One summary push goes out once no pause is in effect;
+    the worker deletes the person's rows in the transaction that plans it (migration 0133)."""
+
+    __tablename__ = "notification_digest_items"
+
+    id: Mapped[int] = mapped_column(BigInteger, Identity(always=False), primary_key=True)
+    user_id: Mapped[uuid.UUID] = mapped_column(ForeignKey("users.id", ondelete="CASCADE"))
+    message_id: Mapped[uuid.UUID] = mapped_column(ForeignKey("messages.id", ondelete="CASCADE"))
+    created_at: Mapped[datetime] = mapped_column(
+        DateTime(timezone=True), default=utcnow, server_default=func.now()
+    )
+
+    __table_args__ = (
+        UniqueConstraint(
+            "user_id", "message_id", name="notification_digest_items_user_message_uniq"
         ),
     )

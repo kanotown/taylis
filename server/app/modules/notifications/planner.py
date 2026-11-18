@@ -33,6 +33,7 @@ from app.modules.messages import service as messages
 from app.modules.messages.events import MESSAGE_CREATED
 from app.modules.messages.mentions import attachment_text, extract_group_mentions, notification_text
 from app.modules.moderation import blocks
+from app.modules.notifications import digest
 from app.modules.notifications import repository as repo
 from app.modules.notifications.schemas import PushPayload
 from app.modules.notifications.service import is_muted, push_level
@@ -141,9 +142,12 @@ class PushPlanner:
             # (THREADS.md §4).
             muted = set(await threads.unfollowed(db, parent_id))
             recipients = [uid for uid in recipients if uid not in muted]
+        held: list[uuid.UUID] = []
         targets = await self.select_recipients(
-            db, channel, recipients, message, participants, parent_id=parent_id
+            db, channel, recipients, message, participants, parent_id=parent_id, held=held
         )
+        if held:  # M192: what only a pause held back waits for the summary push (§18)
+            await digest.record(db, held, uuid.UUID(str(message["id"])))
         if not targets:
             return
         devices = await repo.push_devices_for_users(db, targets)
@@ -770,9 +774,14 @@ class PushPlanner:
         participants: set[uuid.UUID] | None = None,
         *,
         parent_id: uuid.UUID | None = None,
+        held: list[uuid.UUID] | None = None,
     ) -> list[uuid.UUID]:
         """PUSH_NOTIFICATIONS.md §4; ``participants`` are the thread's author and repliers, and
-        ``parent_id`` the thread a reply is read in (its position, not the channel's)."""
+        ``parent_id`` the thread a reply is read in (its position, not the channel's).
+
+        ``held`` (M192, §18) collects those whom only their pause (DND, quiet hours) keeps from a
+        push of a message that addresses them (a mention, a DM), with the summary after a pause
+        on (``notify_digest``)."""
         now = utcnow()
         prefs = await repo.preferences_for_channel(db, channel.id, recipients)
         mentioned = {uuid.UUID(str(uid)) for uid in (message or {}).get("mentioned_user_ids", [])}
@@ -804,8 +813,6 @@ class PushPlanner:
             )
             if level == "none" or is_muted(pref, now):
                 continue
-            if user is not None and dnd_active(user, now):
-                continue  # paused / quiet hours (M12c); the badge catches up with the next push
             involved = mention_all or user_id in mentioned or user_id in (participants or set())
             if level == "mentions" and not involved:
                 continue
@@ -815,6 +822,13 @@ class PushPlanner:
                 continue  # already read on another device (§4)
             if self.is_active(user_id):
                 continue  # the user is looking at another device right now (§4.1)
+            if user is not None and dnd_active(user, now):
+                # Paused / quiet hours (M12c): no push now. M192: a mention or a DM, which would
+                # have pushed but for the pause, waits for the summary when the pause is over.
+                addressed = channel.is_dm or mention_all or user_id in mentioned
+                if held is not None and addressed and user.notify_digest:
+                    held.append(user_id)
+                continue
             targets.append(user_id)
         return targets
 

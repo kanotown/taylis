@@ -185,6 +185,9 @@ class UserMe(UserPublic):
     notify_reactions: bool = False
     # M55: a push when a task is assigned to me or one of mine is due today (TASKS.md §5).
     notify_tasks: bool = True
+    # M192: one push summing up the mentions and DMs held back while my notifications were paused
+    # (DND, quiet hours), once the pause is over (PUSH_NOTIFICATIONS.md §18).
+    notify_digest: bool = True
     # M48: false for an account made by Google sign-in; clients hide 「パスワードを変更」.
     has_password: bool = True
     # M50: my quick reactions in order (1-6 plain emoji or custom `:name:`); null = not chosen,
@@ -238,6 +241,8 @@ class UserUpdate(BaseModel):
     notify_reactions: bool | None = None
     # M55: task pushes (assignments, due dates) on or off.
     notify_tasks: bool | None = None
+    # M192: the summary after a pause on or off.
+    notify_digest: bool | None = None
     # M50: 1-6 distinct plain emoji or custom `:name:` (2026-10-13); null resets to the
     # clients' rule.
     quick_reactions: list[str] | None = Field(
@@ -348,6 +353,7 @@ def to_user_me(user: User) -> UserMe:
         times_notification_default=user.times_notification_default,  # type: ignore[arg-type]
         notify_reactions=user.notify_reactions,
         notify_tasks=user.notify_tasks,
+        notify_digest=user.notify_digest,
         has_password=user.password_hash is not None,
         quick_reactions=list(user.quick_reactions) if user.quick_reactions else None,
         nav_items=nav_items_of(user),

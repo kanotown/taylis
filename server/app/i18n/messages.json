@@ -65,6 +65,15 @@
 
   "push.test.body": {"ja": "テスト通知です。この端末に通知が届いています。", "en": "This is a test notification. Notifications reach this device.", "zh-Hans": "这是一条测试通知。此设备可以收到通知。"},
 
+  "push.digest.title": {"ja": "通知を止めていた間に", "en": "While notifications were paused", "zh-Hans": "通知暂停期间"},
+  "push.digest.mentions": {"ja": "メンション {count} 件：{who}（{where}）", "en": "Mentions ({count}): {who} ({where})", "zh-Hans": "{count} 条提及：{who}（{where}）"},
+  "push.digest.mentions_hidden": {"ja": "通知を止めていた間にメンションが {count} 件あります", "en": "You have {count} mention(s) from while notifications were paused", "zh-Hans": "通知暂停期间有 {count} 条提及"},
+  "push.digest.dms": {"ja": "DM {count} 件：{who}", "en": "DMs ({count}): {who}", "zh-Hans": "{count} 条私信：{who}"},
+  "push.digest.dms_hidden": {"ja": "通知を止めていた間に DM が {count} 件あります", "en": "You have {count} DM(s) from while notifications were paused", "zh-Hans": "通知暂停期间有 {count} 条私信"},
+  "push.digest.dm": {"ja": "DM", "en": "DM", "zh-Hans": "私信"},
+  "push.digest.sep": {"ja": "、", "en": ", ", "zh-Hans": "、"},
+  "push.digest.more": {"ja": "{list} ほか", "en": "{list} and others", "zh-Hans": "{list} 等"},
+
   "reminder.ack_note": {"ja": "{name} さんから確認のお願い", "en": "{name} asks you to acknowledge", "zh-Hans": "{name} 请你确认"},
   "reminder.collect_note": {"ja": "{name} の提出をお願いします（締切 {due}）", "en": "Please submit {name} (due {due})", "zh-Hans": "请提交 {name}（截止 {due}）"},
   "reminder.collect_default": {"ja": "提出", "en": "your submission", "zh-Hans": "提交内容"},

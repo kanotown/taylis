@@ -38,6 +38,9 @@ class PushPayload(BaseModel):
         "reservation",
         "page",
         "lending",
+        # M192 (§18): the mentions and DMs held back while notifications were paused, summed up
+        # once the pause is over; no conversation (a tap opens the activity).
+        "digest",
         "test",
     ] = "message"
     # Which deployment sent it (WORKSPACES.md §5): the app opens that workspace on a tap.

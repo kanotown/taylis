@@ -26393,6 +26393,11 @@
             "title": "Notification Default",
             "type": "string"
           },
+          "notify_digest": {
+            "default": true,
+            "title": "Notify Digest",
+            "type": "boolean"
+          },
           "notify_keywords": {
             "default": [],
             "items": {
@@ -26805,6 +26810,17 @@
               }
             ],
             "title": "Notification Default"
+          },
+          "notify_digest": {
+            "anyOf": [
+              {
+                "type": "boolean"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Notify Digest"
           },
           "notify_keywords": {
             "anyOf": [

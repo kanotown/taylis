@@ -86,6 +86,7 @@ from app.modules.link_previews.router import router as link_previews_router
 from app.modules.messages import service as messages_service
 from app.modules.messages.router import router as messages_router
 from app.modules.moderation.router import router as moderation_router
+from app.modules.notifications import digest as notification_digest
 from app.modules.notifications import repository as notifications_repo
 from app.modules.notifications.planner import PushPlanner
 from app.modules.notifications.providers import build_providers
@@ -365,7 +366,9 @@ async def _scheduled_send_loop(app: FastAPI, stop: asyncio.Event) -> None:
     task due dates (M55) whose time has come; posts recurring posts and nudges those who have
     not submitted to a collection past its due time (L6, M59); posts deadlines' advance notices
     (L5, M85); tells holders and operators what a reservation pool's queue needs (M99); writes
-    the equipment reminders and the keepers' summary of the morning (M169, LENDING.md §8.4)."""
+    the equipment reminders and the keepers' summary of the morning (M169, LENDING.md §8.4);
+    sends the summary of what a pause held back once it is over (M192, PUSH_NOTIFICATIONS.md
+    §18)."""
     settings: Settings = app.state.settings
     while not stop.is_set():
         try:
@@ -416,6 +419,11 @@ async def _scheduled_send_loop(app: FastAPI, stop: asyncio.Event) -> None:
                     await lending_notices.tick(session)
             except Exception:
                 log.exception("lending notices failed")
+            try:
+                async with app.state.db.session_factory() as session:
+                    await notification_digest.send_due(session, app.state.push_planner)
+            except Exception:
+                log.exception("notification digests failed")
 
 
 async def _feed_loop(app: FastAPI, stop: asyncio.Event) -> None:
@@ -857,6 +865,8 @@ def create_app(settings: Settings | None = None) -> FastAPI:
             user_id, settings.push_active_window_seconds
         ),
     )
+    # M192: the scheduled loop plans the summaries after a pause with it (§18).
+    app.state.push_planner = planner
     app.state.relay = OutboxRelay(
         app.state.db,
         app.state.bus,

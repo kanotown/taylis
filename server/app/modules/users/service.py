@@ -111,6 +111,8 @@ async def update_me(db: AsyncSession, user_id: uuid.UUID, data: UserUpdate) -> U
         user.notify_reactions = data.notify_reactions
     if data.notify_tasks is not None:
         user.notify_tasks = data.notify_tasks
+    if data.notify_digest is not None:
+        user.notify_digest = data.notify_digest
     if "quick_reactions" in data.model_fields_set:
         user.quick_reactions = data.quick_reactions  # null: back to the clients' rule (M50)
     if "nav_items" in data.model_fields_set:  # M111: null = the clients' defaults
