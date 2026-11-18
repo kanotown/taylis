@@ -126,7 +126,7 @@ times がまとめて `all` になる（あとから作られた times も同じ
 | `reservation.notice` (M112、共有枠の予約の知らせ。RESERVATIONS.md §5) | 本人の端末へ `kind = reservation` (タイトル「予約」、本文は知らせの 1 行 (担当者の作業ならアドレスを含む)、`pool_id` で「予約」のページを開く)。`collapse_key = reservation:<item_id>`。DND 中・別端末でアクティブ (開いている端末がバナー / 通知を出す) なら出さない。計画の時点で項目が済んでいれば (ほかの担当者が対応した) 出さない。チャンネルの level・ミュートは見ない (会話のものではない)。`PUSH_INCLUDE_CONTENT=false` なら本文は「予約のお知らせがあります」。M99 のボットからの DM はやめた | M99 → M112 |
 | `wiki.mentioned` / `wiki.shared`（M120、ドキュメントのページで新しくメンションされた / 名前を挙げて共有された。docs/WIKI.md §9.3） | 本人の端末へ `kind = page`（タイトル「ドキュメント」、本文「〇〇 が「題名」であなたをメンションしました」/「〇〇 が「題名」を共有しました」）。`page_id` でそのページを開く。`collapse_key = page:<page_id>`。計画の時点で本人がそのページを読めない（権限が変わった・ゴミ箱）なら出さない。DND 中・別端末でアクティブ・`by_user_id` をブロックしていれば出さない。`PUSH_INCLUDE_CONTENT=false` なら本文は「ドキュメントでメンションされました」/「ドキュメントが共有されました」。アクティビティには `page_mention` / `page_shared`（`include` で頼んだ端末だけ） | M120 |
 | `lending.notice`（M169、備品の知らせ。LENDING.md §8） | 本人の端末へ `kind = lending`（タイトル「備品」、本文は知らせの 1 行。`lending_item_id`・`loan_id` でその貸し出しを開く。備品係の朝のまとめは両方 null で延滞の一覧を開く。`channel_id` は null）。`collapse_key` は `lending:loan:<loan_id>`（同じ貸し出しの催促・知らせは通知の欄で置き換わる）、修理から戻った見守りは `lending:item:<item_id>`、備品係のまとめは `lending:overdue`。DND 中（一時停止・おやすみ時間）・別端末でアクティブなら出さない（後で送り直さない。催促は翌朝もまた来る。アクティビティの項目はいつも残る）。計画の時点で項目が済んでいる（教員が判断した）・催促の貸し出しが返却済みか返す日が変わった・読む権利が無い（備品係でなくなった人のまとめ、機能がオフ、ゲストになった）なら出さない（`lending/access.py` の `may_deliver`。WebSocket の `lending.notice` も同じ確かめ）。チャンネルの level・ミュートは見ない。`PUSH_INCLUDE_CONTENT=false` なら本文は「備品のお知らせがあります」。アクティビティには `lending`（`include=lending` を付けた端末だけ） | M169 |
-| 本人の `dnd_until > now()`、または quiet hours の時間帯 (本人のタイムゾーン、`users.quiet_hours_*`。2026-10-13 から既定で毎日 22:00〜7:00（Asia/Tokyo）、移行 0117) | 除外 (M12c 「通知を一時停止」。ステータスのメニューの「取り込み中」も同じ `dnd_until`、PRESENCE.md §11。バッジは次のプッシュ / 起動時に追いつく) | M12c |
+| 本人の `dnd_until > now()`、または quiet hours の時間帯 (本人のタイムゾーン、`users.quiet_hours_*`。2026-10-13 から既定で毎日 22:00〜7:00（Asia/Tokyo）、移行 0117) | 除外 (M12c 「通知を一時停止」。ステータスのメニューの「取り込み中」も同じ `dnd_until`、PRESENCE.md §11。バッジは次のプッシュ / 起動時に追いつく)。M192 から、止めていなければ送っていた（level・ミュート・ブロック・別端末でアクティブ・メンバーの確かめをすべて通る）メッセージのうち、本人宛て（メンション・DM / グループ DM）のものは `notification_digest_items` に残し、止めている状態が終わったら 1 件のまとめのプッシュ（`kind = digest`）で知らせる（§18。`notify_digest` がオンのとき） | M12c / M192 |
 | `level = all` | 対象 | M5 |
 | `level = mentions` | `mentioned_user_ids` か `keyword_user_ids` に含まれる、または `mention_all` の時だけ対象 | M8a (実装済み) |
 | スレッドだけの返信 (チャンネルにも送信したものを除く) | `level = all` でも、フォロワー (下の行) とメンションされた人だけ (2026-10-02: 既定を `all` にしたので、参加していないスレッドの他人同士のやり取りでは起こさない。Slack と同じ) | 2026-10-02 |
@@ -207,6 +207,7 @@ data)。`kind = task` (M55) は `task_id` を送る (同じく。自分用のタ
 を送る (同じく)。`kind = reservation` (M112) は `pool_id` を送り (同じく、`channel_id` は null)、タップで「予約」のページを開く。
 `kind = page`（M120）は `page_id` を送り（同じく、`channel_id` は null）、タップでドキュメントのページを開く（M122）。
 `kind = lending`（M169、LENDING.md §8.3）は `lending_item_id` と `loan_id` を送り（同じく、`channel_id` は null。備品係の朝のまとめは両方 null、修理から戻った見守りは `loan_id` だけ null）、タップで「備品」のその貸し出し（無ければその備品、両方無ければ延滞の一覧）を開く。
+`kind = digest`（M192、§18）は会話も id も持たず（`channel_id` は null、`collapse_key = digest`）、タップで「アクティビティ」を開く。
 `kind = test` (§15) は会話を持たず、タップでアプリを開くだけ。クライアントは知らない項目を無視する。
 
 | 項目 | APNs | FCM (Android) |
@@ -756,3 +757,83 @@ http(s) 以外の URL、失敗時に元の通知)、`StoreReleaseTests` (拡張�
 - 試験：サーバの判定（`/sync/summary`・プッシュの宛先）は `test_times.py`・`test_m35.py` のまま。出荷済みの端末のバイナリと
   新しいサーバを組み合わせる試験は無い（レビューは旧 Desktop のコードを取り出して比べた）。
 
+## 18. 止めていた間のメンションをまとめて通知（M192、2026-11-18）
+
+利用者の要望：おやすみ時間（既定 22:00〜7:00）や「通知を一時停止」・「取り込み中」（`dnd_until`）の間はプッシュを出さず（§4）、
+あとで送り直しもしなかった。止めている状態が終わったら、その間に自分宛てに来たものを 1 件にまとめて知らせてほしい。
+
+### 18.1 記録するもの
+
+PushPlanner（`message.created`、§4）が、止めている状態（`dnd_active`：`dnd_until > now()` かおやすみ時間）**だけ** が理由で送らなかった
+プッシュを、本人ごとに `notification_digest_items`（DATA_MODEL.md、移行 0133）に 1 行残す。「だけ」とは、止めていなければ送っていた
+こと：会話の level（`none` でない、`mentions` ならメンションかキーワードか `@channel`）、ミュート、ブロック（M104）、スレッドの
+フォロー（手動で外したスレッド・参加していないスレッドの返信）、既読、別端末でアクティブ（§4.1）、メンバー（`message.created` の
+宛先）の確かめをすべて通ること。`select_recipients` は止めている確かめを最後に回し、そこで落ちる人を `held` に集める。
+
+そのうえで本人宛てのものだけを残す：
+
+- メンション：名前（`mentioned_user_ids`、グループのメンションで展開した人を含む）、`@channel` / `@here`（`mention_all`）、
+  通知キーワード（`keyword_user_ids`、M12g。メンションと同じに数える）。
+- DM / グループ DM のメッセージ（メンションの有無を問わない）。
+
+`users.notify_digest` がオフの人と、プッシュを受け取れる端末（`push_token` のある有効な端末）が無い人は残さない。行は
+`UNIQUE (user_id, message_id)` で `ON CONFLICT DO NOTHING`：outbox のイベントを処理し直しても 1 行。
+
+### 18.2 送るとき
+
+worker（`_scheduled_send_loop`、15 秒ごと。リマインダー・予定・タスクの期限と同じループ）が `digest.send_due` で、行のある人ごとに：
+
+1. 今も止めているなら（おやすみ時間が終わっても、そのあと `dnd_until` がまだ先なら、などを含む）何もしない。おやすみ時間の判定は
+   §4 と同じ `dnd_active`（本人の `quiet_hours_tz`）。止めている状態が終わる 3 つの場合（おやすみ時間の終わり、`dnd_until` が
+   過ぎた、本人が手で解除した）はどれもここで同じに見える。
+2. 本人の行を `DELETE … RETURNING` で取り、**同じトランザクションで** まとめのプッシュを `push_deliveries` に計画して COMMIT する。
+   COMMIT の前に落ちれば行は残って次の回にやり直し、後に落ちても行は消えているので二重にならない。行の削除が行ロックを取るので、
+   別のプロセスが同時に取っても片方は空になる。1 人の失敗はその人をロールバックして次の人へ進む（行は次の回）。
+3. 送る直前の確かめ（行ごと）：メッセージが削除された、既読（会話の `read_states`。チャンネルにも送っていないスレッドの返信は
+   `thread_follows` の既読位置）、会話から抜けた（メンバーでない）、送った人をその後ブロックした、は落とす。
+4. 何も残らない・本人が今アプリを見ている（§4.1 と同じアクティブ判定）・`notify_digest` がオフになった・アカウントが無効、なら
+   プッシュは出さずに行だけ消す。
+5. 残りがあれば、本人のプッシュを受け取れる端末すべてに 1 件ずつ。`push_deliveries.event_id` は outbox のイベントが無いので、
+   取った行のうち最大の `id` の負の値（行は 1 度しか取られないので他のまとめと重ならず、正の outbox の id とも重ならない）。
+   送信は §6 のとおり（有効期限 10 分、再試行）。
+
+Desktop / Web はまとめを出さない（画面の未読がそのまま見える。設定だけを持つ）。
+
+### 18.3 プッシュ
+
+| 項目 | 値 |
+| --- | --- |
+| `kind` | `digest` |
+| `collapse_key` | `digest`（次のまとめが置き換える。会話を読んでも消えない） |
+| `channel_id` などの id | なし |
+| 題 | 「通知を止めていた間に」/ "While notifications were paused" / 「通知暂停期间」 |
+| 本文 | 「メンション 3 件：田中 一郎、高橋 健太 ほか（#研究ミーティング、DM）」。すべて DM / グループ DM なら「DM 2 件：田中 一郎」（会話の欄なし）。DM がメンションに混ざるときはメンションとして数える |
+| 本文（`PUSH_INCLUDE_CONTENT=false`） | 「通知を止めていた間にメンションが 3 件あります」/「通知を止めていた間に DM が 2 件あります」 |
+| `badge` | §4.2 のいつもの数 |
+
+- 名前と会話は古い順に重ねずに並べ、2 つまで出して残りは「ほか」（en "and others"、zh-Hans 「等」）。会話はチャンネルが「#名前」、
+  DM が「DM」、グループ DM が「グループ DM」。本文は 240 文字で切る。
+- 言語は §5 と同じ（端末ごとに `users.locale` → `devices.locale` → ja）。en は「Mentions (3): Ichiro Tanaka, Kenta Takahashi and others
+  (#lab-meeting, DM)」、zh-Hans は「3 条提及：…（…）」。文言は `server/app/i18n/messages.json` の `push.digest.*`。
+
+### 18.4 端末
+
+- **iOS**：`kind = digest` のタップは「アクティビティ」を開く（タブなら最初の画面、iPad の分割表示なら詳細の列に単独で。
+  `PushPayload.opensActivity`・`PushCenter.pendingActivity`・`MainNavigation.landActivity`）。会話を持たないのでアプリを開いて
+  いても出す（`Workspaces.shouldPresent`）。Notification Service Extension は `kind = message` だけを書き換えるので変更なし
+  （`mutable-content` も付かない）。
+- **Android**：data の `kind = digest` は `PushMessage.isDigest`、通知のキーは `digest`。タップは `Notifier.EXTRA_ACTIVITY` で
+  「アクティビティ」タブの最初の画面（「すべて」）を開く（`MainTabs.landActivity`）。ほかのワークスペースのまとめは、メッセージと
+  同じくそのワークスペースを未読にし、バッジを更新する。
+- **設定**：3 つの端末の「通知」に「止めていた間のメンションをまとめて通知」（説明「おやすみ時間・一時停止のあとに 1 件にまとめて
+  届きます」）。`PATCH /users/me {notify_digest}`、`UserMe.notify_digest`（既定オン）。古いサーバ（項目が無い）では出さない。
+
+### 18.5 試験
+
+サーバ `tests/test_notification_digest.py`（DM の記録と止めている状態の終わりの 1 件・2 回目は何もしない、記録するのは止めて
+いる状態だけが理由でメンション / `@here` / グループ / DM のときだけ（level `none`・ミュート・アクティブ・設定オフ・端末なしは
+残さない）、outbox の処理し直しで 1 行、おやすみ時間が終わっても後の一時停止の終わりまで待つ、手での解除、削除・既読（スレッドの
+既読位置）・抜けた・ブロックを落とす・何も残らなければ出さずに消す、アクティブなら出さずに消す、設定の API とオフでの消去、文言
+（名前と会話の重ねなし・「ほか」・en・内容を隠す）、無効なアカウント、1 人の失敗はその人の行を残してほかの人へ進む）。
+Desktop `tests/notifyDigest.test.tsx`、iOS `NotificationTapTests.testTheSummaryAfterAPauseOpensTheActivity`、Android `DigestPushTest`。
+実機での APNs / FCM の受信は未確認。
