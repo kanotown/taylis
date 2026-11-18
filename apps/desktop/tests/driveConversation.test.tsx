@@ -127,6 +127,17 @@ describe("the card", () => {
     expect(screen.queryByRole("button")).toBeNull();
   });
 
+  it("puts no empty line between two cards on consecutive lines, nor after a card", async () => {
+    const controller = stub({ driveLink: vi.fn(async () => ({ state: "ok", detail: detail() })) });
+    const { container } = render(
+      <MessageBody body={`${BASE}/d/${ITEM_ID}\n${BASE}/d/${ITEM_ID} \nあとの行\nその次`} users={new Map()} internalBase={BASE} controller={controller} />,
+    );
+    await waitFor(() => expect(container.querySelectorAll("[data-drive-card]").length).toBe(2));
+    // Only the break between 「あとの行」 and 「その次」: none after either card.
+    expect(container.querySelectorAll("br").length).toBe(1);
+    expect(container.textContent).toContain("あとの行");
+  });
+
   it("leaves another server's /d/ link a plain link", () => {
     const controller = stub({ driveLink: vi.fn() });
     render(<MessageBody body={`https://other.example/d/${ITEM_ID}`} users={new Map()} internalBase={BASE} controller={controller} />);

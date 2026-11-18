@@ -239,10 +239,30 @@ export interface InlineOptions {
   groups?: ReadonlyMap<string, GroupOut>;
 }
 
+/**
+ * A link drawn as a card on a line of its own (a drive item, M165; a canvas, M44). The card ends its line itself, so
+ * the line break after it would only add an empty line: two drive links one under the other had a blank line between
+ * their cards (2026-11-18).
+ */
+function isCard(token: Token | undefined, options: InlineOptions): boolean {
+  const { internalBase, controller } = options;
+  if (!token || token.kind !== "link" || !internalBase || !controller) return false;
+  return !!(parseDriveLink(internalBase, token.url) ?? parseCanvasLink(internalBase, token.url));
+}
+
+/** The last token of a line that draws something (a trailing space after a pasted link does not count). */
+function lastShown(tokens: Token[]): Token | undefined {
+  for (let i = tokens.length - 1; i >= 0; i--) {
+    const token = tokens[i]!;
+    if (token.kind !== "text" || token.text.trim() !== "") return token;
+  }
+  return undefined;
+}
+
 function lines(rows: Token[][], users: Map<string, UserPublic>, options: InlineOptions = {}) {
   return rows.map((tokens, i) => (
     <span key={i}>
-      {i > 0 && <br />}
+      {i > 0 && !isCard(lastShown(rows[i - 1]!), options) && <br />}
       {inline(tokens, users, options)}
     </span>
   ));
@@ -398,7 +418,8 @@ export function inline(tokens: Token[], users: Map<string, UserPublic>, options:
       case "math":
         return <MathView key={i} tex={token.text} display={false} inlineDisplay={token.display} />;
       case "newline":
-        return <br key={i} />;
+        // After a card (isCard) the break would leave an empty line.
+        return isCard(lastShown(tokens.slice(0, i)), options) ? null : <br key={i} />;
     }
   });
 }
