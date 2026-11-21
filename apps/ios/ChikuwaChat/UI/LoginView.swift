@@ -3,6 +3,8 @@ import SwiftUI
 /// Signing in (WORKSPACES.md §5.1): the first workspace, another one (`add`: cancel returns to the one on screen),
 /// or back into a workspace whose session ended (`relogin`, with the way to the others).
 struct LoginView: View {
+    /// The server field's example (a placeholder, never a value).
+    static let serverExample = "https://chat.example.com"
     enum Mode {
         case initial
         case add
@@ -70,12 +72,18 @@ struct LoginView: View {
                     }
                 } else {
                     Section {
-                        TextField("https://chat.example.com", text: $server)
+                        // A String, not a LocalizedStringKey: the key's Markdown drew the example as a blue link, which
+                        // read as a filled-in address (App Review, 2026-11-21).
+                        TextField(Self.serverExample, text: $server)
                             .keyboardType(.URL).textContentType(.URL).textInputAutocapitalization(.never).autocorrectionDisabled()
                     } header: {
                         Text("サーバ")
                     } footer: {
-                        if isAdding { Text("別の Taylis サーバにログインします。https:// は省略できます。") }
+                        if isAdding {
+                            Text("別の Taylis サーバにログインします。https:// は省略できます。")
+                        } else {
+                            Text("研究室の管理者から伝えられたサーバのアドレスを入力します。https:// は省略できます。")
+                        }
                     }
                 }
                 Section("アカウント") {

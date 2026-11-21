@@ -56,7 +56,7 @@ struct InviteView: View {
                 }
             } else {
                 Section("招待リンク") {
-                    TextField("https://chat.example.com/invite/…", text: $link)
+                    TextField(String("https://chat.example.com/invite/…"), text: $link)  // a String: no blue link (as LoginView)
                         .keyboardType(.URL).textInputAutocapitalization(.never).autocorrectionDisabled()
                 }
                 Section { Text("管理者から受け取ったリンクを貼り付けると、ユーザー名とパスワードを自分で決めて参加できます。").font(.footnote) }

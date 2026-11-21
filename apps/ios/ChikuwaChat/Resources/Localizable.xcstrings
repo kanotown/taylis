@@ -4026,6 +4026,22 @@
         }
       }
     },
+    "研究室の管理者から伝えられたサーバのアドレスを入力します。https:// は省略できます。" : {
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Enter the server address your lab's administrator gave you. You can leave out https://."
+          }
+        },
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "输入实验室管理员提供的服务器地址。可以省略 https://。"
+          }
+        }
+      }
+    },
     "確認した" : {
       "localizations" : {
         "en" : {
